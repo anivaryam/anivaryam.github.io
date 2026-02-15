@@ -283,6 +283,13 @@ const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
     <priority>0.9</priority>
   </url>
   
+  <url>
+    <loc>${baseUrl}/tools/listicle-template/</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  
   <!-- Blog Posts -->
 ${blogPosts.map(post => `  <url>
     <loc>${baseUrl}/blogs/${post.id}/</loc>

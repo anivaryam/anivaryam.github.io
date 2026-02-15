@@ -85,6 +85,7 @@ const routes = [
   '/tools/csv-to-json',
   '/tools/image-tool',
   '/tools/random-universe-cipher',
+  '/tools/listicle-template',
   '/downloads',
   '/blogs',
   '/news',

@@ -1,7 +1,7 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Code2, FileCode, ArrowRight, Braces, Binary, Link as LinkIcon, Palette, Fingerprint, Regex, Hash, KeyRound, Clock, Globe, Search, QrCode, GitCompare, FileText, Image, Lock } from "lucide-react";
+import { Code2, FileCode, ArrowRight, Braces, Binary, Link as LinkIcon, Palette, Fingerprint, Regex, Hash, KeyRound, Clock, Globe, Search, QrCode, GitCompare, FileText, Image, Lock, LayoutTemplate } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const tools = [
@@ -156,6 +156,14 @@ const tools = [
     icon: Lock,
     path: "/tools/random-universe-cipher",
     color: "text-[hsl(var(--syntax-purple))]",
+  },
+  {
+    id: "listicle-template",
+    title: "Listicle CSS Template Tool",
+    description: "Prefix CSS class selectors with template names and remove inline styles. Perfect for listicle articles and content templates.",
+    icon: LayoutTemplate,
+    path: "/tools/listicle-template",
+    color: "text-[hsl(var(--syntax-pink))]",
   },
 ];
 
