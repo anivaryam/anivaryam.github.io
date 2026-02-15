@@ -2,12 +2,23 @@ export interface PrefixOptions {
   templateName: string;
 }
 
+const ROOT_ELEMENTS = ['html', 'body', ':root'];
+
+function isRootElement(selector: string): boolean {
+  const trimmed = selector.trim().toLowerCase();
+  return ROOT_ELEMENTS.some(el => trimmed === el || trimmed.startsWith(el + ':'));
+}
+
 function prefixSelector(selector: string, templateName: string): string {
   const trimmed = selector.trim();
   
   if (!trimmed) return trimmed;
   
   if (trimmed.startsWith('@') || trimmed.startsWith('//')) {
+    return trimmed;
+  }
+  
+  if (isRootElement(trimmed)) {
     return trimmed;
   }
   
@@ -56,6 +67,47 @@ function splitRules(css: string): string[] {
   return result;
 }
 
+function prefixMediaQuery(mediaQuery: string, templateName: string): string {
+  const classPrefix = templateName.startsWith('.') ? templateName : `.${templateName}`;
+  
+  const mediaMatch = mediaQuery.match(/^(@media[^{]+)\{(.+)\}$/s);
+  if (!mediaMatch) return mediaQuery;
+  
+  const mediaAtRule = mediaMatch[1];
+  const innerContent = mediaMatch[2];
+  
+  const rules = splitRules(innerContent);
+  
+  const prefixedRules = rules.map(rule => {
+    const trimmed = rule.trim();
+    if (!trimmed) return '';
+    
+    if (trimmed.startsWith('@') || trimmed.startsWith('//')) {
+      return trimmed;
+    }
+    
+    if (trimmed.includes('{')) {
+      const braceIndex = trimmed.indexOf('{');
+      const selectorPart = trimmed.slice(0, braceIndex);
+      const stylePart = trimmed.slice(braceIndex);
+      
+      const selectors = selectorPart.split(',').map(s => s.trim()).filter(Boolean);
+      const prefixedSelectors = selectors.map(s => {
+        if (isRootElement(s)) {
+          return s;
+        }
+        return `${classPrefix} ${s}`;
+      }).join(', ');
+      
+      return prefixedSelectors + stylePart;
+    }
+    
+    return prefixSelector(trimmed, templateName);
+  });
+  
+  return `${mediaAtRule}{\n${prefixedRules.join('\n\n')}\n}`;
+}
+
 export function prefixCss(css: string, templateName: string): string {
   if (!css || !css.trim()) return '';
   if (!templateName) return css;
@@ -65,6 +117,10 @@ export function prefixCss(css: string, templateName: string): string {
   const prefixed = rules.map(rule => {
     const trimmed = rule.trim();
     if (!trimmed) return '';
+    
+    if (trimmed.startsWith('@media')) {
+      return prefixMediaQuery(trimmed, templateName);
+    }
     
     if (trimmed.startsWith('@') || trimmed.startsWith('//')) {
       return trimmed;
