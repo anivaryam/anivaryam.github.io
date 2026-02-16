@@ -303,14 +303,6 @@ routes.forEach(route => {
   fs.writeFileSync(routeHtml, routeHtmlContent);
   
   console.log(`Created: ${route}/index.html`);
-  
-  // Also create direct .html file to prevent redirect errors in Google Search Console
-  // This ensures /tools works without redirecting to /tools/
-  if (routePath) {
-    const directHtmlPath = path.join(distDir, `${routePath}.html`);
-    fs.writeFileSync(directHtmlPath, routeHtmlContent);
-    console.log(`Created: ${route}.html`);
-  }
 });
 
 // Ensure .nojekyll file exists in dist (for GitHub Pages)
