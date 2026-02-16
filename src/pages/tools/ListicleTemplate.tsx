@@ -19,11 +19,11 @@ export default function ListicleTemplate() {
       <SEO
         title="Listicle CSS Template Tool - Prefix CSS Classes"
         description="Add template prefix to CSS classes and remove inline styles. Perfect for listicle articles and content templates."
-        canonical="https://rosettascript.github.io/toolslisticle-template"
+        canonical="https://rosettascript.github.io/tools/listicle-template"
         breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
           { name: "Tools", url: "https://rosettascript.github.io/tools" },
-          { name: "Listicle CSS Template", url: "https://rosettascript.github.io/toolslisticle-template" },
+          { name: "Listicle CSS Template", url: "https://rosettascript.github.io/tools/listicle-template" },
         ]}
         structuredData={{
           type: "SoftwareApplication",
