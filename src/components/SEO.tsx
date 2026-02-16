@@ -75,12 +75,11 @@ export function SEO({
   // Truncate description
   const truncatedDescription = truncateDescription(description, 155);
 
-  // Normalize canonical URL to ensure trailing slash for directory URLs
-  // This prevents canonical mismatch between static HTML and rendered HTML
+  // Normalize canonical URL - no trailing slash to match static HTML and React Router links
   const normalizeCanonical = (url: string | undefined): string | undefined => {
     if (!url) return undefined;
     
-    // Don't modify homepage or URLs with file extensions
+    // Don't modify homepage
     if (url === "https://rosettascript.github.io" || url === "https://rosettascript.github.io/") {
       return "https://rosettascript.github.io/";
     }
@@ -92,8 +91,8 @@ export function SEO({
       return url; // Don't add slash to files
     }
     
-    // Add trailing slash if missing (for directory URLs)
-    return url.endsWith('/') ? url : `${url}/`;
+    // Remove trailing slash if present (to match static HTML)
+    return url.endsWith('/') ? url.slice(0, -1) : url;
   };
 
   const normalizedCanonical = normalizeCanonical(canonical);
