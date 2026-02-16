@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { WebScraperTool } from "@/components/toolsWebScraperTool";
+import { WebScraperTool } from "@/components/tools/WebScraperTool";
 import { Code2, Globe, Home } from "lucide-react";
 import { Link } from "react-router-dom";
 import {

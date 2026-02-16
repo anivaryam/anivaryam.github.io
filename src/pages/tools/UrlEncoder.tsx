@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { UrlEncoderTool } from "@/components/toolsUrlEncoderTool";
+import { UrlEncoderTool } from "@/components/tools/UrlEncoderTool";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Link as LinkIcon, Home } from "lucide-react";
 import { Link } from "react-router-dom";

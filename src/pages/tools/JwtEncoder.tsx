@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { JwtEncoderTool } from "@/components/toolsJwtEncoderTool";
+import { JwtEncoderTool } from "@/components/tools/JwtEncoderTool";
 import { SEO } from "@/components/SEO";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, KeyRound, Home } from "lucide-react";

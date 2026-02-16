@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { ColorConverterTool } from "@/components/toolsColorConverterTool";
+import { ColorConverterTool } from "@/components/tools/ColorConverterTool";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Palette, Home } from "lucide-react";
 import { Link } from "react-router-dom";

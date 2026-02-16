@@ -11,7 +11,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { RandomUniverseCipherTool } from "@/components/toolsRandomUniverseCipherTool";
+import { RandomUniverseCipherTool } from "@/components/tools/RandomUniverseCipherTool";
 
 export default function RandomUniverseCipher() {
 

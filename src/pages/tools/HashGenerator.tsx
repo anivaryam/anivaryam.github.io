@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { HashGeneratorTool } from "@/components/toolsHashGeneratorTool";
+import { HashGeneratorTool } from "@/components/tools/HashGeneratorTool";
 import { SEO } from "@/components/SEO";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Hash, Home } from "lucide-react";

@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { JsonExtractorTool } from "@/components/toolsJsonExtractorTool";
+import { JsonExtractorTool } from "@/components/tools/JsonExtractorTool";
 import { Code2, Search, Home } from "lucide-react";
 import { Link } from "react-router-dom";
 import {

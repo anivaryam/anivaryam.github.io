@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { ImageTool } from "@/components/toolsImageTool";
+import { ImageTool } from "@/components/tools/ImageTool";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Image as ImageIcon, Home } from "lucide-react";
 import { Link } from "react-router-dom";

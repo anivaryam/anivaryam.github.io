@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { UuidGeneratorTool } from "@/components/toolsUuidGeneratorTool";
+import { UuidGeneratorTool } from "@/components/tools/UuidGeneratorTool";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Fingerprint, Home } from "lucide-react";
 import { Link } from "react-router-dom";

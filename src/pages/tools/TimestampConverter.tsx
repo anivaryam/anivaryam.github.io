@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { TimestampConverterTool } from "@/components/toolsTimestampConverterTool";
+import { TimestampConverterTool } from "@/components/tools/TimestampConverterTool";
 import { SEO } from "@/components/SEO";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Clock, Home } from "lucide-react";

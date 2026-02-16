@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { WordToHtmlConverter } from "@/components/toolsWordToHtmlConverter";
+import { WordToHtmlConverter } from "@/components/tools/WordToHtmlConverter";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, FileText, Home } from "lucide-react";
 import { Link } from "react-router-dom";

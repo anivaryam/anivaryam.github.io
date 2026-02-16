@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { Base64Tool } from "@/components/toolsBase64Tool";
+import { Base64Tool } from "@/components/tools/Base64Tool";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Binary, Home } from "lucide-react";
 import { Link } from "react-router-dom";

@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { JsonFormatterTool } from "@/components/toolsJsonFormatterTool";
+import { JsonFormatterTool } from "@/components/tools/JsonFormatterTool";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Braces, Home } from "lucide-react";
 import { Link } from "react-router-dom";

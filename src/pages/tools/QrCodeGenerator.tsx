@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { QrCodeGeneratorTool } from "@/components/toolsQrCodeGeneratorTool";
+import { QrCodeGeneratorTool } from "@/components/tools/QrCodeGeneratorTool";
 import { Code2, QrCode, Home } from "lucide-react";
 import { Link } from "react-router-dom";
 import {

@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { ListicleTemplateTool } from "@/components/toolsListicleTemplateTool";
+import { ListicleTemplateTool } from "@/components/tools/ListicleTemplateTool";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Palette, Home } from "lucide-react";
 import { Link } from "react-router-dom";
