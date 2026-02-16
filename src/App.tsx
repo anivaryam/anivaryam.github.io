@@ -48,6 +48,15 @@ const RedirectHandler = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Strip trailing slash from URL on page load (GitHub Pages adds trailing slashes)
+    // This ensures URL consistency between static HTML and rendered HTML
+    if (location.pathname !== '/' && location.pathname.endsWith('/')) {
+      const newPath = location.pathname.slice(0, -1);
+      window.history.replaceState(null, '', newPath + location.search + location.hash);
+      navigate(newPath, { replace: true });
+      return;
+    }
+
     // Handle GitHub Pages SPA redirect pattern from 404.html
     // The 404.html redirects to /?/path, we need to extract and navigate to /path
     if (location.search && location.search.startsWith('?/')) {
