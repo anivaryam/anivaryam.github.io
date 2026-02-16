@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { TimestampConverterTool } from "@/components/tools/TimestampConverterTool";
+import { TimestampConverterTool } from "@/components/toolsTimestampConverterTool";
 import { SEO } from "@/components/SEO";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Clock, Home } from "lucide-react";
@@ -19,11 +19,11 @@ export default function TimestampConverter() {
       <SEO
         title="Timestamp Converter - Unix Epoch to Date"
         description="Convert between Unix timestamps and human-readable dates instantly. Supports seconds and milliseconds precision. Free online timestamp converter. Perfect for working with APIs and databases."
-        canonical="https://rosettascript.github.io/tools/timestamp-converter/"
+        canonical="https://rosettascript.github.io/tools/timestamp-converter"
 breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools/" },
-          { name: "Timestamp Converter", url: "https://rosettascript.github.io/tools/timestamp-converter/" },
+          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "Timestamp Converter", url: "https://rosettascript.github.io/tools/timestamp-converter" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

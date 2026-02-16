@@ -65,7 +65,7 @@ function generateRss() {
   
   // Blog items
   for (const post of blogPosts) {
-    const url = `${siteUrl}/blogs/${post.id}/`;
+    const url = `${siteUrl}/blogs/${post.id}`;
     const pubDate = new Date(post.date).toUTCString();
     
     itemsXml += `    <item>
@@ -76,12 +76,13 @@ function generateRss() {
       <pubDate>${pubDate}</pubDate>
       <author>${authorEmail}</author>
       <category>Blog</category>
-    </item>\n`;
+    </item>
+`;
   }
   
   // News items
   for (const article of newsArticles) {
-    const url = `${siteUrl}/news/${article.slug}/`;
+    const url = `${siteUrl}/news/${article.slug}`;
     const pubDate = new Date(article.date).toUTCString();
     
     itemsXml += `    <item>

@@ -36,8 +36,8 @@ export default function BlogPost() {
 
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
   const canonicalUrl = typeof window !== "undefined" 
-    ? `${window.location.origin}/blogs/${post.id}/`
-    : `https://rosettascript.github.io/blogs/${post.id}/`;
+    ? `${window.location.origin}/blogs/${post.id}`
+    : `https://rosettascript.github.io/blogs/${post.id}`;
 
   return (
     <Layout>
@@ -57,7 +57,7 @@ export default function BlogPost() {
         }}
         breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Blog", url: "https://rosettascript.github.io/blogs/" },
+          { name: "Blog", url: "https://rosettascript.github.io/blogs" },
           { name: post.title, url: canonicalUrl },
         ]}
       />

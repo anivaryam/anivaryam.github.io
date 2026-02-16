@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { ListicleTemplateTool } from "@/components/tools/ListicleTemplateTool";
+import { ListicleTemplateTool } from "@/components/toolsListicleTemplateTool";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Palette, Home } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -19,11 +19,11 @@ export default function ListicleTemplate() {
       <SEO
         title="Listicle CSS Template Tool - Prefix CSS Classes"
         description="Add template prefix to CSS classes and remove inline styles. Perfect for listicle articles and content templates."
-        canonical="https://rosettascript.github.io/tools/listicle-template/"
+        canonical="https://rosettascript.github.io/toolslisticle-template"
         breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools/" },
-          { name: "Listicle CSS Template", url: "https://rosettascript.github.io/tools/listicle-template/" },
+          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "Listicle CSS Template", url: "https://rosettascript.github.io/toolslisticle-template" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

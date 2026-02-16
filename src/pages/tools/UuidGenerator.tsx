@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { UuidGeneratorTool } from "@/components/tools/UuidGeneratorTool";
+import { UuidGeneratorTool } from "@/components/toolsUuidGeneratorTool";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Fingerprint, Home } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -19,11 +19,11 @@ export default function UuidGenerator() {
       <SEO
         title="UUID Generator - Free Online UUID v4"
         description="Generate random UUID v4 identifiers instantly. Free online UUID generator. Create single or multiple UUIDs with optional hyphen formatting. Essential for database IDs and API keys."
-        canonical="https://rosettascript.github.io/tools/uuid-generator/"
+        canonical="https://rosettascript.github.io/tools/uuid-generator"
 breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools/" },
-          { name: "UUID Generator", url: "https://rosettascript.github.io/tools/uuid-generator/" },
+          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "UUID Generator", url: "https://rosettascript.github.io/tools/uuid-generator" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

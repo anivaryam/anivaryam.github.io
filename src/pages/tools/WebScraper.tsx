@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { WebScraperTool } from "@/components/tools/WebScraperTool";
+import { WebScraperTool } from "@/components/toolsWebScraperTool";
 import { Code2, Globe, Home } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -19,11 +19,11 @@ export default function WebScraper() {
       <SEO
         title="Free Web Scraper - Extract Data Online"
         description="Extract data from any website using CSS selectors. Free online web scraper tool. No coding required, runs entirely in your browser. Perfect for data collection and research."
-        canonical="https://rosettascript.github.io/tools/web-scraper/"
+        canonical="https://rosettascript.github.io/tools/web-scraper"
 breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools/" },
-          { name: "Web Scraper", url: "https://rosettascript.github.io/tools/web-scraper/" },
+          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "Web Scraper", url: "https://rosettascript.github.io/tools/web-scraper" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

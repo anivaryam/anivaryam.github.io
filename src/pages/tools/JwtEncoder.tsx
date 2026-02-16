@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { JwtEncoderTool } from "@/components/tools/JwtEncoderTool";
+import { JwtEncoderTool } from "@/components/toolsJwtEncoderTool";
 import { SEO } from "@/components/SEO";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, KeyRound, Home } from "lucide-react";
@@ -19,11 +19,11 @@ export default function JwtEncoder() {
       <SEO
         title="JWT Encoder - Encode JSON Web Tokens"
         description="Encode and create JWT tokens instantly. Generate signed JSON Web Tokens with HS256, HS384, and HS512 algorithms. Free online JWT encoder. Perfect for testing authentication flows."
-        canonical="https://rosettascript.github.io/tools/jwt-encoder/"
+        canonical="https://rosettascript.github.io/tools/jwt-encoder"
 breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools/" },
-          { name: "JWT Encoder", url: "https://rosettascript.github.io/tools/jwt-encoder/" },
+          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "JWT Encoder", url: "https://rosettascript.github.io/tools/jwt-encoder" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

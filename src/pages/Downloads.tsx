@@ -189,13 +189,13 @@ export default function Downloads() {
       <SEO
         title="Free Downloads & Scripts"
         description="Downloadable scripts and utilities for Windows, PERN setup, and more. Free developer tools including Microsoft Script and PostgreSQL Manager."
-        canonical="https://rosettascript.github.io/downloads/"
+        canonical="https://rosettascript.github.io/downloads"
         structuredData={{
           type: "WebPage",
         }}
         breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Downloads", url: "https://rosettascript.github.io/downloads/" },
+          { name: "Downloads", url: "https://rosettascript.github.io/downloads" },
         ]}
       />
       <div className="container mx-auto px-4 py-12">

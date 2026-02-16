@@ -75,13 +75,13 @@ export default function SchoolProjects() {
       <SEO
         title="School Projects"
         description="Ready-to-use project templates for students. Logic gates calculator, audio bandpass filter, and other educational projects with source code."
-        canonical="https://rosettascript.github.io/school-projects/"
+        canonical="https://rosettascript.github.io/school-projects"
         structuredData={{
           type: "WebPage",
         }}
         breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "School Projects", url: "https://rosettascript.github.io/school-projects/" },
+          { name: "School Projects", url: "https://rosettascript.github.io/school-projects" },
         ]}
       />
       <div className="container mx-auto px-4 py-12">

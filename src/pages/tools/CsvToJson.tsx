@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { CsvToJsonTool } from "@/components/tools/CsvToJsonTool";
+import { CsvToJsonTool } from "@/components/toolsCsvToJsonTool";
 import { Code2, FileText, Home } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -19,11 +19,11 @@ export default function CsvToJson() {
       <SEO
         title="CSV to JSON Converter - Free Online"
         description="Convert CSV to JSON and JSON to CSV instantly. Customizable delimiter and header options. Free online CSV to JSON converter. Perfect for data migration and API integration."
-        canonical="https://rosettascript.github.io/tools/csv-to-json/"
+        canonical="https://rosettascript.github.io/tools/csv-to-json"
 breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools/" },
-          { name: "CSV to JSON", url: "https://rosettascript.github.io/tools/csv-to-json/" },
+          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "CSV to JSON", url: "https://rosettascript.github.io/tools/csv-to-json" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

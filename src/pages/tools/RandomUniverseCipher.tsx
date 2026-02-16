@@ -11,7 +11,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { RandomUniverseCipherTool } from "@/components/tools/RandomUniverseCipherTool";
+import { RandomUniverseCipherTool } from "@/components/toolsRandomUniverseCipherTool";
 
 export default function RandomUniverseCipher() {
 
@@ -20,11 +20,11 @@ export default function RandomUniverseCipher() {
       <SEO
         title="Random Universe Cipher - Encryption Tool"
         description="256-bit quantum-resistant symmetric encryption cipher. Encrypt and decrypt text and files with password-based authentication. Features AEAD, Argon2 KDF, and SHAKE256. Free online encryption tool."
-        canonical="https://rosettascript.github.io/tools/random-universe-cipher/"
+        canonical="https://rosettascript.github.io/tools/random-universe-cipher"
 breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools/" },
-          { name: "Random Universe Cipher", url: "https://rosettascript.github.io/tools/random-universe-cipher/" },
+          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "Random Universe Cipher", url: "https://rosettascript.github.io/tools/random-universe-cipher" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

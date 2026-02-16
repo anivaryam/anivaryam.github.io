@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { JwtDecoderTool } from "@/components/tools/JwtDecoderTool";
+import { JwtDecoderTool } from "@/components/toolsJwtDecoderTool";
 import { SEO } from "@/components/SEO";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, KeyRound, Home } from "lucide-react";
@@ -19,11 +19,11 @@ export default function JwtDecoder() {
       <SEO
         title="JWT Decoder - Decode JSON Web Tokens"
         description="Decode and inspect JWT tokens instantly. View header, payload, and signature. Check expiration times and token claims. Free online JWT decoder. Perfect for debugging authentication tokens."
-        canonical="https://rosettascript.github.io/tools/jwt-decoder/"
+        canonical="https://rosettascript.github.io/tools/jwt-decoder"
 breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools/" },
-          { name: "JWT Decoder", url: "https://rosettascript.github.io/tools/jwt-decoder/" },
+          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "JWT Decoder", url: "https://rosettascript.github.io/tools/jwt-decoder" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

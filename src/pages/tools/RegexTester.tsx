@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout/Layout";
-import { RegexTesterTool } from "@/components/tools/RegexTesterTool";
+import { RegexTesterTool } from "@/components/toolsRegexTesterTool";
 import { SEO } from "@/components/SEO";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Regex, Home } from "lucide-react";
@@ -19,11 +19,11 @@ export default function RegexTester() {
       <SEO
         title="Regex Tester - Test Regular Expressions"
         description="Test and debug regular expressions with live matching, syntax highlighting, and capture group extraction. Free online regex tester. Perfect for developers validating patterns and testing regex."
-        canonical="https://rosettascript.github.io/tools/regex-tester/"
+        canonical="https://rosettascript.github.io/tools/regex-tester"
 breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools/" },
-          { name: "Regex Tester", url: "https://rosettascript.github.io/tools/regex-tester/" },
+          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "Regex Tester", url: "https://rosettascript.github.io/tools/regex-tester" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

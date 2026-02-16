@@ -78,13 +78,13 @@ export default function News() {
       <SEO
         title="Latest News & Updates"
         description="Latest updates, announcements, and feature highlights from RosettaScript. Stay informed about new tools, bug fixes, and improvements."
-        canonical="https://rosettascript.github.io/news/"
+        canonical="https://rosettascript.github.io/news"
         structuredData={{
           type: "WebPage",
         }}
         breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "News", url: "https://rosettascript.github.io/news/" },
+          { name: "News", url: "https://rosettascript.github.io/news" },
         ]}
       />
       <div className="container mx-auto px-4 py-12">

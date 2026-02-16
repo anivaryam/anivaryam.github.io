@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
-import { UrlEncoderTool } from "@/components/tools/UrlEncoderTool";
+import { UrlEncoderTool } from "@/components/toolsUrlEncoderTool";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { Code2, Link as LinkIcon, Home } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -19,11 +19,11 @@ export default function UrlEncoder() {
       <SEO
         title="URL Encoder/Decoder - Free Online Tool"
         description="Encode special characters for URLs or decode URL-encoded strings instantly. Free online URL encoder and decoder. Handle percent encoding and query parameters. No signup required."
-        canonical="https://rosettascript.github.io/tools/url-encoder/"
+        canonical="https://rosettascript.github.io/tools/url-encoder"
 breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools/" },
-          { name: "URL Encoder", url: "https://rosettascript.github.io/tools/url-encoder/" },
+          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "URL Encoder", url: "https://rosettascript.github.io/tools/url-encoder" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

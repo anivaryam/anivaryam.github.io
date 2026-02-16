@@ -93,8 +93,8 @@ export default function NewsArticle() {
 
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
   const canonicalUrl = typeof window !== "undefined" 
-    ? `${window.location.origin}/news/${article.slug}/`
-    : `https://rosettascript.github.io/news/${article.slug}/`;
+    ? `${window.location.origin}/news/${article.slug}`
+    : `https://rosettascript.github.io/news/${article.slug}`;
 
   return (
     <Layout>
@@ -111,7 +111,7 @@ export default function NewsArticle() {
         }}
         breadcrumbs={[
           { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "News", url: "https://rosettascript.github.io/news/" },
+          { name: "News", url: "https://rosettascript.github.io/news" },
           { name: article.title, url: canonicalUrl },
         ]}
       />

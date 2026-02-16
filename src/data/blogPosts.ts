@@ -1200,7 +1200,7 @@ We updated our \`scripts/generate-sitemap.js\` to add trailing slashes to all di
 \`\`\`xml
 <!-- Tool Pages -->
 <url>
-  <loc>https://rosettascript.github.io/tools/word-to-html/</loc>
+  <loc>https://rosettascript.github.io/tools/word-to-html</loc>
   <lastmod>2024-01-13</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.9</priority>
