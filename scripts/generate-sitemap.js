@@ -108,49 +108,49 @@ const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
   
   <!-- Main Pages -->
   <url>
-    <loc>${baseUrl}/about/</loc>
+    <loc>${baseUrl}/about</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/faq/</loc>
+    <loc>${baseUrl}/faq</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/</loc>
+    <loc>${baseUrl}/tools</loc>
     <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/downloads/</loc>
+    <loc>${baseUrl}/downloads</loc>
     <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/blogs/</loc>
+    <loc>${baseUrl}/blogs</loc>
     <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/news/</loc>
+    <loc>${baseUrl}/news</loc>
     <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/school-projects/</loc>
+    <loc>${baseUrl}/school-projects</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -158,133 +158,133 @@ const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
   
   <!-- Tool Pages -->
   <url>
-    <loc>${baseUrl}/tools/word-to-html/</loc>
+    <loc>${baseUrl}/tools/word-to-html</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/json-formatter/</loc>
+    <loc>${baseUrl}/tools/json-formatter</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/base64/</loc>
+    <loc>${baseUrl}/tools/base64</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/url-encoder/</loc>
+    <loc>${baseUrl}/tools/url-encoder</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/color-converter/</loc>
+    <loc>${baseUrl}/tools/color-converter</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/uuid-generator/</loc>
+    <loc>${baseUrl}/tools/uuid-generator</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/regex-tester/</loc>
+    <loc>${baseUrl}/tools/regex-tester</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/hash-generator/</loc>
+    <loc>${baseUrl}/tools/hash-generator</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/hash-decoder/</loc>
+    <loc>${baseUrl}/tools/hash-decoder</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/jwt-decoder/</loc>
+    <loc>${baseUrl}/tools/jwt-decoder</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/timestamp-converter/</loc>
+    <loc>${baseUrl}/tools/timestamp-converter</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/web-scraper/</loc>
+    <loc>${baseUrl}/tools/web-scraper</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/json-extractor/</loc>
+    <loc>${baseUrl}/tools/json-extractor</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/qr-code-generator/</loc>
+    <loc>${baseUrl}/tools/qr-code-generator</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/text-diff/</loc>
+    <loc>${baseUrl}/tools/text-diff</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/csv-to-json/</loc>
+    <loc>${baseUrl}/tools/csv-to-json</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/image-tool/</loc>
+    <loc>${baseUrl}/tools/image-tool</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/random-universe-cipher/</loc>
+    <loc>${baseUrl}/tools/random-universe-cipher</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   
   <url>
-    <loc>${baseUrl}/tools/listicle-template/</loc>
+    <loc>${baseUrl}/tools/listicle-template</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
@@ -292,7 +292,7 @@ const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
   
   <!-- Blog Posts -->
 ${blogPosts.map(post => `  <url>
-    <loc>${baseUrl}/blogs/${post.id}/</loc>
+    <loc>${baseUrl}/blogs/${post.id}</loc>
     <lastmod>${formatDate(post.date)}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -300,7 +300,7 @@ ${blogPosts.map(post => `  <url>
   
   <!-- News Articles -->
 ${newsArticles.map(article => `  <url>
-    <loc>${baseUrl}/news/${article.slug}/</loc>
+    <loc>${baseUrl}/news/${article.slug}</loc>
     <lastmod>${formatDate(article.date)}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>

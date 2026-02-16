@@ -470,12 +470,8 @@ function injectMetaTags(html, metadata, route, structuredData = null) {
   // Escape HTML in metadata
   const escapeHtml = (str) => str.replace(/"/g, '&quot;').replace(/&/g, '&amp;');
   
-  // Create canonical URL - add trailing slash for all directory routes (all routes except root)
-  // All routes create directories with index.html, so they should all have trailing slashes
-  let canonicalUrl = `${baseUrl}${route}`;
-  if (route !== '/') {
-    canonicalUrl = `${baseUrl}${route}/`;
-  }
+  // Create canonical URL - no trailing slash to match React Router links
+  const canonicalUrl = `${baseUrl}${route}`;
   
   // Remove any existing meta tags and canonical link to avoid duplicates
   // Also remove title tag to ensure it gets replaced
