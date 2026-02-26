@@ -93,6 +93,10 @@ export default defineConfig(({ mode }) => {
       exclude: ['ruc_wasm', '@noble/hashes'],
     },
     build: {
+      minify: 'esbuild',
+      sourcemap: false,
+      cssCodeSplit: false,
+      target: 'esnext',
       rollupOptions: {
         external: (id) => {
           // Don't try to bundle WASM modules - they're loaded dynamically
@@ -102,16 +106,36 @@ export default defineConfig(({ mode }) => {
           return false;
         },
         output: {
+          chunkFileNames: 'assets/[name]-[hash].js',
+          entryFileNames: 'assets/[name]-[hash].js',
           manualChunks: (id) => {
             if (id.includes('node_modules')) {
-              if (id.includes('@radix-ui')) {
-                return 'radix-ui';
+              if (id.includes('lucide-react')) {
+                return 'icons';
               }
-              if (id.includes('lucide-react') || id.includes('recharts') || id.includes('react-syntax-highlighter')) {
-                return 'ui-libs';
+              if (id.includes('recharts')) {
+                return 'charts';
+              }
+              if (id.includes('react-syntax-highlighter')) {
+                return 'syntax';
+              }
+              if (id.includes('@tanstack/react-query')) {
+                return 'query';
+              }
+              if (id.includes('react-hook-form') || id.includes('@hookform')) {
+                return 'forms';
+              }
+              if (id.includes('react-router')) {
+                return 'router';
+              }
+              if (id.includes('react-markdown') || id.includes('remark-') || id.includes('rehype-')) {
+                return 'markdown';
               }
               if (id.includes('date-fns') || id.includes('zod') || id.includes('papaparse')) {
                 return 'utils';
+              }
+              if (id.includes('@radix-ui')) {
+                return 'radix-ui';
               }
               return 'vendor';
             }

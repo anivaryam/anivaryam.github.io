@@ -175,7 +175,7 @@ export default function Index() {
       </section>
 
       {/* SEO Content Section - Popular Tools */}
-      <section className="py-12">
+      <section className="py-12 content-visibility-auto">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold mb-6 text-center">Popular Online Developer Tools</h2>
           <p className="text-muted-foreground max-w-3xl mx-auto mb-8 text-center">
@@ -219,7 +219,7 @@ export default function Index() {
       </section>
 
       {/* News & Blog Posts Section - MOVED UP */}
-      <section className="py-12">
+      <section className="py-12 content-visibility-auto">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-5 gap-8">
             {/* Blog Posts - Main Content */}
@@ -368,7 +368,7 @@ export default function Index() {
       </section>
 
       {/* SEO Content Section - Who It's For */}
-      <section className="py-12">
+      <section className="py-12 content-visibility-auto">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold mb-6 text-center">Who These Tools Are For</h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -401,7 +401,7 @@ export default function Index() {
       </section>
 
       {/* Why Use RosettaScript - Moved from above */}
-      <section className="py-12">
+      <section className="py-12 content-visibility-auto">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold mb-6 text-center">Why Use RosettaScript Developer Tools</h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -460,7 +460,7 @@ export default function Index() {
       </section>
 
       {/* Highlights */}
-      <section className="py-12">
+      <section className="py-12 content-visibility-auto">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {highlights.map((highlight) => (
@@ -480,7 +480,7 @@ export default function Index() {
       </section>
 
       {/* SEO Content Section - Explore All Tools */}
-      <section className="py-12">
+      <section className="py-12 content-visibility-auto">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold mb-6 text-center">Explore All Free Developer Tools</h2>
           <p className="text-muted-foreground max-w-2xl mx-auto mb-8 text-center">

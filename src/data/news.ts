@@ -19,7 +19,7 @@ export const newsArticles: NewsArticle[] = [
     excerpt: "The Word to HTML converter now displays visual heading indicators in preview mode, making document structure instantly recognizable with colored borders and labels.",
     date: "2026-01-13",
     category: "Features",
-    image: "/blog-images/word to html converter with a header visualizer in preview output.png",
+    image: "/blog-images/word-to-html-header-visualizer.webp",
     author: "RosettaScript",
     tags: ["Features", "Word to HTML", "UI/UX", "Preview"],
     content: `## New Feature: Visual Heading Hierarchy in Word to HTML Preview
@@ -92,7 +92,7 @@ This enhancement makes the Word to HTML converter even more powerful for content
     excerpt: "I've launched a new Issues page to make it easier for users to report bugs, request features, and share feedback. Direct links to GitHub Issues included.",
     date: "2025-12-28",
     category: "Features",
-    image: "/blog-images/issues.png",
+    image: "/blog-images/issues.webp",
     author: "RosettaScript",
     tags: ["Features", "Community", "Feedback"],
     content: `## New Issues Page: Submit Feedback & Report Bugs

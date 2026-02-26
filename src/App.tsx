@@ -85,6 +85,15 @@ const RedirectHandler = () => {
   return null;
 };
 
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-screen bg-background">
+    <div className="flex flex-col items-center gap-4">
+      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      <p className="text-muted-foreground animate-pulse">Loading...</p>
+    </div>
+  </div>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
@@ -93,11 +102,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <RedirectHandler />
-          <Suspense fallback={
-              <ErrorBoundary>
-                <div className="flex items-center justify-center min-h-screen">Loading...</div>
-              </ErrorBoundary>
-            }>
+          <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/tools" element={<Tools />} />

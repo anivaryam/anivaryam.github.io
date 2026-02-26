@@ -36,6 +36,13 @@
     <link rel="alternate" hreflang="en" href="https://rosettascript.github.io/" />
     <link rel="alternate" hreflang="x-default" href="https://rosettascript.github.io/" />
     
+    <!-- Preconnect to Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
@@ -77,6 +84,27 @@
   </head>
 
   <body>
+    <style>
+      #root:empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        background: #0a0a0b;
+        color: #71717a;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      #root:empty::after {
+        content: "Loading RosettaScript...";
+        animation: pulse 1.5s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.5; }
+        50% { opacity: 1; }
+      }
+    </style>
+    <noscript>
     <noscript>
       <div style="padding: 2rem; max-width: 800px; margin: 0 auto; font-family: system-ui, -apple-system, sans-serif; line-height: 1.6;">
         <h1 style="font-size: 2rem; margin-bottom: 1rem;">RosettaScript - Developer Tools Made Simple</h1>
