@@ -64,7 +64,7 @@ npm run build
 npm run preview
 ```
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **[Vite](https://vitejs.dev/)** - Next-generation frontend tooling
 - **[React](https://react.dev/)** - UI library
@@ -86,7 +86,7 @@ anivaryam.github.io/
 └── .github/workflows/  # CI/CD configuration
 ```
 
-## 🚢 Deployment
+## Deployment
 
 This project is configured for automatic deployment to GitHub Pages using GitHub Actions. The site is served at `https://anivaryam.github.io`.
 
@@ -102,10 +102,8 @@ The build output will be in the `dist/` directory, ready for deployment.
 
 This project is open source and available under the [MIT License](LICENSE).
 
-## 🤝 Contributing
+## Contributing
 
 Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/anivaryam/anivaryam.github.io/issues).
 
 ---
-
-Built with ❤️ by [Anivaryam](https://anivaryam.github.io)
