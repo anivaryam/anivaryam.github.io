@@ -36,15 +36,15 @@ export default function About() {
   return (
     <Layout>
       <SEO
-        title="About RosettaScript"
-        description="Learn more about RosettaScript and my mission. Developer tools made simple, built by a developer for developers. Free, open-source, and community-driven."
-        canonical="https://rosettascript.github.io/about"
+        title="About Anivaryam"
+        description="Learn more about Anivaryam and my mission. Developer tools made simple, built by a developer for developers. Free, open-source, and community-driven."
+        canonical="https://anivaryam.github.io/about"
         structuredData={{
           type: "WebPage",
         }}
         breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "About", url: "https://rosettascript.github.io/about" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "About", url: "https://anivaryam.github.io/about" },
         ]}
       />
       <div className="container mx-auto px-4 py-12">
@@ -52,13 +52,13 @@ export default function About() {
         <div className="text-center mb-16">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-mono mb-4">
             <Terminal className="h-4 w-4" />
-            About RosettaScript
+            About Anivaryam
           </div>
           <h1 className="text-3xl lg:text-4xl font-bold mb-4">
             Developer Tools Made Simple
           </h1>
           <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
-            RosettaScript was born from a simple idea: developers shouldn't waste time on repetitive 
+            Anivaryam was born from a simple idea: developers shouldn't waste time on repetitive 
             tasks. I build tools that let you focus on what matters—creating amazing software.
           </p>
         </div>
@@ -85,7 +85,7 @@ export default function About() {
             <h2 className="text-2xl font-bold">My Mission</h2>
             <p className="text-muted-foreground">
               I'm on a mission to democratize developer tools. Whether you're a student working on 
-              your first project or a seasoned developer automating workflows, RosettaScript provides 
+              your first project or a seasoned developer automating workflows, Anivaryam provides 
               the tools you need—completely free.
             </p>
             <p className="text-muted-foreground">
@@ -121,19 +121,23 @@ export default function About() {
             <div className="space-y-4">
               <div>
                 <h3 className="text-xl font-semibold">Kim Galicia</h3>
-                <p className="text-primary font-medium">IT Network & Systems Administrator</p>
+                <p className="text-primary font-medium">Software / Systems Engineer</p>
                 <p className="text-muted-foreground text-sm">Maypangdan, Borongan City, Philippines</p>
               </div>
               <p className="text-muted-foreground">
-                Network-focused Computer Engineering graduate with 3+ years of hands-on experience administering Linux systems and network-exposed services. Strong foundation in TCP/IP networking, DNS, routing, firewalling, and packet-level troubleshooting.
+                Software-oriented Computer Engineering graduate with 3+ years of experience building, operating, and optimizing backend systems on Linux. Strong background in systems programming concepts, networking fundamentals, and cloud infrastructure, with hands-on experience designing reliable, secure, and scalable services. Daily Arch Linux user with deep understanding of OS internals, process management, networking behavior, and production debugging.
               </p>
               <div>
                 <h4 className="font-semibold mb-2">Key Skills</h4>
                 <div className="flex flex-wrap gap-2">
-                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">Linux Administration</span>
-                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">Network Security</span>
-                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">AWS Infrastructure</span>
-                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">System Monitoring</span>
+                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">Linux</span>
+                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">Backend Systems</span>
+                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">AWS</span>
+                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">PostgreSQL</span>
+                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">Redis</span>
+                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">Docker</span>
+                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">Networking</span>
+                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">System Administration</span>
                 </div>
               </div>
             </div>
@@ -148,17 +152,17 @@ export default function About() {
               Have questions, suggestions, or just want to say hi? I'd love to hear from you.
             </p>
             <div className="space-y-4">
-              <a href="mailto:rosettascript@gmail.com" className="flex items-center gap-3 text-muted-foreground hover:text-primary transition-colors">
+              <a href="mailto:anivaryam.dev@gmail.com" className="flex items-center gap-3 text-muted-foreground hover:text-primary transition-colors">
                 <Mail className="h-5 w-5" />
-                rosettascript@gmail.com
+                anivaryam.dev@gmail.com
               </a>
-              <a href="https://github.com/rosettascript" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-muted-foreground hover:text-primary transition-colors">
+              <a href="https://github.com/anivaryam" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-muted-foreground hover:text-primary transition-colors">
                 <Github className="h-5 w-5" />
-                github.com/rosettascript
+                github.com/anivaryam
               </a>
-              <a href="https://x.com/rosettascript" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-muted-foreground hover:text-primary transition-colors">
+              <a href="https://x.com/anivaryam" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-muted-foreground hover:text-primary transition-colors">
                 <XIcon size={20} className="h-5 w-5" />
-                @rosettascript
+                @anivaryam
               </a>
               <a href="https://linkedin.com/in/x6galixia" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-muted-foreground hover:text-primary transition-colors">
                 <Linkedin className="h-5 w-5" />

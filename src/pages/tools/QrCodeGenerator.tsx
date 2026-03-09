@@ -19,11 +19,11 @@ export default function QrCodeGenerator() {
       <SEO
         title="QR Code Generator - Free Online Creator"
         description="Generate QR codes for WiFi, email, SMS, phone, contacts, events, files, and more instantly. Customizable size, downloadable PNG format. Free online QR code generator. Perfect for marketing and events."
-        canonical="https://rosettascript.github.io/tools/qr-code-generator"
+        canonical="https://anivaryam.github.io/tools/qr-code-generator"
 breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools" },
-          { name: "QR Code Generator", url: "https://rosettascript.github.io/tools/qr-code-generator" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Tools", url: "https://anivaryam.github.io/tools" },
+          { name: "QR Code Generator", url: "https://anivaryam.github.io/tools/qr-code-generator" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

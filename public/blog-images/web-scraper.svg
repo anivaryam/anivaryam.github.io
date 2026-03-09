@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
-  <rect fill="#1e293b" width="600" height="400"/>
-  <text fill="#06b6d4" font-family="monospace" font-size="24" x="50%" y="45%" text-anchor="middle">Web Scraper</text>
-  <text fill="#94a3b8" font-family="monospace" font-size="14" x="50%" y="55%" text-anchor="middle">Extract Website Data</text>
-  <rect x="100" y="300" width="400" height="4" fill="#06b6d4" rx="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="12" fill="#0891b2"/>
+  <circle cx="28" cy="28" r="14" fill="none" stroke="white" stroke-width="3"/>
+  <path d="M40 40 L52 52" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="28" cy="28" r="4" fill="#22d3ee"/>
 </svg>

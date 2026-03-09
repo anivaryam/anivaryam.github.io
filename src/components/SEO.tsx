@@ -36,7 +36,7 @@ export function SEO({
   structuredData,
   breadcrumbs,
 }: SEOProps) {
-  const siteName = "RosettaScript";
+  const siteName = "Anivaryam";
   
   // Truncate title to 60 characters (Google's recommended max)
   const truncateTitle = (text: string, maxLength: number = 60): string => {
@@ -64,7 +64,7 @@ export function SEO({
   if (mainPagesWithoutBrand.includes(title)) {
     fullTitle = truncateTitle(title, 60);
   } else {
-    // Reserve space for " | RosettaScript" (16 chars), so max 44 chars for title
+    // Reserve space for " | Anivaryam" (16 chars), so max 44 chars for title
     const maxTitleLength = 44;
     const truncatedBaseTitle = truncateTitle(title, maxTitleLength);
     fullTitle = `${truncatedBaseTitle} | ${siteName}`;
@@ -80,8 +80,8 @@ export function SEO({
     if (!url) return undefined;
     
     // Don't modify homepage
-    if (url === "https://rosettascript.github.io" || url === "https://rosettascript.github.io/") {
-      return "https://rosettascript.github.io/";
+    if (url === "https://anivaryam.github.io" || url === "https://anivaryam.github.io/") {
+      return "https://anivaryam.github.io/";
     }
     
     // Check if URL has a file extension (don't add slash to files)
@@ -173,7 +173,7 @@ export function SEO({
     }
 
     // Structured Data (JSON-LD)
-    const baseUrl = "https://rosettascript.github.io";
+    const baseUrl = "https://anivaryam.github.io";
     let structuredDataScript = document.querySelector(
       'script[type="application/ld+json"]'
     ) as HTMLScriptElement;

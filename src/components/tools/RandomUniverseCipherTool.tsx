@@ -88,7 +88,7 @@ export function RandomUniverseCipherTool() {
       
       // Verify blob size matches result size
       if (blob.size !== result.length) {
-        console.error(`❌ Size mismatch! Result: ${result.length}, Blob: ${blob.size}`);
+        console.error(` Size mismatch! Result: ${result.length}, Blob: ${blob.size}`);
       }
       
       const url = URL.createObjectURL(blob);
@@ -431,9 +431,9 @@ export function RandomUniverseCipherTool() {
       <Card className="bg-muted/50">
         <CardContent className="pt-6">
           <div className="text-sm text-muted-foreground space-y-2">
-            <p><strong>💡 Tip:</strong> The cipher uses WASM acceleration for fast encryption/decryption.</p>
+            <p><strong> Tip:</strong> The cipher uses WASM acceleration for fast encryption/decryption.</p>
             <p><strong>🔒 Security:</strong> All operations run locally in your browser. No data is sent to any server.</p>
-            <p><strong>📁 Files:</strong> Encrypted files are saved with .ruc extension. Decryption removes this extension.</p>
+            <p><strong> Files:</strong> Encrypted files are saved with .ruc extension. Decryption removes this extension.</p>
           </div>
         </CardContent>
       </Card>

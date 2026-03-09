@@ -158,15 +158,15 @@ const routeMetadata = {
   },
   '/news': {
     title: 'Latest News & Updates',
-    description: 'Latest updates, announcements, and feature highlights from RosettaScript. Stay informed about new tools, bug fixes, and improvements.'
+    description: 'Latest updates, announcements, and feature highlights from Anivaryam. Stay informed about new tools, bug fixes, and improvements.'
   },
   '/school-projects': {
     title: 'School Projects',
     description: 'Ready-to-use project templates for students. Logic gates calculator, audio bandpass filter, and other educational projects with source code.'
   },
   '/about': {
-    title: 'About RosettaScript',
-    description: 'Learn more about RosettaScript and my mission. Developer tools made simple, built by a developer for developers. Free, open-source, and community-driven platform.'
+    title: 'About Anivaryam',
+    description: 'Learn more about Anivaryam and my mission. Developer tools made simple, built by a developer for developers. Free, open-source, and community-driven platform.'
   }
 };
 

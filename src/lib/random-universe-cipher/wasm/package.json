@@ -2,7 +2,7 @@
   "name": "ruc-wasm",
   "type": "module",
   "collaborators": [
-    "RosettaScript"
+    "Anivaryam"
   ],
   "description": "WebAssembly-accelerated Random Universe Cipher",
   "version": "0.2.0",

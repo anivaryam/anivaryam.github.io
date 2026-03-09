@@ -19,11 +19,11 @@ export default function HashGenerator() {
       <SEO
         title="Hash Generator - SHA-1, SHA-256, SHA-512"
         description="Generate SHA-1, SHA-256, SHA-384, and SHA-512 hash values from text instantly. Free online cryptographic hash generator. Perfect for password hashing and data integrity verification."
-        canonical="https://rosettascript.github.io/tools/hash-generator"
+        canonical="https://anivaryam.github.io/tools/hash-generator"
 breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools" },
-          { name: "Hash Generator", url: "https://rosettascript.github.io/tools/hash-generator" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Tools", url: "https://anivaryam.github.io/tools" },
+          { name: "Hash Generator", url: "https://anivaryam.github.io/tools/hash-generator" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

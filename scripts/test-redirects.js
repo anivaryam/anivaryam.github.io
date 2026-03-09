@@ -5,15 +5,15 @@
  */
 
 const testUrls = [
-  'https://rosettascript.github.io/blogs/how-to-convert-word-html-clean-seo-friendly',
-  'https://rosettascript.github.io/tools/word-to-html',
-  'https://rosettascript.github.io/tools/web-scraper',
-  'https://rosettascript.github.io/tools/qr-code-generator',
-  'https://rosettascript.github.io/school-projects',
-  'https://rosettascript.github.io/news',
-  'https://rosettascript.github.io/about',
-  'https://rosettascript.github.io/blogs',
-  'https://rosettascript.github.io/blogs/random-universe-cipher-ruc-post-quantum-security',
+  'https://anivaryam.github.io/blogs/how-to-convert-word-html-clean-seo-friendly',
+  'https://anivaryam.github.io/tools/word-to-html',
+  'https://anivaryam.github.io/tools/web-scraper',
+  'https://anivaryam.github.io/tools/qr-code-generator',
+  'https://anivaryam.github.io/school-projects',
+  'https://anivaryam.github.io/news',
+  'https://anivaryam.github.io/about',
+  'https://anivaryam.github.io/blogs',
+  'https://anivaryam.github.io/blogs/random-universe-cipher-ruc-post-quantum-security',
 ];
 
 async function testUrl(url) {
@@ -123,17 +123,17 @@ async function runTests() {
   // Test sitemap URLs
   console.log('🔍 Checking sitemap consistency...\n');
   try {
-    const sitemapResponse = await fetch('https://rosettascript.github.io/sitemap.xml');
+    const sitemapResponse = await fetch('https://anivaryam.github.io/sitemap.xml');
     const sitemapText = await sitemapResponse.text();
     
     // Check if sitemap URLs have trailing slashes
-    const urlsInSitemap = sitemapText.match(/<loc>(https:\/\/rosettascript\.github\.io\/[^<]+)<\/loc>/g) || [];
+    const urlsInSitemap = sitemapText.match(/<loc>(https:\/\/anivaryam\.github\.io\/[^<]+)<\/loc>/g) || [];
     const urlsWithoutSlash = urlsInSitemap.filter(url => {
-      const match = url.match(/<loc>(https:\/\/rosettascript\.github\.io\/[^<]+)<\/loc>/);
+      const match = url.match(/<loc>(https:\/\/anivaryam\.github\.io\/[^<]+)<\/loc>/);
       if (!match) return false;
       const urlPath = match[1];
       // Exclude homepage and files (with extensions)
-      return urlPath !== 'https://rosettascript.github.io/' && 
+      return urlPath !== 'https://anivaryam.github.io/' && 
              !urlPath.match(/\.(xml|txt|html|json|ico|png|jpg|jpeg|svg|webmanifest|js|css|woff|woff2|ttf|eot|wasm)$/i) &&
              !urlPath.endsWith('/');
     });
@@ -144,7 +144,7 @@ async function runTests() {
     } else {
       console.log(`⚠️  Found ${urlsWithoutSlash.length} URLs in sitemap without trailing slashes:`);
       urlsWithoutSlash.slice(0, 10).forEach(url => {
-        const match = url.match(/<loc>(https:\/\/rosettascript\.github\.io\/[^<]+)<\/loc>/);
+        const match = url.match(/<loc>(https:\/\/anivaryam\.github\.io\/[^<]+)<\/loc>/);
         console.log(`   - ${match ? match[1] : url}`);
       });
       if (urlsWithoutSlash.length > 10) {

@@ -242,77 +242,76 @@ function sanitizeElement(element: Element): void {
       // Handle formatting styles on allowed elements (becomes inner wrappers)
       // EXCEPTION: For <li> elements, do NOT wrap content in <strong> when the <li> itself
       // has bold styling - this is often a Word artifact (list style formatting), not
-      // intentional formatting. Only preserve bold formatting on child elements.
+      // intentional formatting. Only sanitize children, don't wrap.
       const isListItem = tagName === 'li';
-      const shouldSkipBoldOnLi = isListItem && formatting?.isBold && !formatting.isItalic && !formatting.isSuperscript && !formatting.isSubscript;
+      const isLiWithOnlyBold = isListItem && formatting?.isBold && !formatting.isItalic && !formatting.isSuperscript && !formatting.isSubscript;
       
-      if (formatting && !shouldSkipBoldOnLi) {
-        // Sanitize children first
-        sanitizeElement(node);
-        
-        const { isItalic, isBold, isSuperscript, isSubscript } = formatting;
-        let wrapper: Element | null = null;
-        
-        // Build nested semantic tags
-        if (isItalic && isBold) {
-          wrapper = document.createElement('strong');
-          const em = document.createElement('em');
-          while (node.firstChild) {
-            em.appendChild(node.firstChild);
-          }
-          wrapper.appendChild(em);
-        } else if (isItalic) {
-          wrapper = document.createElement('em');
-          while (node.firstChild) {
-            wrapper.appendChild(node.firstChild);
-          }
-        } else if (isBold) {
-          wrapper = document.createElement('strong');
-          while (node.firstChild) {
-            wrapper.appendChild(node.firstChild);
-          }
-        }
-        
-        // Handle superscript/subscript (outer tags - opinionated nesting order)
-        if (isSuperscript) {
-          const sup = document.createElement('sup');
-          if (wrapper) {
-            sup.appendChild(wrapper);
-          } else {
+      if (formatting) {
+        // If it's an <li> with only bold (no italic/sup/sub), skip wrapping but still sanitize children
+        if (isLiWithOnlyBold) {
+          sanitizeElement(node);
+        } else {
+          // Sanitize children first
+          sanitizeElement(node);
+          
+          const { isItalic, isBold, isSuperscript, isSubscript } = formatting;
+          let wrapper: Element | null = null;
+          
+          // Build nested semantic tags
+          if (isItalic && isBold) {
+            wrapper = document.createElement('strong');
+            const em = document.createElement('em');
             while (node.firstChild) {
-              sup.appendChild(node.firstChild);
+              em.appendChild(node.firstChild);
+            }
+            wrapper.appendChild(em);
+          } else if (isItalic) {
+            wrapper = document.createElement('em');
+            while (node.firstChild) {
+              wrapper.appendChild(node.firstChild);
+            }
+          } else if (isBold) {
+            wrapper = document.createElement('strong');
+            while (node.firstChild) {
+              wrapper.appendChild(node.firstChild);
             }
           }
-          wrapper = sup;
-        } else if (isSubscript) {
-          const sub = document.createElement('sub');
-          if (wrapper) {
-            sub.appendChild(wrapper);
-          } else {
-            while (node.firstChild) {
-              sub.appendChild(node.firstChild);
+          
+          // Handle superscript/subscript (outer tags - opinionated nesting order)
+          if (isSuperscript) {
+            const sup = document.createElement('sup');
+            if (wrapper) {
+              sup.appendChild(wrapper);
+            } else {
+              while (node.firstChild) {
+                sup.appendChild(node.firstChild);
+              }
             }
+            wrapper = sup;
+          } else if (isSubscript) {
+            const sub = document.createElement('sub');
+            if (wrapper) {
+              sub.appendChild(wrapper);
+            } else {
+              while (node.firstChild) {
+                sub.appendChild(node.firstChild);
+              }
+            }
+            wrapper = sub;
           }
-          wrapper = sub;
+          
+          if (wrapper) {
+            node.innerHTML = '';
+            node.appendChild(wrapper);
+          }
         }
-        
-        if (wrapper) {
-          node.innerHTML = '';
-          node.appendChild(wrapper);
-        }
-        // Children already sanitized above, no need to sanitize again
-      } else if (shouldSkipBoldOnLi) {
-        // For <li> with bold styling: skip wrapping, but still sanitize children
-        // This prevents Word's list style formatting from forcing bold on list items
-        sanitizeElement(node);
       }
       
       // Sanitize attributes (removes style, class, ARIA, etc.)
       sanitizeAttributes(node, tagName);
       
       // Recursively sanitize children if no formatting was applied
-      // (skip if formatting was applied and wrapped, or if we skipped bold on li)
-      if (!formatting && !shouldSkipBoldOnLi) {
+      if (!formatting) {
         sanitizeElement(node);
       }
     }

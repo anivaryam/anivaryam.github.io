@@ -173,13 +173,13 @@ export default function Tools() {
       <SEO
         title="Free Online Developer Tools - 20+ Tools"
         description="Browse 20+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required."
-        canonical="https://rosettascript.github.io/tools"
+        canonical="https://anivaryam.github.io/tools"
         structuredData={{
           type: "WebPage",
         }}
         breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Tools", url: "https://anivaryam.github.io/tools" },
         ]}
       />
       <div className="container mx-auto px-4 py-12">

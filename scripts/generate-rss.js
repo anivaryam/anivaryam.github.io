@@ -8,10 +8,10 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const siteUrl = 'https://rosettascript.github.io';
-const siteName = 'RosettaScript';
+const siteUrl = 'https://anivaryam.github.io';
+const siteName = 'Anivaryam';
 const siteDescription = 'Free online developer tools for Word to HTML conversion, text formatting, code cleanup, and automation.';
-const authorEmail = 'rosettascript@gmail.com';
+const authorEmail = 'anivaryam.dev@gmail.com';
 
 function extractDataFromTs(filePath, dataType) {
   const content = fs.readFileSync(filePath, 'utf-8');

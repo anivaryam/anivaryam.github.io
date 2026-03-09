@@ -20,10 +20,10 @@ export default function News() {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
       "name": "News & Updates",
-      "description": "Latest news, announcements, and feature highlights from RosettaScript",
+      "description": "Latest news, announcements, and feature highlights from Anivaryam",
       "url": typeof window !== "undefined"
         ? window.location.href
-        : "https://rosettascript.github.io/news",
+        : "https://anivaryam.github.io/news",
       "mainEntity": {
         "@type": "ItemList",
         "numberOfItems": newsArticles.length,
@@ -36,7 +36,7 @@ export default function News() {
             "description": article.excerpt,
             "url": typeof window !== "undefined"
               ? `${window.location.origin}/news/${article.slug}`
-              : `https://rosettascript.github.io/news/${article.slug}`,
+              : `https://anivaryam.github.io/news/${article.slug}`,
             "datePublished": article.date,
             "image": article.image
           }
@@ -77,14 +77,14 @@ export default function News() {
     <Layout>
       <SEO
         title="Latest News & Updates"
-        description="Latest updates, announcements, and feature highlights from RosettaScript. Stay informed about new tools, bug fixes, and improvements."
-        canonical="https://rosettascript.github.io/news"
+        description="Latest updates, announcements, and feature highlights from Anivaryam. Stay informed about new tools, bug fixes, and improvements."
+        canonical="https://anivaryam.github.io/news"
         structuredData={{
           type: "WebPage",
         }}
         breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "News", url: "https://rosettascript.github.io/news" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "News", url: "https://anivaryam.github.io/news" },
         ]}
       />
       <div className="container mx-auto px-4 py-12">

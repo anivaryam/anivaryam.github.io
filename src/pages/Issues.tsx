@@ -29,20 +29,20 @@ const issueTypes = [
 ];
 
 export default function Issues() {
-  const githubIssuesUrl = "https://github.com/rosettascript/rosettascript.github.io/issues";
+  const githubIssuesUrl = "https://github.com/anivaryam/anivaryam.github.io/issues";
 
   return (
     <Layout>
       <SEO
         title="Report Issues & Share Feedback"
-        description="Report bugs, request features, and share feedback for RosettaScript. Help me improve my developer tools through GitHub Issues."
-        canonical="https://rosettascript.github.io/issues"
+        description="Report bugs, request features, and share feedback for Anivaryam. Help me improve my developer tools through GitHub Issues."
+        canonical="https://anivaryam.github.io/issues"
         structuredData={{
           type: "WebPage",
         }}
         breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Issues", url: "https://rosettascript.github.io/issues" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Issues", url: "https://anivaryam.github.io/issues" },
         ]}
       />
       <div className="container mx-auto px-4 py-12">
@@ -56,7 +56,7 @@ export default function Issues() {
             Report Issues & Share Feedback
           </h1>
           <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
-            Your feedback helps me improve RosettaScript. Whether you've found a bug, have a feature request, 
+            Your feedback helps me improve Anivaryam. Whether you've found a bug, have a feature request, 
             or just want to share your thoughts, I'm here to listen.
           </p>
         </div>

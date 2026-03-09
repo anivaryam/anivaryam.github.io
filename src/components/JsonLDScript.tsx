@@ -3,7 +3,7 @@ import { Organization, FAQ, Website, BreadcrumbList } from "lucide-react";
 const faqData = [
   {
     question: "Are these developer tools free?",
-    answer: "Yes, all developer tools on RosettaScript are completely free to use. No signup required, no hidden fees."
+    answer: "Yes, all developer tools on Anivaryam are completely free to use. No signup required, no hidden fees."
   },
   {
     question: "Is my data secure when using these tools?",
@@ -19,23 +19,23 @@ const faqData = [
   },
   {
     question: "Can I use these tools for commercial projects?",
-    answer: "Yes! RosettaScript tools are free to use for both personal and commercial projects. They're also open source."
+    answer: "Yes! Anivaryam tools are free to use for both personal and commercial projects. They're also open source."
   }
 ];
 
 const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  "name": "RosettaScript",
-  "url": "https://rosettascript.github.io",
-  "logo": "https://rosettascript.github.io/icon-512.png",
+  "name": "Anivaryam",
+  "url": "https://anivaryam.github.io",
+  "logo": "https://anivaryam.github.io/icon-512.png",
   "description": "Free online developer tools for text, code, and document conversion. No signup required.",
   "sameAs": [
-    "https://github.com/rosettascript/rosettascript.github.io"
+    "https://github.com/anivaryam/anivaryam.github.io"
   ],
   "contactPoint": {
     "@type": "ContactPoint",
-    "email": "rosettascript@gmail.com",
+    "email": "anivaryam.dev@gmail.com",
     "contactType": "technical support"
   }
 };
@@ -43,13 +43,13 @@ const organizationSchema = {
 const websiteSchema = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  "name": "RosettaScript Developer Tools",
-  "url": "https://rosettascript.github.io",
+  "name": "Anivaryam Developer Tools",
+  "url": "https://anivaryam.github.io",
   "potentialAction": {
     "@type": "SearchAction",
     "target": {
       "@type": "EntryPoint",
-      "urlTemplate": "https://rosettascript.github.io/tools?q={search_term_string}"
+      "urlTemplate": "https://anivaryam.github.io/tools?q={search_term_string}"
     },
     "query-input": "required name=search_term_string"
   }
@@ -76,7 +76,7 @@ const breadcrumbSchema = {
       "@type": "ListItem",
       "position": 1,
       "name": "Home",
-      "item": "https://rosettascript.github.io/"
+      "item": "https://anivaryam.github.io/"
     }
   ]
 };

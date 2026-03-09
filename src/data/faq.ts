@@ -17,12 +17,12 @@ export const faqCategories = [
 export const faqData: FAQItem[] = [
   // General Questions
   {
-    question: "What free online developer tools are available on RosettaScript?",
-    answer: "RosettaScript provides 20+ free online developer tools, all browser-based with no signup required:\n\n• **Document Conversion**: [Word to HTML converter](/tools/word-to-html/), [CSV to JSON converter](/tools/csv-to-json/)\n• **Code Formatting**: [JSON formatter](/tools/json-formatter/), [text diff tool](/tools/text-diff/), code cleanup utilities\n• **Encoding & Decoding**: [Base64 encoder/decoder](/tools/base64/), [URL encoder/decoder](/tools/url-encoder/), [hash generator](/tools/hash-generator/), [JWT decoder](/tools/jwt-decoder/)\n• **Data Generation**: [UUID generator](/tools/uuid-generator/), [QR code generator](/tools/qr-code-generator/), [timestamp converter](/tools/timestamp-converter/)\n• **Testing & Utilities**: [regex tester](/tools/regex-tester/), [web scraper](/tools/web-scraper/), [color converter](/tools/color-converter/), [image tool](/tools/image-tool/)\n• **Cryptography**: [Random Universe Cipher](/tools/random-universe-cipher/) (post-quantum encryption)\n\nAll tools run entirely in your browser—no server uploads, no data storage, complete privacy.",
+    question: "What free online developer tools are available on Anivaryam?",
+    answer: "Anivaryam provides 20+ free online developer tools, all browser-based with no signup required:\n\n• **Document Conversion**: [Word to HTML converter](/tools/word-to-html/), [CSV to JSON converter](/tools/csv-to-json/)\n• **Code Formatting**: [JSON formatter](/tools/json-formatter/), [text diff tool](/tools/text-diff/), code cleanup utilities\n• **Encoding & Decoding**: [Base64 encoder/decoder](/tools/base64/), [URL encoder/decoder](/tools/url-encoder/), [hash generator](/tools/hash-generator/), [JWT decoder](/tools/jwt-decoder/)\n• **Data Generation**: [UUID generator](/tools/uuid-generator/), [QR code generator](/tools/qr-code-generator/), [timestamp converter](/tools/timestamp-converter/)\n• **Testing & Utilities**: [regex tester](/tools/regex-tester/), [web scraper](/tools/web-scraper/), [color converter](/tools/color-converter/), [image tool](/tools/image-tool/)\n• **Cryptography**: [Random Universe Cipher](/tools/random-universe-cipher/) (post-quantum encryption)\n\nAll tools run entirely in your browser—no server uploads, no data storage, complete privacy.",
     category: "general",
   },
   {
-    question: "Are RosettaScript tools really free?",
+    question: "Are Anivaryam tools really free?",
     answer: "Yes! All 20+ developer tools are completely free with no hidden costs, premium tiers, or credit card required. Use any tool unlimited times—no registration, no signup, no restrictions.",
     category: "general",
   },
@@ -32,45 +32,45 @@ export const faqData: FAQItem[] = [
     category: "general",
   },
   {
-    question: "What is RosettaScript?",
-    answer: "RosettaScript is a collection of 20+ free online developer tools designed to streamline your workflow. We offer tools for converting Word documents to HTML, formatting JSON, encoding/decoding Base64, generating hashes and UUIDs, testing regex patterns, scraping websites, and more. All tools run entirely in your browser with no signup required.",
+    question: "What is Anivaryam?",
+    answer: "Anivaryam is a collection of 20+ free online developer tools designed to streamline your workflow. We offer tools for converting Word documents to HTML, formatting JSON, encoding/decoding Base64, generating hashes and UUIDs, testing regex patterns, scraping websites, and more. All tools run entirely in your browser with no signup required.",
     category: "general",
   },
   // Privacy & Security
   {
-    question: "Is my data private when using RosettaScript tools?",
-    answer: "Yes, your data is completely private. All tools run entirely in your browser using client-side processing. Your content never leaves your device—it's never uploaded to any server, stored, or tracked. This makes RosettaScript perfect for handling sensitive documents, proprietary code, and confidential information.",
+    question: "Is my data private when using Anivaryam tools?",
+    answer: "Yes, your data is completely private. All tools run entirely in your browser using client-side processing. Your content never leaves your device—it's never uploaded to any server, stored, or tracked. This makes Anivaryam perfect for handling sensitive documents, proprietary code, and confidential information.",
     category: "privacy",
   },
   {
-    question: "Does RosettaScript store or track my data?",
+    question: "Does Anivaryam store or track my data?",
     answer: "No, we don't store, track, or analyze any of your data. Since all processing happens client-side in your browser, there's no data transmission to our servers. We don't use cookies for tracking, and we don't collect analytics on your usage. Your privacy is our priority.",
     category: "privacy",
   },
   {
-    question: "Are RosettaScript tools safe for confidential data?",
-    answer: "Absolutely! Because all tools process data locally in your browser without any server uploads, RosettaScript is safe for sensitive documents, proprietary code, passwords, API keys, and other confidential information. Your data never leaves your device—ideal for **privacy-conscious developers**.",
+    question: "Are Anivaryam tools safe for confidential data?",
+    answer: "Absolutely! Because all tools process data locally in your browser without any server uploads, Anivaryam is safe for sensitive documents, proprietary code, passwords, API keys, and other confidential information. Your data never leaves your device—ideal for **privacy-conscious developers**.",
     category: "privacy",
   },
   {
     question: "Are the tools secure?",
-    answer: "Yes, all tools are secure by design. Since processing happens entirely in your browser, there's no risk of data interception during transmission. Additionally, RosettaScript is open-source, so you can review the code to verify security practices.",
+    answer: "Yes, all tools are secure by design. Since processing happens entirely in your browser, there's no risk of data interception during transmission. Additionally, Anivaryam is open-source, so you can review the code to verify security practices.",
     category: "privacy",
   },
   // Usage & Features
   {
-    question: "How do I use RosettaScript tools?",
+    question: "How do I use Anivaryam tools?",
     answer: "Using our free online developer tools is simple:\n1. Navigate to the tool you need from the [Tools page](/tools/)\n2. Paste or enter your content in the input field\n3. Configure any options (if available)\n4. Click the process/convert button\n5. Copy the result from the output field\n\nNo installation, no signup, no waiting—just instant results in your browser.",
     category: "usage",
   },
   {
     question: "What browsers are supported?",
-    answer: "RosettaScript tools work in all modern browsers including Chrome, Firefox, Safari, Edge, and Opera. The tools use standard web technologies and should work on any browser that supports JavaScript. For the best experience, we recommend using the latest version of your browser.",
+    answer: "Anivaryam tools work in all modern browsers including Chrome, Firefox, Safari, Edge, and Opera. The tools use standard web technologies and should work on any browser that supports JavaScript. For the best experience, we recommend using the latest version of your browser.",
     category: "usage",
   },
   {
-    question: "Can I use RosettaScript tools offline?",
-    answer: "Our **browser-based RosettaScript tools** require an internet connection to load initially, but once loaded, many tools work offline depending on your browser's caching. However, some features might be limited offline (such as external API calls or real-time validation), so for the best experience and access to all features, we recommend using RosettaScript tools with an internet connection.",
+    question: "Can I use Anivaryam tools offline?",
+    answer: "Our **browser-based Anivaryam tools** require an internet connection to load initially, but once loaded, many tools work offline depending on your browser's caching. However, some features might be limited offline (such as external API calls or real-time validation), so for the best experience and access to all features, we recommend using Anivaryam tools with an internet connection.",
     category: "usage",
   },
   {
@@ -79,8 +79,8 @@ export const faqData: FAQItem[] = [
     category: "usage",
   },
   {
-    question: "Are RosettaScript tools free for commercial use?",
-    answer: "Yes, you can use RosettaScript tools for any purpose, including commercial use. The tools are free and open-source under the MIT license, which allows commercial use, modification, and distribution.",
+    question: "Are Anivaryam tools free for commercial use?",
+    answer: "Yes, you can use Anivaryam tools for any purpose, including commercial use. The tools are free and open-source under the MIT license, which allows commercial use, modification, and distribution.",
     category: "usage",
   },
   {
@@ -90,7 +90,7 @@ export const faqData: FAQItem[] = [
   },
   {
     question: "Can I use tools on mobile devices?",
-    answer: "Yes! All RosettaScript tools are fully responsive and work seamlessly on mobile devices, tablets, and desktops. Our **browser-based tools are mobile-friendly** and adapt automatically to different screen sizes. Use our **free online JSON formatter**, **Base64 encoder**, or **Word to HTML converter** on smartphones and tablets—no app installation required.",
+    answer: "Yes! All Anivaryam tools are fully responsive and work seamlessly on mobile devices, tablets, and desktops. Our **browser-based tools are mobile-friendly** and adapt automatically to different screen sizes. Use our **free online JSON formatter**, **Base64 encoder**, or **Word to HTML converter** on smartphones and tablets—no app installation required.",
     category: "usage",
   },
   {
@@ -136,18 +136,18 @@ export const faqData: FAQItem[] = [
   },
   {
     question: "How accurate are the conversion tools?",
-    answer: "Our RosettaScript conversion tools are highly accurate:\n• Use our [Word to HTML converter](/tools/word-to-html/) to preserve formatting while cleaning up bloated code—perfect for **Word to HTML converter for blog posts**\n• Use our [CSV to JSON converter](/tools/csv-to-json/) to handle various delimiters and data types accurately\n• Use our [Base64 encoder/decoder](/tools/base64/) to support UTF-8 encoding for international characters—our **browser-based Base64 encoder** is free\n\nAll RosettaScript tools process data locally in your browser, ensuring consistent results.",
+    answer: "Our Anivaryam conversion tools are highly accurate:\n• Use our [Word to HTML converter](/tools/word-to-html/) to preserve formatting while cleaning up bloated code—perfect for **Word to HTML converter for blog posts**\n• Use our [CSV to JSON converter](/tools/csv-to-json/) to handle various delimiters and data types accurately\n• Use our [Base64 encoder/decoder](/tools/base64/) to support UTF-8 encoding for international characters—our **browser-based Base64 encoder** is free\n\nAll Anivaryam tools process data locally in your browser, ensuring consistent results.",
     category: "tools",
   },
   // Technical & Support
   {
-    question: "Is RosettaScript open source?",
-    answer: "Yes, RosettaScript is completely open-source. The code is available on GitHub, and you can review it, contribute improvements, or use it as a reference for your own projects. The project is licensed under the MIT license.",
+    question: "Is Anivaryam open source?",
+    answer: "Yes, Anivaryam is completely open-source. The code is available on GitHub, and you can review it, contribute improvements, or use it as a reference for your own projects. The project is licensed under the MIT license.",
     category: "technical",
   },
   {
-    question: "Can I contribute to RosettaScript?",
-    answer: "Yes! RosettaScript welcomes contributions. You can contribute by:\n• Reporting bugs or suggesting features through our [Issues page](/issues/)\n• Submitting pull requests with improvements on GitHub\n• Sharing feedback and ideas\n• Helping improve documentation",
+    question: "Can I contribute to Anivaryam?",
+    answer: "Yes! Anivaryam welcomes contributions. You can contribute by:\n• Reporting bugs or suggesting features through our [Issues page](/issues/)\n• Submitting pull requests with improvements on GitHub\n• Sharing feedback and ideas\n• Helping improve documentation",
     category: "technical",
   },
   {
@@ -157,7 +157,7 @@ export const faqData: FAQItem[] = [
   },
   {
     question: "Do the tools work with large files?",
-    answer: "Most RosettaScript tools can handle reasonably large inputs, but performance depends on your device's capabilities and browser memory. For extremely large files (hundreds of MB), you may experience slower processing. We recommend testing with your specific use case.",
+    answer: "Most Anivaryam tools can handle reasonably large inputs, but performance depends on your device's capabilities and browser memory. For extremely large files (hundreds of MB), you may experience slower processing. We recommend testing with your specific use case.",
     category: "technical",
   },
   {
@@ -167,18 +167,18 @@ export const faqData: FAQItem[] = [
   },
   // Downloads & Resources
   {
-    question: "What downloadable resources does RosettaScript offer?",
-    answer: "RosettaScript offers free downloads including: Windows automation scripts; PERN stack setup templates; PostgreSQL database manager utilities; School project templates; Other time-saving development tools. Browse all free downloads at [https://rosettascript.github.io/downloads/](/downloads/) on our downloads page. All downloads are free and open-source.",
+    question: "What downloadable resources does Anivaryam offer?",
+    answer: "Anivaryam offers free downloads including: Windows automation scripts; PERN stack setup templates; PostgreSQL database manager utilities; School project templates; Other time-saving development tools. Browse all free downloads at [https://anivaryam.github.io/downloads/](/downloads/) on our downloads page. All downloads are free and open-source.",
     category: "downloads",
   },
   {
     question: "Are there tutorials or guides available?",
-    answer: "Yes! RosettaScript includes a blog section at [https://rosettascript.github.io/blogs/](/blogs/) with comprehensive tutorials, tips, and developer guides. Learn about web scraping, cryptography, post-quantum security, database management, and more. New articles are published regularly.",
+    answer: "Yes! Anivaryam includes a blog section at [https://anivaryam.github.io/blogs/](/blogs/) with comprehensive tutorials, tips, and developer guides. Learn about web scraping, cryptography, post-quantum security, database management, and more. New articles are published regularly.",
     category: "downloads",
   },
   {
-    question: "Can students use RosettaScript for school projects?",
-    answer: "Absolutely! RosettaScript offers ready-to-use school project templates at [https://rosettascript.github.io/school-projects/](/school-projects/) perfect for students and educators. These templates include pre-configured project structures, documentation, and examples—perfect for assignments, capstone projects, and learning new technologies.",
+    question: "Can students use Anivaryam for school projects?",
+    answer: "Absolutely! Anivaryam offers ready-to-use school project templates at [https://anivaryam.github.io/school-projects/](/school-projects/) perfect for students and educators. These templates include pre-configured project structures, documentation, and examples—perfect for assignments, capstone projects, and learning new technologies.",
     category: "downloads",
   },
 ];

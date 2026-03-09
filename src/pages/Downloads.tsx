@@ -137,7 +137,7 @@ const tools: Tool[] = [
     downloads: [
       {
         platform: "linux",
-        url: "https://github.com/rosettascript/db-manager/releases/download/v1.0.0/DBManager-1.0.0.AppImage",
+        url: "https://github.com/anivaryam/db-manager/releases/download/v1.0.0/DBManager-1.0.0.AppImage",
         filename: "DBManager-1.0.0.AppImage",
         size: "137 MB",
       },
@@ -189,13 +189,13 @@ export default function Downloads() {
       <SEO
         title="Free Downloads & Scripts"
         description="Downloadable scripts and utilities for Windows, PERN setup, and more. Free developer tools including Microsoft Script and PostgreSQL Manager."
-        canonical="https://rosettascript.github.io/downloads"
+        canonical="https://anivaryam.github.io/downloads"
         structuredData={{
           type: "WebPage",
         }}
         breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Downloads", url: "https://rosettascript.github.io/downloads" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Downloads", url: "https://anivaryam.github.io/downloads" },
         ]}
       />
       <div className="container mx-auto px-4 py-12">

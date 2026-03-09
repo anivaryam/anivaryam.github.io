@@ -1,6 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
-  <rect fill="#1e293b" width="600" height="400"/>
-  <text fill="#10b981" font-family="monospace" font-size="24" x="50%" y="45%" text-anchor="middle">JSON Extractor</text>
-  <text fill="#94a3b8" font-family="monospace" font-size="14" x="50%" y="55%" text-anchor="middle">Extract Data from JSON</text>
-  <rect x="100" y="300" width="400" height="4" fill="#10b981" rx="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="12" fill="#06b6d4"/>
+  <path d="M16 32 L28 44 L36 36" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M48 20 L36 8 L28 16" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <circle cx="44" cy="44" r="6" fill="#22d3ee"/>
+  <circle cx="20" cy="20" r="6" fill="#22d3ee"/>
 </svg>

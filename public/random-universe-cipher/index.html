@@ -107,7 +107,7 @@
   <div class="container">
     <!-- Header -->
     <header>
-      <h1>🔐 Random Universe Cipher</h1>
+      <h1> Random Universe Cipher</h1>
       <div class="specs">
         <div class="spec"><span class="label">Key:</span><span class="value">512-bit</span></div>
         <div class="spec"><span class="label">Block:</span><span class="value">256-bit</span></div>
@@ -128,7 +128,7 @@
       <div class="security-options">
         <label>
           <input type="checkbox" id="use-aead" checked>
-          <span>🛡️ AEAD</span>
+          <span> AEAD</span>
         </label>
         <label>
           <input type="checkbox" id="use-argon2" checked>
@@ -145,7 +145,7 @@
         <div class="input-group">
           <textarea id="plaintext" placeholder="Enter text to encrypt..."></textarea>
         </div>
-        <button class="btn btn-primary" id="encrypt-btn" style="width: 100%;">⚡ Encrypt</button>
+        <button class="btn btn-primary" id="encrypt-btn" style="width: 100%;"> Encrypt</button>
         <div class="output-container">
           <div class="output" id="encrypt-output"></div>
           <button class="copy-btn" id="copy-ciphertext">Copy</button>
@@ -157,7 +157,7 @@
         <div class="input-group">
           <textarea id="ciphertext" placeholder="Paste ciphertext..."></textarea>
         </div>
-        <button class="btn btn-primary" id="decrypt-btn" style="width: 100%;">⚡ Decrypt</button>
+        <button class="btn btn-primary" id="decrypt-btn" style="width: 100%;"> Decrypt</button>
         <div class="output-container">
           <div class="output" id="decrypt-output"></div>
           <button class="copy-btn" id="copy-plaintext">Copy</button>
@@ -167,11 +167,11 @@
 
     <!-- File Encryption -->
     <section>
-      <h2><span class="icon">📁</span> File Encryption</h2>
+      <h2><span class="icon"></span> File Encryption</h2>
       
       <div id="drop-zone" class="drop-zone">
         <div class="drop-zone-content">
-          <div class="drop-icon">📂</div>
+          <div class="drop-icon"></div>
           <div class="drop-text">Drop file here or click to select</div>
         </div>
         <input type="file" id="file-input" style="display: none;">
@@ -199,7 +199,7 @@
       </div>
       
       <div id="file-output" class="file-output" style="display: none;">
-        <div class="file-output-icon">✅</div>
+        <div class="file-output-icon"></div>
         <div id="file-output-text">Success!</div>
         <button class="btn btn-primary btn-small" id="download-file-btn">⬇️ Download</button>
       </div>
@@ -207,7 +207,7 @@
 
     <!-- Performance -->
     <section>
-      <h2><span class="icon">📊</span> Performance</h2>
+      <h2><span class="icon"></span> Performance</h2>
       <div class="stats">
         <div class="stat-card">
           <div class="label">Key</div>
@@ -250,7 +250,7 @@
           <li>SHAKE256 keystream + ChaCha20 PRNG</li>
           <li>AEAD (HMAC-SHA256) + Argon2id KDF</li>
         </ul>
-        <p style="color: var(--warning); margin-top: 0.5rem;">⚠️ Demo only - not audited for production use.</p>
+        <p style="color: var(--warning); margin-top: 0.5rem;"> Demo only - not audited for production use.</p>
       </div>
     </section>
   </div>

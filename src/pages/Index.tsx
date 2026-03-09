@@ -72,7 +72,7 @@ const highlights = [
   },
 ];
 
-const codeSnippet = `// Welcome to RosettaScript
+const codeSnippet = `// Welcome to Anivaryam
 const tools = {
   formatters: ["JSON", "Code", "Text"],
   converters: ["Word → HTML", "Base64", "URL", "Color"],
@@ -89,7 +89,7 @@ export default function Index() {
       <SEO
         title="Free Developer Tools - Conversion & Formatting"
         description="Free online developer tools for Word to HTML conversion, text formatting, code cleanup, and automation. No signup, fast & privacy-friendly."
-        canonical="https://rosettascript.github.io/"
+        canonical="https://anivaryam.github.io/"
         structuredData={{
           type: "WebSite",
         }}
@@ -106,7 +106,7 @@ export default function Index() {
                 <Terminal className="h-4 w-4" />
                 Developer Tools Made Simple
                 <a 
-                  href="https://github.com/rosettascript/rosettascript.github.io" 
+                  href="https://github.com/anivaryam/anivaryam.github.io" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="ml-2 px-2 py-0.5 bg-muted hover:bg-muted/80 rounded-full text-xs flex items-center gap-1 transition-colors"
@@ -121,7 +121,7 @@ export default function Index() {
                 Free Online Developer Tools for Text, Code & Document Conversion
               </h1>
               <p className="text-lg text-muted-foreground max-w-lg w-full">
-                RosettaScript offers 20+ free online developer tools for converting, cleaning, formatting, and automating text and code. Whether you need a <Link to="/tools/word-to-html" className="text-primary hover:underline">Word to HTML converter</Link>, <Link to="/tools/json-formatter" className="text-primary hover:underline">JSON formatter</Link>, <Link to="/tools/base64" className="text-primary hover:underline">Base64 encoder</Link>, or more, these tools run entirely in your browser without signup or cost. These tools help developers, content editors, and technical writers save time while maintaining quality.
+                Anivaryam offers 20+ free online developer tools for converting, cleaning, formatting, and automating text and code. Whether you need a <Link to="/tools/word-to-html" className="text-primary hover:underline">Word to HTML converter</Link>, <Link to="/tools/json-formatter" className="text-primary hover:underline">JSON formatter</Link>, <Link to="/tools/base64" className="text-primary hover:underline">Base64 encoder</Link>, or more, these tools run entirely in your browser without signup or cost. These tools help developers, content editors, and technical writers save time while maintaining quality.
               </p>
               <div className="flex flex-col sm:flex-row flex-wrap gap-4">
                 <Button asChild size="lg" className="glow-primary w-full sm:w-auto">
@@ -400,10 +400,10 @@ export default function Index() {
         </div>
       </section>
 
-      {/* Why Use RosettaScript - Moved from above */}
+      {/* Why Use Anivaryam - Moved from above */}
       <section className="py-12 content-visibility-auto">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl font-bold mb-6 text-center">Why Use RosettaScript Developer Tools</h2>
+          <h2 className="text-3xl font-bold mb-6 text-center">Why Use Anivaryam Developer Tools</h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <div className="p-4 bg-card/50 rounded-lg border border-border hover:border-primary/50 transition-all group">
               <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors">No Signup Required</h3>
@@ -426,7 +426,7 @@ export default function Index() {
             <div className="p-4 bg-card/50 rounded-lg border border-border hover:border-primary/50 transition-all group">
               <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors">Open Source</h3>
               <p className="text-sm text-muted-foreground">
-                RosettaScript is an open-source project built by a developer, for developers. You can review the code, contribute improvements, or use it as a reference for your own projects.
+                Anivaryam is an open-source project built by a developer, for developers. You can review the code, contribute improvements, or use it as a reference for your own projects.
               </p>
             </div>
           </div>

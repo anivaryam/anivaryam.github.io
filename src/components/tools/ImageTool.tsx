@@ -512,7 +512,7 @@ export function ImageTool() {
             <CardContent className="space-y-4">
               <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
                 <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium mb-1">
-                  ⚠️ Important Limitation
+                   Important Limitation
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Browser-based upscaling uses interpolation (smoothing pixels), not AI. The image will still appear blurry when zoomed in because it cannot recreate detail that wasn't in the original. For true quality preservation when zooming, you need AI super-resolution tools (like Real-ESRGAN, Topaz AI, or similar) that use machine learning models - these require server-side processing.

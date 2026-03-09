@@ -566,7 +566,7 @@ export function QrCodeGeneratorTool() {
           </span>
           {qrValue && qrValue.length > QR_CAPACITY[errorCorrectionLevel] * 0.8 && (
             <span className="text-xs text-yellow-500 mt-1">
-              ⚠️ Approaching capacity limit
+               Approaching capacity limit
             </span>
           )}
         </div>

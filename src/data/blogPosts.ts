@@ -15,16 +15,16 @@ export const blogPosts: BlogPost[] = [
   {
     id: "how-to-convert-word-html-clean-seo-friendly",
     title: "Convert Word HTML to Clean SEO Code",
-    excerpt: "Convert Word HTML to clean, SEO-ready code. Remove bloated styles and mso- attributes with the RosettaScript Word-to-HTML Converter tool.",
+    excerpt: "Convert Word HTML to clean, SEO-ready code. Remove bloated styles and mso- attributes with the Anivaryam Word-to-HTML Converter tool.",
     date: "2025-01-25",
     readTime: "8 min read",
     category: "Tutorial",
     image: "/blog-images/word-to-html.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Word to HTML", "SEO", "HTML Cleanup", "Content Management", "Web Development"],
     content: `Copy-pasting content from Microsoft Word into a website seems convenient — until you look at the HTML. Bloated inline styles, mso- attributes, unnecessary <span> tags, and broken spacing are common side effects that negatively impact SEO, accessibility, and maintainability.
 
-If you regularly publish blog posts, product descriptions, or long-form content created in Word, cleaning that HTML manually is frustrating and time-consuming. This guide explains why Word HTML is problematic, what clean HTML should look like, and how to convert Word content into SEO-ready HTML using the RosettaScript Word-to-HTML Converter.
+If you regularly publish blog posts, product descriptions, or long-form content created in Word, cleaning that HTML manually is frustrating and time-consuming. This guide explains why Word HTML is problematic, what clean HTML should look like, and how to convert Word content into SEO-ready HTML using the Anivaryam Word-to-HTML Converter.
 
 ## Why Word HTML Is Messy
 
@@ -70,11 +70,11 @@ A proper Word-to-HTML converter does more than remove formatting. It should:
 
 Many online tools fail here by either over-cleaning (breaking content) or under-cleaning (leaving Word junk behind).
 
-## Introducing the RosettaScript Word-to-HTML Converter
+## Introducing the Anivaryam Word-to-HTML Converter
 
-The RosettaScript Word-to-HTML Converter is built specifically for real publishing workflows — blogs, CMS platforms, e-commerce, and documentation.
+The Anivaryam Word-to-HTML Converter is built specifically for real publishing workflows — blogs, CMS platforms, e-commerce, and documentation.
 
-👉 **Try it here**: [https://rosettascript.github.io/tools/word-to-html](https://rosettascript.github.io/tools/word-to-html)
+👉 **Try it here**: [https://anivaryam.github.io/tools/word-to-html](https://anivaryam.github.io/tools/word-to-html)
 
 ### What makes it different?
 
@@ -161,7 +161,7 @@ The cleaned version is:
 
 ## Who This Tool Is For
 
-The RosettaScript Word-to-HTML Converter is ideal for:
+The Anivaryam Word-to-HTML Converter is ideal for:
 
 - **Bloggers and content writers**
 - **Developers maintaining CMS content**
@@ -193,9 +193,9 @@ Yes. Word-specific styles and unnecessary markup are stripped while preserving c
 
 Word is great for writing, but not for HTML. If you want clean, SEO-ready markup without manual cleanup, a proper Word-to-HTML converter is essential.
 
-The RosettaScript Word-to-HTML Converter focuses on correctness, predictability, and real-world publishing needs.
+The Anivaryam Word-to-HTML Converter focuses on correctness, predictability, and real-world publishing needs.
 
-👉 **Try it now**: [https://rosettascript.github.io/tools/word-to-html](https://rosettascript.github.io/tools/word-to-html)
+👉 **Try it now**: [https://anivaryam.github.io/tools/word-to-html](https://anivaryam.github.io/tools/word-to-html)
 
 **Clean HTML. Better SEO. Less frustration.**`,
   },
@@ -207,13 +207,13 @@ The RosettaScript Word-to-HTML Converter focuses on correctness, predictability,
     readTime: "5 min read",
     category: "Tutorial",
     image: "/blog-images/web-scraper.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Web Scraping", "Automation", "Data Collection"],
     content: `## Introduction
 
-Learn how to scrape any website using the free Web Scraper tool from Rosetta Script. In this tutorial, I'll show you how to collect website data, export it cleanly, and use it for analysis or automation—no coding required.
+Learn how to scrape any website using the free Web Scraper tool from Anivaryam. In this tutorial, I'll show you how to collect website data, export it cleanly, and use it for analysis or automation—no coding required.
 
-Try the tool here: [rosettascript.github.io/tools/web-scraper](https://rosettascript.github.io/tools/web-scraper)
+Try the tool here: [anivaryam.github.io/tools/web-scraper](https://anivaryam.github.io/tools/web-scraper)
 
 ## Video Tutorial
 
@@ -242,7 +242,7 @@ Our Web Scraper tool offers several advantages:
 
 ### Step 1: Access the Tool
 
-Visit [rosettascript.github.io/tools/web-scraper](https://rosettascript.github.io/tools/web-scraper) to access the free Web Scraper tool.
+Visit [anivaryam.github.io/tools/web-scraper](https://anivaryam.github.io/tools/web-scraper) to access the free Web Scraper tool.
 
 ### Step 2: Enter Your Target URL
 
@@ -300,9 +300,9 @@ Extract contact information, business details, or other lead data from directori
 
 ## Conclusion
 
-Web scraping doesn't have to be complicated. With the free Web Scraper tool from RosettaScript, anyone can collect website data quickly and efficiently—no coding skills required. Whether you're doing research, monitoring competitors, or automating data collection, my tool makes it simple and accessible.
+Web scraping doesn't have to be complicated. With the free Web Scraper tool from Anivaryam, anyone can collect website data quickly and efficiently—no coding skills required. Whether you're doing research, monitoring competitors, or automating data collection, my tool makes it simple and accessible.
 
-Get started today at [rosettascript.github.io/tools/web-scraper](https://rosettascript.github.io/tools/web-scraper) and unlock the power of web scraping for your projects.`,
+Get started today at [anivaryam.github.io/tools/web-scraper](https://anivaryam.github.io/tools/web-scraper) and unlock the power of web scraping for your projects.`,
   },
   {
     id: "random-universe-cipher-ruc-post-quantum-security",
@@ -312,7 +312,7 @@ Get started today at [rosettascript.github.io/tools/web-scraper](https://rosetta
     readTime: "15 min read",
     category: "Tools",
     image: "/blog-images/random-universe-cipher.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Cryptography", "Security", "Post-Quantum", "Encryption", "RUC"],
     content: `## Introduction
 
@@ -320,7 +320,7 @@ In an era where quantum computing threatens to break traditional encryption meth
 
 RUC is a symmetric block cipher that achieves **256-bit post-quantum security** through innovative design principles, making it one of the most secure encryption algorithms available today. This comprehensive guide explores what makes RUC unique, how it works, and why it matters for the future of data protection.
 
-Try the RUC tool here: [rosettascript.github.io/tools/random-universe-cipher](https://rosettascript.github.io/tools/random-universe-cipher)
+Try the RUC tool here: [anivaryam.github.io/tools/random-universe-cipher](https://anivaryam.github.io/tools/random-universe-cipher)
 
 ## What is the Random Universe Cipher?
 
@@ -692,7 +692,7 @@ RUC undergoes comprehensive testing:
 
 Experience RUC encryption firsthand:
 
-**[rosettascript.github.io/tools/random-universe-cipher](https://rosettascript.github.io/tools/random-universe-cipher)**
+**[anivaryam.github.io/tools/random-universe-cipher](https://anivaryam.github.io/tools/random-universe-cipher)**
 
 The tool allows you to:
 - Encrypt and decrypt text using RUC
@@ -758,7 +758,7 @@ Key takeaways:
 
 Whether you're protecting sensitive data for decades, preparing for quantum computing, or simply seeking the highest level of encryption security, RUC provides a powerful and forward-looking solution.
 
-**Try RUC today**: [rosettascript.github.io/tools/random-universe-cipher](https://rosettascript.github.io/tools/random-universe-cipher)
+**Try RUC today**: [anivaryam.github.io/tools/random-universe-cipher](https://anivaryam.github.io/tools/random-universe-cipher)
 
 ---
 
@@ -772,7 +772,7 @@ Whether you're protecting sensitive data for decades, preparing for quantum comp
     readTime: "20 min read",
     category: "Tools",
     image: "/blog-images/db-manager-thumbnail.png",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["PostgreSQL", "Database Management", "Full-Stack", "React", "NestJS", "Electron", "TypeScript"],
     content: `## Building a Modern PostgreSQL Database Manager: A Full-Stack Journey
 
@@ -790,7 +790,7 @@ Whether you're protecting sensitive data for decades, preparing for quantum comp
 
 ---
 
-## 🚀 Introduction
+##  Introduction
 
 Managing databases shouldn't be complicated. Whether you're a developer working on multiple projects, a database administrator handling complex schemas, or a data analyst exploring relationships, you need a tool that's both powerful and intuitive.
 
@@ -798,7 +798,7 @@ That's why I built **DB Manager**—a modern, feature-rich PostgreSQL database m
 
 ---
 
-## ✨ Why Build Another Database Tool?
+##  Why Build Another Database Tool?
 
 While tools like pgAdmin exist, I wanted something that:
 
@@ -810,7 +810,7 @@ While tools like pgAdmin exist, I wanted something that:
 
 ---
 
-## 🎯 Key Features
+##  Key Features
 
 ### 🔌 Connection Management
 
@@ -821,7 +821,7 @@ Manage unlimited PostgreSQL database connections with ease:
 - **Connection Testing**: Test connections before saving to avoid errors
 - **Connection Pooling**: Efficient connection management with automatic pooling
 
-### 📊 Schema & Data Exploration
+###  Schema & Data Exploration
 
 Navigate your database structure intuitively:
 
@@ -833,7 +833,7 @@ Navigate your database structure intuitively:
   - Column visibility controls
 - **Database Statistics**: View database size, table counts, and metadata at a glance
 
-### 🔍 Query Execution
+###  Query Execution
 
 Execute and manage SQL queries like a pro:
 
@@ -853,7 +853,7 @@ Visualize your database structure and relationships:
 - **Schema Visualization**: Visual representation of your entire database structure
 - **Charts**: Create beautiful visualizations from query results using Recharts
 
-### 📤 Data Export
+###  Data Export
 
 Export your data in multiple formats:
 
@@ -862,7 +862,7 @@ Export your data in multiple formats:
 - **Filtered Exports**: Export only filtered or selected data
 - **Schema Dumps**: Export complete database schema definitions
 
-### 🔧 Advanced Features
+###  Advanced Features
 
 - **Index Recommendations**: Get AI-powered suggestions for database optimization
 - **Full-Text Search**: Search across database metadata and schemas
@@ -906,12 +906,12 @@ One of the standout features of DB Manager is its **standalone desktop applicati
 
 ### Desktop App Benefits:
 
-- ✅ **Single Executable**: No \`npm run dev\` needed—just launch and go
-- ✅ **Cross-Platform**: Linux support (Windows & macOS coming soon)
-- ✅ **Offline-Ready**: Works without internet connection
-- ✅ **Native Experience**: Desktop file dialogs, notifications, and system integration
-- ✅ **Portable**: All data stored locally in your user directory
-- ✅ **Same Features**: Identical functionality to the web version
+-  **Single Executable**: No \`npm run dev\` needed—just launch and go
+-  **Cross-Platform**: Linux support (Windows & macOS coming soon)
+-  **Offline-Ready**: Works without internet connection
+-  **Native Experience**: Desktop file dialogs, notifications, and system integration
+-  **Portable**: All data stored locally in your user directory
+-  **Same Features**: Identical functionality to the web version
 
 ### Installation
 
@@ -929,9 +929,9 @@ chmod +x DBManager-1.0.0.AppImage
 ./DBManager-1.0.0.AppImage
 \`\`\`
 
-**Download**: Get the Linux AppImage from the [Downloads Page](/downloads) or [GitHub Releases](https://github.com/rosettascript/db-manager/releases).
+**Download**: Get the Linux AppImage from the [Downloads Page](/downloads) or [GitHub Releases](https://github.com/anivaryam/db-manager/releases).
 
-**Windows & macOS**: Coming soon! Check the [GitHub repository](https://github.com/rosettascript/db-manager) for updates.
+**Windows & macOS**: Coming soon! Check the [GitHub repository](https://github.com/anivaryam/db-manager) for updates.
 
 ---
 
@@ -978,7 +978,7 @@ The React frontend uses modern patterns:
 **1. Clone the Repository**
 
 \`\`\`bash
-git clone https://github.com/rosettascript/db-manager.git
+git clone https://github.com/anivaryam/db-manager.git
 cd db-manager
 \`\`\`
 
@@ -1005,7 +1005,7 @@ npm run dev
 
 Navigate to \`http://localhost:5173\` and start managing your databases!
 
-For detailed setup instructions, check out the [README.md](https://github.com/rosettascript/db-manager/blob/main/README.md) and [SETUP_GUIDE.md](https://github.com/rosettascript/db-manager/blob/main/_docs/SETUP_GUIDE.md).
+For detailed setup instructions, check out the [README.md](https://github.com/anivaryam/db-manager/blob/main/README.md) and [SETUP_GUIDE.md](https://github.com/anivaryam/db-manager/blob/main/_docs/SETUP_GUIDE.md).
 
 ---
 
@@ -1027,11 +1027,11 @@ This project is an excellent learning resource for:
 
 Comprehensive documentation is available:
 
-- **[README.md](https://github.com/rosettascript/db-manager/blob/main/README.md)** - Project overview and quick start
-- **[SETUP_GUIDE.md](https://github.com/rosettascript/db-manager/blob/main/_docs/SETUP_GUIDE.md)** - Detailed setup instructions
-- **[API_DOCUMENTATION.md](https://github.com/rosettascript/db-manager/blob/main/backend/_docs/API_DOCUMENTATION.md)** - Complete API reference
-- **[ARCHITECTURE.md](https://github.com/rosettascript/db-manager/blob/main/backend/_docs/ARCHITECTURE.md)** - System architecture details
-- **[Desktop App Guide](https://github.com/rosettascript/db-manager/blob/main/desktop/README.md)** - Desktop application documentation
+- **[README.md](https://github.com/anivaryam/db-manager/blob/main/README.md)** - Project overview and quick start
+- **[SETUP_GUIDE.md](https://github.com/anivaryam/db-manager/blob/main/_docs/SETUP_GUIDE.md)** - Detailed setup instructions
+- **[API_DOCUMENTATION.md](https://github.com/anivaryam/db-manager/blob/main/backend/_docs/API_DOCUMENTATION.md)** - Complete API reference
+- **[ARCHITECTURE.md](https://github.com/anivaryam/db-manager/blob/main/backend/_docs/ARCHITECTURE.md)** - System architecture details
+- **[Desktop App Guide](https://github.com/anivaryam/db-manager/blob/main/desktop/README.md)** - Desktop application documentation
 
 ---
 
@@ -1053,7 +1053,7 @@ The video covers:
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Whether it's:
 
@@ -1086,16 +1086,16 @@ Built with amazing open-source technologies:
 
 ---
 
-## 🔗 Links
+##  Links
 
-- **GitHub Repository**: [https://github.com/rosettascript/db-manager](https://github.com/rosettascript/db-manager)
+- **GitHub Repository**: [https://github.com/anivaryam/db-manager](https://github.com/anivaryam/db-manager)
 - **YouTube Video**: [https://youtu.be/PfBWTLX3vy0](https://youtu.be/PfBWTLX3vy0)
 - **Download Desktop App**: [Download Page](/downloads) - Get the desktop application for Linux
-- **Documentation**: See the [Documentation section](#-documentation) above or browse the [GitHub repository](https://github.com/rosettascript/db-manager)
+- **Documentation**: See the [Documentation section](#-documentation) above or browse the [GitHub repository](https://github.com/anivaryam/db-manager)
 
 ---
 
-## 💬 Final Thoughts
+##  Final Thoughts
 
 DB Manager represents a modern approach to database management tools. By combining the power of React, NestJS, and Electron, I've created a tool that's both beautiful and functional.
 
@@ -1105,7 +1105,7 @@ Whether you're managing a single database or juggling multiple projects, DB Mana
 
 ---
 
-*Happy Database Managing! 🚀*`,
+*Happy Database Managing! *`,
   },
   {
     id: "google-bot-crawling-seo-fixes-github-pages",
@@ -1115,7 +1115,7 @@ Whether you're managing a single database or juggling multiple projects, DB Mana
     readTime: "12 min read",
     category: "Tutorial",
     image: "/blog-images/google bot couldn't fetch issue on github pages.png",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["SEO", "Google Search Console", "GitHub Pages", "Canonical URLs", "Sitemap", "Web Crawling", "React SPA"],
     content: `# How We Fixed Google Bot Crawling Issues and Improved SEO on Our GitHub Pages Site
 
@@ -1133,8 +1133,8 @@ The first indication of trouble came from Google Search Console, which started r
 
 Using Ahrefs' site audit tool, we discovered a critical canonical URL mismatch:
 
-- **Static HTML** (raw HTML served by the server): \`https://rosettascript.github.io/tools/\` ✅
-- **Rendered HTML** (after JavaScript execution): \`https://rosettascript.github.io/tools\` ❌
+- **Static HTML** (raw HTML served by the server): \`https://anivaryam.github.io/tools/\` 
+- **Rendered HTML** (after JavaScript execution): \`https://anivaryam.github.io/tools\` 
 
 This mismatch occurred because our React SPA was dynamically updating canonical URLs at runtime, but many page components were passing canonical URLs without trailing slashes. Since GitHub Pages automatically redirects directory URLs without trailing slashes to URLs with trailing slashes (301 redirect), this created confusion for search engines.
 
@@ -1176,8 +1176,8 @@ const normalizeCanonical = (url: string | undefined): string | undefined => {
   if (!url) return undefined;
   
   // Don't modify homepage
-  if (url === "https://rosettascript.github.io" || url === "https://rosettascript.github.io/") {
-    return "https://rosettascript.github.io/";
+  if (url === "https://anivaryam.github.io" || url === "https://anivaryam.github.io/") {
+    return "https://anivaryam.github.io/";
   }
   
   // Don't add slash to files
@@ -1200,7 +1200,7 @@ We updated our \`scripts/generate-sitemap.js\` to add trailing slashes to all di
 \`\`\`xml
 <!-- Tool Pages -->
 <url>
-  <loc>https://rosettascript.github.io/tools/word-to-html</loc>
+  <loc>https://anivaryam.github.io/tools/word-to-html</loc>
   <lastmod>2024-01-13</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.9</priority>
@@ -1254,25 +1254,25 @@ npm run test:seo
 
 ### Crawlability Improvements
 
-- ✅ Eliminated "Page not fetched" errors
-- ✅ Resolved 301 redirect errors in Search Console
-- ✅ Consistent canonical URL signals
-- ✅ Proper sitemap URL format
+-  Eliminated "Page not fetched" errors
+-  Resolved 301 redirect errors in Search Console
+-  Consistent canonical URL signals
+-  Proper sitemap URL format
 
 ### SEO Enhancements
 
-- ✅ All page titles optimized (30-60 characters)
-- ✅ All meta descriptions optimized (120-160 characters)
-- ✅ Structured data added to all pages
-- ✅ DateModified timestamps included
-- ✅ HTML output consistency between static and rendered versions
+-  All page titles optimized (30-60 characters)
+-  All meta descriptions optimized (120-160 characters)
+-  Structured data added to all pages
+-  DateModified timestamps included
+-  HTML output consistency between static and rendered versions
 
 ### Technical Benefits
 
-- ✅ Faster indexing by search engines
-- ✅ Improved search result appearance
-- ✅ Better structured data for rich snippets
-- ✅ Enhanced crawl efficiency
+-  Faster indexing by search engines
+-  Improved search result appearance
+-  Better structured data for rich snippets
+-  Enhanced crawl efficiency
 
 ## Lessons Learned
 
@@ -1335,13 +1335,13 @@ Our tools are now fully crawlable and indexed, and we're seeing improved search 
     readTime: "6 min read",
     category: "Tutorial",
     image: "/blog-images/json-formatter.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["JSON", "Developer Tools", "API", "Data Formatting", "Web Development"],
     content: `## Introduction
 
 JSON (JavaScript Object Notation) is the backbone of modern web development. Whether you're building APIs, handling configuration files, or processing data, working with JSON is a daily task for most developers. This comprehensive guide explores how to effectively format, validate, and optimize your JSON data.
 
-Try the tool here: [rosettascript.github.io/tools/json-formatter](https://rosettascript.github.io/tools/json-formatter)
+Try the tool here: [anivaryam.github.io/tools/json-formatter](https://anivaryam.github.io/tools/json-formatter)
 
 ## Why JSON Formatting Matters
 
@@ -1384,13 +1384,13 @@ When something goes wrong in your application, being able to quickly read and un
 ### 1. Trailing Commas
 
 \`\`\`json
-// ❌ Invalid - trailing comma
+//  Invalid - trailing comma
 {
   "name": "John",
   "age": 30,
 }
 
-// ✅ Valid
+//  Valid
 {
   "name": "John",
   "age": 30
@@ -1400,13 +1400,13 @@ When something goes wrong in your application, being able to quickly read and un
 ### 2. Unquoted Keys
 
 \`\`\`json
-// ❌ Invalid - keys must be strings
+//  Invalid - keys must be strings
 {
   name: "John",
   age: 30
 }
 
-// ✅ Valid
+//  Valid
 {
   "name": "John",
   "age": 30
@@ -1416,13 +1416,13 @@ When something goes wrong in your application, being able to quickly read and un
 ### 3. Single Quotes
 
 \`\`\`json
-// ❌ Invalid - JSON requires double quotes
+//  Invalid - JSON requires double quotes
 {
   'name': 'John',
   'age': 30
 }
 
-// ✅ Valid
+//  Valid
 {
   "name": "John",
   "age": 30
@@ -1534,9 +1534,9 @@ No, JSON doesn't support comments. For configuration, consider using JSON5 or YA
 
 JSON formatting and validation are essential skills for developers. Whether you're debugging an API response, configuring your development environment, or processing data, having the right tools makes the job easier.
 
-The RosettaScript JSON Formatter provides all the features you need: formatting, minification, validation, and more—all in your browser, completely free.
+The Anivaryam JSON Formatter provides all the features you need: formatting, minification, validation, and more—all in your browser, completely free.
 
-👉 **Try it now**: [https://rosettascript.github.io/tools/json-formatter](https://rosettascript.github.io/tools/json-formatter)
+👉 **Try it now**: [https://anivaryam.github.io/tools/json-formatter](https://anivaryam.github.io/tools/json-formatter)
 
 **Clean JSON. Better Development. Faster Debugging.**`,
   },
@@ -1548,13 +1548,13 @@ The RosettaScript JSON Formatter provides all the features you need: formatting,
     readTime: "5 min read",
     category: "Tutorial",
     image: "/blog-images/base64.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Base64", "Encoding", "Data Transfer", "Web Development", "API"],
     content: `## Introduction
 
 Base64 encoding is a fundamental technique in modern computing that converts binary data into ASCII text format. This allows binary data to be transmitted over media that only support text, such as JSON APIs, HTML emails, and URL parameters.
 
-Try the tool here: [rosettascript.github.io/tools/base64](https://rosettascript.github.io/tools/base64)
+Try the tool here: [anivaryam.github.io/tools/base64](https://anivaryam.github.io/tools/base64)
 
 ## What is Base64?
 
@@ -1681,22 +1681,22 @@ const decoded = Buffer.from("SGVsbG8=", 'base64').toString();
 ### Invalid Characters
 
 \`\`\`
-❌ "SGVsbG8!"  // Contains !
-✅ "SGVsbG8="   // Valid Base64
+ "SGVsbG8!"  // Contains !
+ "SGVsbG8="   // Valid Base64
 \`\`\`
 
 ### Incorrect Padding
 
 \`\`\`
-❌ "SGk"   // Missing padding
-✅ "SGk="   // Correct padding
+ "SGk"   // Missing padding
+ "SGk="   // Correct padding
 \`\`\`
 
 ## Conclusion
 
 Base64 encoding is an essential tool for any developer. Whether you're building APIs, creating data URLs, or handling file uploads, understanding Base64 helps you work more effectively with binary data in text-based contexts.
 
-👉 **Try it now**: [https://rosettascript.github.io/tools/base64](https://rosettascript.github.io/tools/base64)
+👉 **Try it now**: [https://anivaryam.github.io/tools/base64](https://anivaryam.github.io/tools/base64)
 
 **Simple Encoding. Universal Compatibility.**`,
   },
@@ -1708,13 +1708,13 @@ Base64 encoding is an essential tool for any developer. Whether you're building 
     readTime: "5 min read",
     category: "Tutorial",
     image: "/blog-images/url-encoder.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["URL Encoding", "Percent Encoding", "Web Development", "HTTP", "API"],
     content: `## Introduction
 
 URL encoding (also known as percent-encoding) is crucial for properly transmitting data over the web. Every developer needs to understand how to encode and decode URLs to handle special characters, spaces, and non-ASCII characters correctly.
 
-Try the tool here: [rosettascript.github.io/tools/url-encoder](https://rosettascript.github.io/tools/url-encoder)
+Try the tool here: [anivaryam.github.io/tools/url-encoder](https://anivaryam.github.io/tools/url-encoder)
 
 ## Why URL Encoding?
 
@@ -1824,22 +1824,22 @@ name=测试 → name=%E6%B5%8B%E8%AF%95
 ### 1. Double Encoding
 
 \`\`\`
-❌ Hello%20World → Hello%2520World
-✅ Hello%20World   (don't encode already encoded)
+ Hello%20World → Hello%2520World
+ Hello%20World   (don't encode already encoded)
 \`\`\`
 
 ### 2. Using + for Spaces in Paths
 
 \`\`\`
-❌ /my+file.txt  (only valid in query strings)
-✅ /my%20file.txt
+ /my+file.txt  (only valid in query strings)
+ /my%20file.txt
 \`\`\`
 
 ### 3. Not Encoding Special Chars
 
 \`\`\`
-❌ https://example.com/search?query=hello world
-✅ https://example.com/search?query=hello%20world
+ https://example.com/search?query=hello world
+ https://example.com/search?query=hello%20world
 \`\`\`
 
 ## Encoding in Different Languages
@@ -1888,7 +1888,7 @@ urldecode("Hello+World%21");  // "Hello World!"
 
 URL encoding is fundamental to web development. Proper encoding ensures your URLs work correctly across all browsers, servers, and international character sets.
 
-👉 **Try it now**: [https://rosettascript.github.io/tools/url-encoder](https://rosettascript.github.io/tools/url-encoder)
+👉 **Try it now**: [https://anivaryam.github.io/tools/url-encoder](https://anivaryam.github.io/tools/url-encoder)
 
 **Encode Safely. URLs Work Everywhere.**`,
   },
@@ -1900,13 +1900,13 @@ URL encoding is fundamental to web development. Proper encoding ensures your URL
     readTime: "4 min read",
     category: "Tutorial",
     image: "/blog-images/color-converter.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Color", "HEX", "RGB", "HSL", "CSS", "Web Design"],
     content: `## Introduction
 
 Understanding color formats is essential for web designers and developers. Whether you're working with CSS, designing in Figma, or building a brand palette, knowing how to convert between HEX, RGB, and HSL color values makes your workflow smoother.
 
-Try the tool here: [rosettascript.github.io/tools/color-converter](https://rosettascript.github.io/tools/color-converter)
+Try the tool here: [anivaryam.github.io/tools/color-converter](https://anivaryam.github.io/tools/color-converter)
 
 ## Color Formats Explained
 
@@ -2067,7 +2067,7 @@ hsl(20, 100%, 50%)   /* Orange */
 
 Understanding color conversion between HEX, RGB, and HSL formats is a valuable skill for any web developer. Each format has its strengths—HEX for compactness, RGB for programmatic control, and HSL for intuitive color manipulation.
 
-👉 **Try it now**: [https://rosettascript.github.io/tools/color-converter](https://rosettascript.github.io/tools/color-converter)
+👉 **Try it now**: [https://anivaryam.github.io/tools/color-converter](https://anivaryam.github.io/tools/color-converter)
 
 **Convert Colors. Design Better.**`,
   },
@@ -2079,13 +2079,13 @@ Understanding color conversion between HEX, RGB, and HSL formats is a valuable s
     readTime: "4 min read",
     category: "Tutorial",
     image: "/blog-images/uuid-generator.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["UUID", "Unique ID", "Database", "API", "JavaScript"],
     content: `## Introduction
 
 UUIDs (Universally Unique Identifiers) are essential for modern applications. They provide a reliable way to generate unique identifiers without requiring a central authority, making them perfect for distributed systems, databases, and microservices.
 
-Try the tool here: [rosettascript.github.io/tools/uuid-generator](https://rosettascript.github.io/tools/uuid-generator)
+Try the tool here: [anivaryam.github.io/tools/uuid-generator](https://anivaryam.github.io/tools/uuid-generator)
 
 ## What is a UUID?
 
@@ -2203,14 +2203,14 @@ uuidv4();  // "550e8400-e29b-41d4-a716-446655440000"
 ### 1. Use UUID v4 for General Purposes
 
 \`\`\`
-✅ 550e8400-e29b-41d4-a716-446655440000
+ 550e8400-e29b-41d4-a716-446655440000
 \`\`\`
 
 ### 2. Include Hyphens for Readability
 
 \`\`\`
-✅ 550e8400-e29b-41d4-a716-446655440000
-❌ 550e8400e29b41d4a716446655440000
+ 550e8400-e29b-41d4-a716-446655440000
+ 550e8400e29b41d4a716446655440000
 \`\`\`
 
 ### 3. Consider Storage Impact
@@ -2248,7 +2248,7 @@ Not without losing uniqueness. Base64 encoding reduces length but increases coll
 
 UUIDs are the go-to solution for generating unique identifiers in modern applications. They're essential for distributed systems, microservices, and any scenario where centralized ID generation isn't feasible.
 
-👉 **Try it now**: [https://rosettascript.github.io/tools/uuid-generator](https://rosettascript.github.io/tools/uuid-generator)
+👉 **Try it now**: [https://anivaryam.github.io/tools/uuid-generator](https://anivaryam.github.io/tools/uuid-generator)
 
 **Generate UUIDs. Build Distributed Systems.**`,
   },
@@ -2260,13 +2260,13 @@ UUIDs are the go-to solution for generating unique identifiers in modern applica
     readTime: "7 min read",
     category: "Tutorial",
     image: "/blog-images/regex-tester.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Regex", "Regular Expressions", "Pattern Matching", "Validation", "Programming"],
     content: `## Introduction
 
 Regular expressions (regex) are powerful patterns used to match character combinations in text. They're essential for form validation, text parsing, search-and-replace operations, and data extraction.
 
-Try the tool here: [rosettascript.github.io/tools/regex-tester](https://rosettascript.github.io/tools/regex-tester)
+Try the tool here: [anivaryam.github.io/tools/regex-tester](https://anivaryam.github.io/tools/regex-tester)
 
 ## Basic Regex Patterns
 
@@ -2312,8 +2312,8 @@ Try the tool here: [rosettascript.github.io/tools/regex-tester](https://rosettas
 \`\`\`
 
 Matches:
-- ✅ user@example.com
-- ✅ john.doe@company.org
+-  user@example.com
+-  john.doe@company.org
 
 ### URL Validation
 
@@ -2428,22 +2428,22 @@ $result = preg_match($pattern, "Call 555-1234");
 ### 1. Not Escaping Special Characters
 
 \`\`\`
-❌ user@example.com  (matches any character)
-✅ user@example\\.com (escapes the dot)
+ user@example.com  (matches any character)
+ user@example\\.com (escapes the dot)
 \`\`\`
 
 ### 2. Greedy vs Lazy Quantifiers
 
 \`\`\`
-❌ "<.+>"    Matches "<b>bold</b>" as one match
-✅ "<.+?>"   Matches "<b>" and "</b>" separately
+ "<.+>"    Matches "<b>bold</b>" as one match
+ "<.+?>"   Matches "<b>" and "</b>" separately
 \`\`\`
 
 ### 3. Not Anchoring Patterns
 
 \`\`\`
-❌ \\d{5}    Matches "12345" anywhere
-✅ ^\\d{5}$  Matches exactly 5 digits
+ \\d{5}    Matches "12345" anywhere
+ ^\\d{5}$  Matches exactly 5 digits
 \`\`\`
 
 ## Best Practices
@@ -2458,7 +2458,7 @@ $result = preg_match($pattern, "Call 555-1234");
 
 Regular expressions are incredibly powerful once mastered. They allow you to validate input, extract data, and manipulate text with precision. Practice with real-world examples to become proficient.
 
-👉 **Try it now**: [https://rosettascript.github.io/tools/regex-tester](https://rosettascript.github.io/tools/regex-tester)
+👉 **Try it now**: [https://anivaryam.github.io/tools/regex-tester](https://anivaryam.github.io/tools/regex-tester)
 
 **Master Patterns. Match Anything.**`,
   },
@@ -2470,15 +2470,15 @@ Regular expressions are incredibly powerful once mastered. They allow you to val
     readTime: "6 min read",
     category: "Tutorial",
     image: "/blog-images/hash-generator.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Hashing", "Cryptography", "Security", "SHA", "MD5"],
     content: `## Introduction
 
 Cryptographic hash functions are fundamental to modern computing. They're used for password storage, data integrity verification, digital signatures, and blockchain technology.
 
-This guide explains hash functions and shows how to use the RosettaScript Hash Generator tool.
+This guide explains hash functions and shows how to use the Anivaryam Hash Generator tool.
 
-Try the tool here: [rosettascript.github.io/tools/hash-generator](https://rosettascript.github.io/tools/hash-generator)
+Try the tool here: [anivaryam.github.io/tools/hash-generator](https://anivaryam.github.io/tools/hash-generator)
 
 ## What is a Hash Function?
 
@@ -2549,9 +2549,9 @@ Attackers pre-compute hashes for common passwords. Defense: add a salt before ha
 
 ## Using the Hash Generator
 
-The RosettaScript Hash Generator supports MD5, SHA-1, SHA-256, SHA-384, and SHA-512.
+The Anivaryam Hash Generator supports MD5, SHA-1, SHA-256, SHA-384, and SHA-512.
 
-Try it now: [rosettascript.github.io/tools/hash-generator](https://rosettascript.github.io/tools/hash-generator)
+Try it now: [anivaryam.github.io/tools/hash-generator](https://anivaryam.github.io/tools/hash-generator)
 
 **Hash Securely. Protect Data.**`,
   },
@@ -2563,15 +2563,15 @@ Try it now: [rosettascript.github.io/tools/hash-generator](https://rosettascript
     readTime: "4 min read",
     category: "Tutorial",
     image: "/blog-images/hash-decoder.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Hash", "Verification", "Security", "Checksum", "Integrity"],
     content: `## Introduction
 
 Hash verification is essential for ensuring data integrity. Whether you're checking downloaded files, verifying passwords, or validating data transfers, understanding hash verification protects you from corruption and tampering.
 
-This guide covers hash verification and shows how to use the RosettaScript Hash Decoder tool.
+This guide covers hash verification and shows how to use the Anivaryam Hash Decoder tool.
 
-Try the tool here: [rosettascript.github.io/tools/hash-decoder](https://rosettascript.github.io/tools/hash-decoder)
+Try the tool here: [anivaryam.github.io/tools/hash-decoder](https://anivaryam.github.io/tools/hash-decoder)
 
 ## What is Hash Verification?
 
@@ -2621,9 +2621,9 @@ Verify transmitted data wasn't corrupted.
 
 ## Using the Hash Decoder
 
-The RosettaScript Hash Decoder supports MD5, SHA-1, SHA-256, SHA-384, and SHA-512 with verification mode.
+The Anivaryam Hash Decoder supports MD5, SHA-1, SHA-256, SHA-384, and SHA-512 with verification mode.
 
-Try it now: [rosettascript.github.io/tools/hash-decoder](https://rosettascript.github.io/tools/hash-decoder)
+Try it now: [anivaryam.github.io/tools/hash-decoder](https://anivaryam.github.io/tools/hash-decoder)
 
 **Verify. Protect. Ensure Integrity.**`,
   },
@@ -2635,15 +2635,15 @@ Try it now: [rosettascript.github.io/tools/hash-decoder](https://rosettascript.g
     readTime: "5 min read",
     category: "Tutorial",
     image: "/blog-images/jwt-encoder.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["JWT", "JSON Web Token", "Authentication", "API", "Security"],
     content: `## Introduction
 
 JSON Web Tokens (JWT) have become the standard for modern authentication and information exchange. They're used everywhere—from mobile apps to microservices.
 
-This guide explains JWTs and shows how to use the RosettaScript JWT Encoder tool.
+This guide explains JWTs and shows how to use the Anivaryam JWT Encoder tool.
 
-Try the tool here: [rosettascript.github.io/tools/jwt-encoder](https://rosettascript.github.io/tools/jwt-encoder)
+Try the tool here: [anivaryam.github.io/tools/jwt-encoder](https://anivaryam.github.io/tools/jwt-encoder)
 
 ## What is a JWT?
 
@@ -2696,14 +2696,14 @@ Verifies the token wasn't tampered.
 
 ## Using the JWT Encoder
 
-The RosettaScript JWT Encoder lets you:
+The Anivaryam JWT Encoder lets you:
 
 - Create new tokens
 - Set header and payload
 - Choose algorithm
 - Sign with secret key
 
-Try it now: [rosettascript.github.io/tools/jwt-encoder](https://rosettascript.github.io/tools/jwt-encoder)
+Try it now: [anivaryam.github.io/tools/jwt-encoder](https://anivaryam.github.io/tools/jwt-encoder)
 
 **Encode. Sign. Authenticate.**`,
   },
@@ -2715,15 +2715,15 @@ Try it now: [rosettascript.github.io/tools/jwt-encoder](https://rosettascript.gi
     readTime: "5 min read",
     category: "Tutorial",
     image: "/blog-images/jwt-decoder.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["JWT", "Token", "Authentication", "Debug", "Security"],
     content: `## Introduction
 
 JSON Web Tokens (JWT) are everywhere in modern authentication. But debugging JWT issues can be frustrating. Understanding what's inside your token is crucial for troubleshooting.
 
-This guide explains JWT structure and shows how to use the RosettaScript JWT Decoder tool.
+This guide explains JWT structure and shows how to use the Anivaryam JWT Decoder tool.
 
-Try the tool here: [rosettascript.github.io/tools/jwt-decoder](https://rosettascript.github.io/tools/jwt-decoder)
+Try the tool here: [anivaryam.github.io/tools/jwt-decoder](https://anivaryam.github.io/tools/jwt-decoder)
 
 ## JWT Structure Recap
 
@@ -2773,13 +2773,13 @@ const payload = JSON.parse(atob(parts[1]));
 
 ## Using the JWT Decoder
 
-The RosettaScript JWT Decoder provides:
+The Anivaryam JWT Decoder provides:
 
 - Decode header and payload
 - Check expiration automatically
 - Verify signature with secret
 
-Try it now: [rosettascript.github.io/tools/jwt-decoder](https://rosettascript.github.io/tools/jwt-decoder)
+Try it now: [anivaryam.github.io/tools/jwt-decoder](https://anivaryam.github.io/tools/jwt-decoder)
 
 **Decode. Inspect. Debug.**`,
   },
@@ -2791,15 +2791,15 @@ Try it now: [rosettascript.github.io/tools/jwt-decoder](https://rosettascript.gi
     readTime: "5 min read",
     category: "Tutorial",
     image: "/blog-images/qr-code-generator.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["QR Code", "Generator", "Marketing", "WiFi", "Contact"],
     content: `## Introduction
 
 QR codes have made a massive comeback. Originally invented in 1994 for vehicle tracking, they're now everywhere—from restaurant menus to payment systems.
 
-This guide covers QR code generation and shows how to use the RosettaScript QR Code Generator tool.
+This guide covers QR code generation and shows how to use the Anivaryam QR Code Generator tool.
 
-Try the tool here: [rosettascript.github.io/tools/qr-code-generator](https://rosettascript.github.io/tools/qr-code-generator)
+Try the tool here: [anivaryam.github.io/tools/qr-code-generator](https://anivaryam.github.io/tools/qr-code-generator)
 
 ## What is a QR Code?
 
@@ -2850,13 +2850,13 @@ QR codes include error correction:
 
 ## Using the QR Code Generator
 
-The RosettaScript QR Code Generator supports:
+The Anivaryam QR Code Generator supports:
 
 - Multiple types (URL, WiFi, Contact, etc.)
 - Customization (colors, size)
 - PNG download
 
-Try it now: [rosettascript.github.io/tools/qr-code-generator](https://rosettascript.github.io/tools/qr-code-generator)
+Try it now: [anivaryam.github.io/tools/qr-code-generator](https://anivaryam.github.io/tools/qr-code-generator)
 
 **Generate. Print. Connect.**`,
   },
@@ -2868,15 +2868,15 @@ Try it now: [rosettascript.github.io/tools/qr-code-generator](https://rosettascr
     readTime: "4 min read",
     category: "Tutorial",
     image: "/blog-images/timestamp-converter.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Timestamp", "Unix", "Date", "Time", "API", "Development"],
     content: `## Introduction
 
 Unix timestamps are everywhere in programming—from databases to APIs to logs. Understanding timestamps is essential for any developer.
 
-This guide explains timestamps and shows how to use the RosettaScript Timestamp Converter tool.
+This guide explains timestamps and shows how to use the Anivaryam Timestamp Converter tool.
 
-Try the tool here: [rosettascript.github.io/tools/timestamp-converter](https://rosettascript.github.io/tools/timestamp-converter)
+Try the tool here: [anivaryam.github.io/tools/timestamp-converter](https://anivaryam.github.io/tools/timestamp-converter)
 
 ## What is a Unix Timestamp?
 
@@ -2928,14 +2928,14 @@ Math.floor(Date.now() / 1000) // seconds
 
 ## Using the Timestamp Converter
 
-The RosettaScript Timestamp Converter provides:
+The Anivaryam Timestamp Converter provides:
 
 - Now button for current timestamp
 - Bidirectional conversion
 - Milliseconds support
 - Multiple formats
 
-Try it now: [rosettascript.github.io/tools/timestamp-converter](https://rosettascript.github.io/tools/timestamp-converter)
+Try it now: [anivaryam.github.io/tools/timestamp-converter](https://anivaryam.github.io/tools/timestamp-converter)
 
 **Convert. Compare. Sync.**`,
   },
@@ -2947,15 +2947,15 @@ Try it now: [rosettascript.github.io/tools/timestamp-converter](https://rosettas
     readTime: "5 min read",
     category: "Tutorial",
     image: "/blog-images/csv-to-json.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["CSV", "JSON", "Data Conversion", "API", "ETL"],
     content: `## Introduction
 
 CSV (Comma-Separated Values) and JSON are the most common data formats. Converting between them is a daily task for developers, data analysts, and anyone working with data.
 
-This guide covers CSV to JSON conversion and shows how to use the RosettaScript CSV to JSON tool.
+This guide covers CSV to JSON conversion and shows how to use the Anivaryam CSV to JSON tool.
 
-Try the tool here: [rosettascript.github.io/tools/csv-to-json](https://rosettascript.github.io/tools/csv-to-json)
+Try the tool here: [anivaryam.github.io/tools/csv-to-json](https://anivaryam.github.io/tools/csv-to-json)
 
 ## CSV vs JSON
 
@@ -3010,14 +3010,14 @@ John,30
 
 ## Using the CSV to JSON Tool
 
-The RosettaScript CSV to JSON Converter provides:
+The Anivaryam CSV to JSON Converter provides:
 
 - Multiple delimiter options
 - Header handling
 - Type conversion
 - Preview and download
 
-Try it now: [rosettascript.github.io/tools/csv-to-json](https://rosettascript.github.io/tools/csv-to-json)
+Try it now: [anivaryam.github.io/tools/csv-to-json](https://anivaryam.github.io/tools/csv-to-json)
 
 **Transform Data. Simplify Integration.**`,
   },
@@ -3029,15 +3029,15 @@ Try it now: [rosettascript.github.io/tools/csv-to-json](https://rosettascript.gi
     readTime: "4 min read",
     category: "Tutorial",
     image: "/blog-images/text-diff.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Diff", "Compare", "Text Comparison", "Version Control", "Development"],
     content: `## Introduction
 
 Comparing text is a fundamental task in software development. Whether you're reviewing code changes, finding differences in documents, or merging changes, a good diff tool is essential.
 
-This guide explains text diffing and shows how to use the RosettaScript Text Diff tool.
+This guide explains text diffing and shows how to use the Anivaryam Text Diff tool.
 
-Try the tool here: [rosettascript.github.io/tools/text-diff](https://rosettascript.github.io/tools/text-diff)
+Try the tool here: [anivaryam.github.io/tools/text-diff](https://anivaryam.github.io/tools/text-diff)
 
 ## What is Text Diffing?
 
@@ -3081,14 +3081,14 @@ Find what changed between states.
 
 ## Using the Text Diff Tool
 
-The RosettaScript Text Diff provides:
+The Anivaryam Text Diff provides:
 
 - Multiple modes (line, word, character)
 - Side-by-side view
 - Ignore whitespace option
 - Case insensitive mode
 
-Try it now: [rosettascript.github.io/tools/text-diff](https://rosettascript.github.io/tools/text-diff)
+Try it now: [anivaryam.github.io/tools/text-diff](https://anivaryam.github.io/tools/text-diff)
 
 **Compare. Review. Merge.**`,
   },
@@ -3100,15 +3100,15 @@ Try it now: [rosettascript.github.io/tools/text-diff](https://rosettascript.gith
     readTime: "5 min read",
     category: "Tutorial",
     image: "/blog-images/image-tool.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Image", "Compression", "Resize", "Conversion", "Favicon"],
     content: `## Introduction
 
 Images are essential for the web, but they need to be optimized. Large images slow down websites, hurt SEO, and frustrate users.
 
-This guide covers essential image operations and shows how to use the RosettaScript Image Tool.
+This guide covers essential image operations and shows how to use the Anivaryam Image Tool.
 
-Try the tool here: [rosettascript.github.io/tools/image-tool](https://rosettascript.github.io/tools/image-tool)
+Try the tool here: [anivaryam.github.io/tools/image-tool](https://anivaryam.github.io/tools/image-tool)
 
 ## Image Compression
 
@@ -3156,7 +3156,7 @@ All processing happens locally in your browser:
 
 ## Using the Image Tool
 
-The RosettaScript Image Tool provides:
+The Anivaryam Image Tool provides:
 
 - Compression
 - Format conversion
@@ -3164,7 +3164,7 @@ The RosettaScript Image Tool provides:
 - Favicon generation
 - Preview
 
-Try it now: [rosettascript.github.io/tools/image-tool](https://rosettascript.github.io/tools/image-tool)
+Try it now: [anivaryam.github.io/tools/image-tool](https://anivaryam.github.io/tools/image-tool)
 
 **Optimize. Convert. Resize.**`,
   },
@@ -3176,15 +3176,15 @@ Try it now: [rosettascript.github.io/tools/image-tool](https://rosettascript.git
     readTime: "5 min read",
     category: "Tutorial",
     image: "/blog-images/json-extractor.svg",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["JSON", "Extraction", "Data", "API", "Path"],
     content: `## Introduction
 
 Working with JSON APIs often means dealing with deeply nested structures. Finding and extracting specific data can be challenging without the right tools.
 
-This guide covers JSON extraction and shows how to use the RosettaScript JSON Extractor tool.
+This guide covers JSON extraction and shows how to use the Anivaryam JSON Extractor tool.
 
-Try the tool here: [rosettascript.github.io/tools/json-extractor](https://rosettascript.github.io/tools/json-extractor)
+Try the tool here: [anivaryam.github.io/tools/json-extractor](https://anivaryam.github.io/tools/json-extractor)
 
 ## Understanding JSON Structures
 
@@ -3244,7 +3244,7 @@ users[?(@.age > 25)]
 
 ## Using the JSON Extractor
 
-The RosettaScript JSON Extractor provides:
+The Anivaryam JSON Extractor provides:
 
 - Path input
 - Key extraction
@@ -3252,7 +3252,7 @@ The RosettaScript JSON Extractor provides:
 - Preview
 - Copy results
 
-Try it now: [rosettascript.github.io/tools/json-extractor](https://rosettascript.github.io/tools/json-extractor)
+Try it now: [anivaryam.github.io/tools/json-extractor](https://anivaryam.github.io/tools/json-extractor)
 
 **Extract. Filter. Discover.**`,
   },

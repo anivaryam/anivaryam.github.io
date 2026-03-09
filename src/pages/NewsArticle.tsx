@@ -26,23 +26,23 @@ export default function NewsArticle() {
         "dateModified": article.date,
         "author": {
           "@type": "Organization",
-          "name": article.author || "RosettaScript"
+          "name": article.author || "Anivaryam"
         },
         "publisher": {
           "@type": "Organization",
-          "name": "RosettaScript",
+          "name": "Anivaryam",
           "logo": {
             "@type": "ImageObject",
             "url": typeof window !== "undefined" 
               ? `${window.location.origin}/icon-512.png`
-              : "https://rosettascript.github.io/icon-512.png"
+              : "https://anivaryam.github.io/icon-512.png"
           }
         },
         "mainEntityOfPage": {
           "@type": "WebPage",
           "@id": typeof window !== "undefined"
             ? window.location.href
-            : `https://rosettascript.github.io/news/${article.slug}`
+            : `https://anivaryam.github.io/news/${article.slug}`
         },
         "articleSection": article.category,
         "keywords": article.tags?.join(", ") || ""
@@ -94,7 +94,7 @@ export default function NewsArticle() {
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
   const canonicalUrl = typeof window !== "undefined" 
     ? `${window.location.origin}/news/${article.slug}`
-    : `https://rosettascript.github.io/news/${article.slug}`;
+    : `https://anivaryam.github.io/news/${article.slug}`;
 
   return (
     <Layout>
@@ -110,8 +110,8 @@ export default function NewsArticle() {
           tags: article.tags,
         }}
         breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "News", url: "https://rosettascript.github.io/news" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "News", url: "https://anivaryam.github.io/news" },
           { name: article.title, url: canonicalUrl },
         ]}
       />

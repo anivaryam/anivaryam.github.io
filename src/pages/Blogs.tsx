@@ -21,13 +21,13 @@ export default function Blogs() {
       <SEO
         title="Developer Blog & Tutorials"
         description="Tutorials, tips, and developer resources. Learn about web scraping, cryptography, post-quantum security, and more developer topics."
-        canonical="https://rosettascript.github.io/blogs"
+        canonical="https://anivaryam.github.io/blogs"
         structuredData={{
           type: "WebPage",
         }}
         breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Blog", url: "https://rosettascript.github.io/blogs" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Blog", url: "https://anivaryam.github.io/blogs" },
         ]}
       />
       <div className="container mx-auto px-4 py-12">

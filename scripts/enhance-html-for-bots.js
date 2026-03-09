@@ -11,7 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const blogPostsFile = path.join(__dirname, '..', 'src', 'data', 'blogPosts.ts');
 const newsFile = path.join(__dirname, '..', 'src', 'data', 'news.ts');
 const toolsFile = path.join(__dirname, '..', 'src', 'pages', 'Tools.tsx');
-const baseUrl = 'https://rosettascript.github.io';
+const baseUrl = 'https://anivaryam.github.io';
 
 /**
  * Extract blog post data from blogPosts.ts
@@ -70,7 +70,7 @@ function getBlogPosts() {
           excerpt: excerptMatch[1],
           date: dateMatch[1],
           image: imageMatch ? imageMatch[1] : '/og-image.png',
-          author: authorMatch ? authorMatch[1] : 'RosettaScript',
+          author: authorMatch ? authorMatch[1] : 'Anivaryam',
           tags: tags,
           firstParagraph: firstParagraph || excerptMatch[1],
           content: contentMatch ? contentMatch[1] : ''
@@ -128,7 +128,7 @@ function getNewsArticles() {
           date: dateMatch[1],
           image: imageMatch ? imageMatch[1] : '/og-image.png',
           category: categoryMatch ? categoryMatch[1] : 'Updates',
-          author: authorMatch ? authorMatch[1] : 'RosettaScript',
+          author: authorMatch ? authorMatch[1] : 'Anivaryam',
           tags: tags
         });
       }
@@ -313,7 +313,7 @@ function generateBlogPostStructuredData(post) {
     },
     "publisher": {
       "@type": "Organization",
-      "name": "RosettaScript",
+      "name": "Anivaryam",
       "url": baseUrl
     },
     "mainEntityOfPage": {
@@ -362,7 +362,7 @@ function generateNewsArticleStructuredData(article) {
     },
     "publisher": {
       "@type": "Organization",
-      "name": "RosettaScript",
+      "name": "Anivaryam",
       "url": baseUrl
     },
     "mainEntityOfPage": {
@@ -395,7 +395,7 @@ function generateToolStructuredData(tool) {
     },
     "provider": {
       "@type": "Organization",
-      "name": "RosettaScript",
+      "name": "Anivaryam",
       "url": baseUrl
     }
   };
@@ -416,7 +416,7 @@ function generatePageStructuredData(route, metadata) {
     "dateModified": today,
     "isPartOf": {
       "@type": "WebSite",
-      "name": "RosettaScript",
+      "name": "Anivaryam",
       "url": baseUrl
     }
   };
@@ -442,7 +442,7 @@ function truncateDescription(text, maxLength = 155) {
  * Inject meta tags and structured data into HTML
  */
 function injectMetaTags(html, metadata, route, structuredData = null) {
-  const siteName = "RosettaScript";
+  const siteName = "Anivaryam";
   
   // Truncate description first
   const truncatedDescription = truncateDescription(metadata.description, 155);
@@ -459,7 +459,7 @@ function injectMetaTags(html, metadata, route, structuredData = null) {
   if (mainPagesWithoutBrand.includes(metadata.title)) {
     fullTitle = truncateTitle(metadata.title, 60);
   } else {
-    // Reserve space for " | RosettaScript" (16 chars), so max 44 chars for title
+    // Reserve space for " | Anivaryam" (16 chars), so max 44 chars for title
     const maxTitleLength = 44;
     const truncatedBaseTitle = truncateTitle(metadata.title, maxTitleLength);
     fullTitle = `${truncatedBaseTitle} | ${siteName}`;
@@ -555,7 +555,7 @@ function preRenderBlogPostContent(post) {
         <header style="margin-bottom: 2rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 1rem;">
           <h1 style="font-size: 2.5rem; margin-bottom: 1rem; color: #111827;">${escapeHtml(post.title)}</h1>
           <div style="display: flex; gap: 1rem; flex-wrap: wrap; color: #6b7280; font-size: 0.9rem; margin-bottom: 1rem;">
-            <span>Author: ${escapeHtml(post.author || 'RosettaScript')}</span>
+            <span>Author: ${escapeHtml(post.author || 'Anivaryam')}</span>
             <span>Published: ${new Date(post.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
             ${post.tags && post.tags.length > 0 ? `<span>Tags: ${post.tags.join(', ')}</span>` : ''}
           </div>
@@ -712,7 +712,7 @@ function preRenderHomepageContent(metadata) {
         <header style="margin-bottom: 3rem; text-align: center;">
           <h1 style="font-size: 2.5rem; margin-bottom: 1rem; color: #111827;">Free Online Developer Tools for Text, Code & Document Conversion</h1>
           <p style="font-size: 1.125rem; color: #374151; margin-bottom: 1rem; max-width: 800px; margin-left: auto; margin-right: auto;">
-            RosettaScript offers 20+ free online developer tools for converting, cleaning, formatting, and automating text and code. Whether you need a <a href="/tools/word-to-html" style="color: #22c55e; text-decoration: none;">Word to HTML converter</a>, <a href="/tools/json-formatter" style="color: #22c55e; text-decoration: none;">JSON formatter</a>, <a href="/tools/base64" style="color: #22c55e; text-decoration: none;">Base64 encoder</a>, or more, these tools run entirely in your browser without signup or cost. These tools help developers, content editors, and technical writers save time while maintaining quality.
+            Anivaryam offers 20+ free online developer tools for converting, cleaning, formatting, and automating text and code. Whether you need a <a href="/tools/word-to-html" style="color: #22c55e; text-decoration: none;">Word to HTML converter</a>, <a href="/tools/json-formatter" style="color: #22c55e; text-decoration: none;">JSON formatter</a>, <a href="/tools/base64" style="color: #22c55e; text-decoration: none;">Base64 encoder</a>, or more, these tools run entirely in your browser without signup or cost. These tools help developers, content editors, and technical writers save time while maintaining quality.
           </p>
         </header>
 
@@ -761,7 +761,7 @@ function preRenderHomepageContent(metadata) {
         </section>
 
         <section style="margin-bottom: 3rem; background: #f9fafb; padding: 2rem; border-radius: 8px;">
-          <h2 style="font-size: 2rem; margin-bottom: 1.5rem; color: #111827; text-align: center;">Why Use RosettaScript Developer Tools</h2>
+          <h2 style="font-size: 2rem; margin-bottom: 1.5rem; color: #111827; text-align: center;">Why Use Anivaryam Developer Tools</h2>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem;">
             <div>
               <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0.75rem; color: #111827;">No Signup Required</h3>
@@ -777,7 +777,7 @@ function preRenderHomepageContent(metadata) {
             </div>
             <div>
               <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0.75rem; color: #111827;">Open Source</h3>
-              <p style="color: #6b7280; margin: 0;">RosettaScript is an open-source project built by a developer, for developers. You can review the code, contribute improvements, or use it as a reference for your own projects.</p>
+              <p style="color: #6b7280; margin: 0;">Anivaryam is an open-source project built by a developer, for developers. You can review the code, contribute improvements, or use it as a reference for your own projects.</p>
             </div>
           </div>
         </section>
@@ -861,10 +861,10 @@ function preRenderMainPageContent(route, metadata) {
       <section style="margin-bottom: 2rem;">
         <h2 style="font-size: 1.5rem; margin-bottom: 1rem; color: #111827;">Latest Updates & Announcements</h2>
         <p style="color: #6b7280; margin-bottom: 1.5rem;">
-          Stay informed about new tools, bug fixes, improvements, and feature highlights from RosettaScript. Get notified about updates and enhancements to my developer tools.
+          Stay informed about new tools, bug fixes, improvements, and feature highlights from Anivaryam. Get notified about updates and enhancements to my developer tools.
         </p>
         <p style="color: #6b7280; margin-bottom: 1.5rem;">
-          My news section keeps you up-to-date with the latest developments, new tool releases, performance improvements, and important announcements. Follow along to see how RosettaScript evolves to better serve the developer community.
+          My news section keeps you up-to-date with the latest developments, new tool releases, performance improvements, and important announcements. Follow along to see how Anivaryam evolves to better serve the developer community.
         </p>
         <div style="text-align: center; margin-top: 2rem;">
           <a href="/news" style="display: inline-block; padding: 0.75rem 1.5rem; background: #22c55e; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">View All News →</a>
@@ -901,7 +901,7 @@ function preRenderMainPageContent(route, metadata) {
       <section style="margin-bottom: 2rem;">
         <h2 style="font-size: 1.5rem; margin-bottom: 1rem; color: #111827;">Developer Tools Made Simple</h2>
         <p style="color: #6b7280; margin-bottom: 1.5rem;">
-          RosettaScript was born from a simple idea: developers shouldn't waste time on repetitive tasks. I build tools that let you focus on what matters—creating amazing software.
+          Anivaryam was born from a simple idea: developers shouldn't waste time on repetitive tasks. I build tools that let you focus on what matters—creating amazing software.
         </p>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-top: 2rem; margin-bottom: 2rem;">
           <div style="text-align: center; padding: 1.5rem; background: #f9fafb; border-radius: 8px;">
@@ -972,29 +972,29 @@ function preRenderMainPageContent(route, metadata) {
   } else if (route === '/issues') {
     content = `
       <section style="margin-bottom: 2rem;">
-        <h2 style="font-size: 1.5rem; margin-bottom: 1rem; color: #111827;">Help Me Improve RosettaScript</h2>
+        <h2 style="font-size: 1.5rem; margin-bottom: 1rem; color: #111827;">Help Me Improve Anivaryam</h2>
         <p style="color: #6b7280; margin-bottom: 1.5rem;">
-          Your feedback helps me improve RosettaScript. Whether you've found a bug, have a feature request, or just want to share your thoughts, I'm here to listen.
+          Your feedback helps me improve Anivaryam. Whether you've found a bug, have a feature request, or just want to share your thoughts, I'm here to listen.
         </p>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-top: 2rem;">
           <div style="padding: 1.5rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
             <h3 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; color: #111827;">Report a Bug</h3>
             <p style="color: #6b7280; font-size: 0.9rem; margin-bottom: 1rem;">Found something that's not working as expected? Let me know so I can fix it.</p>
-            <a href="https://github.com/rosettascript/rosettascript.github.io/issues" style="color: #22c55e; text-decoration: none; font-size: 0.9rem;">Report Bug →</a>
+            <a href="https://github.com/anivaryam/anivaryam.github.io/issues" style="color: #22c55e; text-decoration: none; font-size: 0.9rem;">Report Bug →</a>
           </div>
           <div style="padding: 1.5rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
             <h3 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; color: #111827;">Feature Request</h3>
             <p style="color: #6b7280; font-size: 0.9rem; margin-bottom: 1rem;">Have an idea for a new tool or feature? I'd love to hear your suggestions.</p>
-            <a href="https://github.com/rosettascript/rosettascript.github.io/issues" style="color: #22c55e; text-decoration: none; font-size: 0.9rem;">Request Feature →</a>
+            <a href="https://github.com/anivaryam/anivaryam.github.io/issues" style="color: #22c55e; text-decoration: none; font-size: 0.9rem;">Request Feature →</a>
           </div>
           <div style="padding: 1.5rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
             <h3 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; color: #111827;">General Issue</h3>
             <p style="color: #6b7280; font-size: 0.9rem; margin-bottom: 1rem;">Something else on your mind? Open a general issue to discuss.</p>
-            <a href="https://github.com/rosettascript/rosettascript.github.io/issues" style="color: #22c55e; text-decoration: none; font-size: 0.9rem;">Open Issue →</a>
+            <a href="https://github.com/anivaryam/anivaryam.github.io/issues" style="color: #22c55e; text-decoration: none; font-size: 0.9rem;">Open Issue →</a>
           </div>
         </div>
         <p style="color: #6b7280; margin-top: 2rem; text-align: center;">
-          All issues are tracked on <a href="https://github.com/rosettascript/rosettascript.github.io/issues" style="color: #22c55e; text-decoration: none;">GitHub Issues</a>. I review every submission and respond as quickly as possible.
+          All issues are tracked on <a href="https://github.com/anivaryam/anivaryam.github.io/issues" style="color: #22c55e; text-decoration: none;">GitHub Issues</a>. I review every submission and respond as quickly as possible.
         </p>
       </section>
     `;

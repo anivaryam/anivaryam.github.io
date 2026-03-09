@@ -206,5 +206,5 @@ RUSTFLAGS="-C target-feature=+simd128" wasm-pack build --target web --release
 
 ## 📄 License
 
-Part of the RosettaScript Random Universe Cipher implementation.
+Part of the Anivaryam Random Universe Cipher implementation.
 

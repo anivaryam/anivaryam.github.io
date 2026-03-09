@@ -28,11 +28,11 @@ export default function WordToHtml() {
       <SEO
         title="Word to HTML Converter - Clean HTML Online"
         description="Convert Word documents to clean, semantic HTML code. Free online Word to HTML converter with blog and shoppable modes. No signup required."
-        canonical="https://rosettascript.github.io/tools/word-to-html"
+        canonical="https://anivaryam.github.io/tools/word-to-html"
 breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools" },
-          { name: "Word to HTML", url: "https://rosettascript.github.io/tools/word-to-html" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Tools", url: "https://anivaryam.github.io/tools" },
+          { name: "Word to HTML", url: "https://anivaryam.github.io/tools/word-to-html" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

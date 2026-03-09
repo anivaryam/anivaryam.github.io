@@ -1,6 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
-  <rect fill="#1e293b" width="600" height="400"/>
-  <text fill="#f97316" font-family="monospace" font-size="24" x="50%" y="45%" text-anchor="middle">Hash Decoder</text>
-  <text fill="#94a3b8" font-family="monospace" font-size="14" x="50%" y="55%" text-anchor="middle">Verify &amp; Check Hashes</text>
-  <rect x="100" y="300" width="400" height="4" fill="#f97316" rx="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="12" fill="#8b5cf6"/>
+  <path d="M20 32 L28 40 L44 24" stroke="white" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

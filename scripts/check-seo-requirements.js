@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Check all pages for SEO requirements:
- * - Title: 30-60 characters (including " | RosettaScript" suffix)
+ * - Title: 30-60 characters (including " | Anivaryam" suffix)
  * - Description: 120-160 characters
  */
 import fs from 'fs';
@@ -16,7 +16,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const siteName = "RosettaScript";
+const siteName = "Anivaryam";
 const TITLE_MIN = 30;
 const TITLE_MAX = 60;
 const DESC_MIN = 120;
@@ -107,7 +107,7 @@ const routeMetadata = {
   },
   '/news': {
     title: 'News',
-    description: 'Latest updates, announcements, and feature highlights from RosettaScript. Stay informed about new tools, bug fixes, and improvements.'
+    description: 'Latest updates, announcements, and feature highlights from Anivaryam. Stay informed about new tools, bug fixes, and improvements.'
   },
   '/school-projects': {
     title: 'School Projects',
@@ -115,7 +115,7 @@ const routeMetadata = {
   },
   '/about': {
     title: 'About',
-    description: 'Learn more about RosettaScript and my mission. Developer tools made simple, built by a developer for developers.'
+    description: 'Learn more about Anivaryam and my mission. Developer tools made simple, built by a developer for developers.'
   }
 };
 

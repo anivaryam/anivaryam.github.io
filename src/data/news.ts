@@ -20,7 +20,7 @@ export const newsArticles: NewsArticle[] = [
     date: "2026-01-13",
     category: "Features",
     image: "/blog-images/word-to-html-header-visualizer.webp",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Features", "Word to HTML", "UI/UX", "Preview"],
     content: `## New Feature: Visual Heading Hierarchy in Word to HTML Preview
 
@@ -93,7 +93,7 @@ This enhancement makes the Word to HTML converter even more powerful for content
     date: "2025-12-28",
     category: "Features",
     image: "/blog-images/issues.webp",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Features", "Community", "Feedback"],
     content: `## New Issues Page: Submit Feedback & Report Bugs
 
@@ -126,11 +126,11 @@ You can access the Issues page in several ways:
 
 1. **Navigation Menu**: Click "Issues" in the main navigation bar
 2. **Footer**: Find it under "Resources" in the footer
-3. **Direct URL**: Visit \`/issues\` on the RosettaScript website
+3. **Direct URL**: Visit \`/issues\` on the Anivaryam website
 
 ### Why This Matters
 
-Your feedback is invaluable in helping me improve RosettaScript. By making it easier to submit issues and feedback, I hope to:
+Your feedback is invaluable in helping me improve Anivaryam. By making it easier to submit issues and feedback, I hope to:
 
 - **Respond faster** to bug reports and feature requests
 - **Build better tools** based on your needs
@@ -152,7 +152,7 @@ Ready to share your feedback? Visit the [Issues page](/issues) and let me know w
     date: "2025-12-28",
     category: "Updates",
     image: "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=600&h=400&fit=crop",
-    author: "RosettaScript",
+    author: "Anivaryam",
     tags: ["Updates", "Word to HTML", "Shoppables"],
     content: `## Patch 1.0.2 - Enhanced Shoppables Mode & HTML Cleanup
 

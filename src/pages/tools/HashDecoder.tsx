@@ -19,11 +19,11 @@ export default function HashDecoder() {
       <SEO
         title="Hash Decoder/Verifier - Verify SHA Hashes"
         description="Verify if text matches a hash value instantly. Check SHA-1, SHA-256, SHA-384, and SHA-512 hashes. Free online hash verification tool. Perfect for password verification and data integrity checks."
-        canonical="https://rosettascript.github.io/tools/hash-decoder"
+        canonical="https://anivaryam.github.io/tools/hash-decoder"
 breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools" },
-          { name: "Hash Decoder", url: "https://rosettascript.github.io/tools/hash-decoder" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Tools", url: "https://anivaryam.github.io/tools" },
+          { name: "Hash Decoder", url: "https://anivaryam.github.io/tools/hash-decoder" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

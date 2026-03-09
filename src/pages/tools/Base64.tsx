@@ -19,11 +19,11 @@ export default function Base64() {
       <SEO
         title="Base64 Encoder/Decoder - Free Online"
         description="Encode text to Base64 or decode Base64 strings back to plain text with UTF-8 support. Free online Base64 encoder and decoder. Essential for data encoding and API development."
-        canonical="https://rosettascript.github.io/tools/base64"
+        canonical="https://anivaryam.github.io/tools/base64"
 breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools" },
-          { name: "Base64 Encoder/Decoder", url: "https://rosettascript.github.io/tools/base64" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Tools", url: "https://anivaryam.github.io/tools" },
+          { name: "Base64 Encoder/Decoder", url: "https://anivaryam.github.io/tools/base64" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

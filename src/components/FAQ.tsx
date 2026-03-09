@@ -100,7 +100,7 @@ export function FAQ() {
               Frequently Asked Questions
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Find answers to common questions about RosettaScript's free developer tools, privacy, usage, and more.
+              Find answers to common questions about Anivaryam's free developer tools, privacy, usage, and more.
             </p>
           </div>
 
@@ -205,7 +205,7 @@ export function FAQ() {
               </Badge>
               <Badge variant="outline" asChild>
                 <a
-                  href="https://github.com/rosettascript/rosettascript.github.io"
+                  href="https://github.com/anivaryam/anivaryam.github.io"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="cursor-pointer"

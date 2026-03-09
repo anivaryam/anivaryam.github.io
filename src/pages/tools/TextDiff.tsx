@@ -19,11 +19,11 @@ export default function TextDiff() {
       <SEO
         title="Text Diff Tool - Compare Text Differences"
         description="Compare two texts and see differences instantly. Compare by characters, words, or lines. Free online diff tool. Perfect for code reviews, document comparison, and version control."
-        canonical="https://rosettascript.github.io/tools/text-diff"
+        canonical="https://anivaryam.github.io/tools/text-diff"
 breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools" },
-          { name: "Text Diff", url: "https://rosettascript.github.io/tools/text-diff" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Tools", url: "https://anivaryam.github.io/tools" },
+          { name: "Text Diff", url: "https://anivaryam.github.io/tools/text-diff" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

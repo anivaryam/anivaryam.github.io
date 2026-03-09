@@ -5,13 +5,13 @@
  */
 
 const testUrls = [
-  'https://rosettascript.github.io/tools',
-  'https://rosettascript.github.io/blogs',
-  'https://rosettascript.github.io/news',
-  'https://rosettascript.github.io/about',
-  'https://rosettascript.github.io/tools/word-to-html',
-  'https://rosettascript.github.io/tools/web-scraper',
-  'https://rosettascript.github.io/blogs/how-to-convert-word-html-clean-seo-friendly',
+  'https://anivaryam.github.io/tools',
+  'https://anivaryam.github.io/blogs',
+  'https://anivaryam.github.io/news',
+  'https://anivaryam.github.io/about',
+  'https://anivaryam.github.io/tools/word-to-html',
+  'https://anivaryam.github.io/tools/web-scraper',
+  'https://anivaryam.github.io/blogs/how-to-convert-word-html-clean-seo-friendly',
 ];
 
 function extractCanonical(html) {
@@ -66,12 +66,12 @@ async function testCanonical(url) {
     }
     
     const hasTrailingSlash = canonical.endsWith('/');
-    const isHomepage = canonical === 'https://rosettascript.github.io/';
+    const isHomepage = canonical === 'https://anivaryam.github.io/';
     const expectedCanonical = url.endsWith('/') ? url : `${url}/`;
     
     // Homepage is special case - it should be exactly "/"
     const isCorrect = isHomepage 
-      ? canonical === 'https://rosettascript.github.io/'
+      ? canonical === 'https://anivaryam.github.io/'
       : canonical === expectedCanonical;
     
     return {

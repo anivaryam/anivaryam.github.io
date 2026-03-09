@@ -34,8 +34,7 @@ export function Header() {
               <Terminal className="h-5 w-5 text-primary" />
             </div>
             <span className="font-mono font-bold text-lg">
-              <span className="text-primary">Rosetta</span>
-              <span className="text-foreground">Script</span>
+              <span className="text-primary">Anivaryam</span>
             </span>
           </Link>
 

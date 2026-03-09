@@ -139,19 +139,19 @@ const routeMetadata = {
   },
   '/news': {
     title: 'Latest News & Updates',
-    description: 'Latest updates, announcements, and feature highlights from RosettaScript. Stay informed about new tools, bug fixes, and improvements.'
+    description: 'Latest updates, announcements, and feature highlights from Anivaryam. Stay informed about new tools, bug fixes, and improvements.'
   },
   '/school-projects': {
     title: 'School Projects',
     description: 'Ready-to-use project templates for students. Logic gates calculator, audio bandpass filter, and other educational projects with source code.'
   },
   '/about': {
-    title: 'About RosettaScript',
-    description: 'Learn more about RosettaScript and my mission. Developer tools made simple, built by a developer for developers. Free, open-source, and community-driven.'
+    title: 'About Anivaryam',
+    description: 'Learn more about Anivaryam and my mission. Developer tools made simple, built by a developer for developers. Free, open-source, and community-driven.'
   },
   '/faq': {
     title: 'FAQ - Frequently Asked Questions',
-    description: 'Find answers to common questions about RosettaScript free developer tools, privacy, usage, and more. Learn how to use Word to HTML converter, JSON formatter, and other tools.',
+    description: 'Find answers to common questions about Anivaryam free developer tools, privacy, usage, and more. Learn how to use Word to HTML converter, JSON formatter, and other tools.',
     ogImage: '/og-image.png'
   },
   '/': {
@@ -160,7 +160,7 @@ const routeMetadata = {
   },
   '/issues': {
     title: 'Report Issues & Share Feedback',
-    description: 'Report bugs, request features, and share feedback for RosettaScript. Help me improve my developer tools through GitHub Issues.'
+    description: 'Report bugs, request features, and share feedback for Anivaryam. Help me improve my developer tools through GitHub Issues.'
   }
 };
 
@@ -250,7 +250,7 @@ function enhanceHtmlForRoute(html, route) {
       structuredData = {
         "@context": "https://schema.org",
         "@type": "WebSite",
-        "name": "RosettaScript",
+        "name": "Anivaryam",
         "description": metadata.description,
         "url": baseUrl,
         "datePublished": today,

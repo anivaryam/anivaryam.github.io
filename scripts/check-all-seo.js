@@ -26,15 +26,15 @@ const routeMetadata = {
   },
   '/news': {
     title: 'Latest News & Updates',
-    description: 'Latest updates, announcements, and feature highlights from RosettaScript. Stay informed about new tools, bug fixes, and improvements.'
+    description: 'Latest updates, announcements, and feature highlights from Anivaryam. Stay informed about new tools, bug fixes, and improvements.'
   },
   '/downloads': {
     title: 'Free Downloads & Scripts',
     description: 'Downloadable scripts and utilities for Windows, PERN setup, and more. Free developer tools including Microsoft Script and PostgreSQL Manager.'
   },
   '/about': {
-    title: 'About RosettaScript',
-    description: 'Learn more about RosettaScript and my mission. Developer tools made simple, built by a developer for developers. Free, open-source, and community-driven.'
+    title: 'About Anivaryam',
+    description: 'Learn more about Anivaryam and my mission. Developer tools made simple, built by a developer for developers. Free, open-source, and community-driven.'
   },
   '/school-projects': {
     title: 'School Projects',
@@ -42,7 +42,7 @@ const routeMetadata = {
   },
   '/issues': {
     title: 'Report Issues & Share Feedback',
-    description: 'Report bugs, request features, and share feedback for RosettaScript. Help me improve my developer tools through GitHub Issues.'
+    description: 'Report bugs, request features, and share feedback for Anivaryam. Help me improve my developer tools through GitHub Issues.'
   }
 };
 
@@ -102,7 +102,7 @@ function verifyRoute(route) {
       
       // For pages with brand, check if title includes brand or matches base title
       const titleMatch = results.title === expected.title || 
-                        results.title === `${expected.title} | RosettaScript` ||
+                        results.title === `${expected.title} | Anivaryam` ||
                         (route === '/' && results.title === expected.title);
       results.titleMatch = titleMatch;
       results.descriptionMatch = results.description === expected.description;

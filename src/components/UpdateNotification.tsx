@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, CheckCircle2, Sparkles, ArrowRight } from "lucide-react";
 import { BUILD_VERSION } from "@/config/version";
 
-const STORAGE_KEY = "rosettascript_last_seen_version";
-const DISMISSED_KEY = `rosettascript_dismissed_${BUILD_VERSION}`;
+const STORAGE_KEY = "anivaryam_last_seen_version";
+const DISMISSED_KEY = `anivaryam_dismissed_${BUILD_VERSION}`;
 
 const PATCH_NOTES = {
   "0.0.3": {

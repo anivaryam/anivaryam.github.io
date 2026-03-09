@@ -14,8 +14,7 @@ export function Footer() {
                 <Terminal className="h-5 w-5 text-primary" />
               </div>
               <span className="font-mono font-bold text-lg">
-                <span className="text-primary">Rosetta</span>
-                <span className="text-foreground">Script</span>
+                <span className="text-primary">Anivaryam</span>
               </span>
             </Link>
             <p className="text-sm text-muted-foreground">
@@ -71,13 +70,13 @@ export function Footer() {
           <div>
             <h4 className="font-semibold mb-4 text-foreground">Connect</h4>
             <div className="flex gap-3">
-              <a href="https://github.com/rosettascript" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+              <a href="https://github.com/anivaryam" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
                 <Github className="h-5 w-5" />
               </a>
-              <a href="https://x.com/rosettascript" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+              <a href="https://x.com/anivaryam" target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
                 <XIcon size={20} className="h-5 w-5" />
               </a>
-              <a href="mailto:rosettascript@gmail.com" className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+              <a href="mailto:anivaryam.dev@gmail.com" className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
                 <Mail className="h-5 w-5" />
               </a>
             </div>
@@ -85,7 +84,7 @@ export function Footer() {
         </div>
 
         <div className="mt-8 pt-8 border-t border-border text-center text-sm text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} RosettaScript. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Anivaryam. All rights reserved.</p>
         </div>
       </div>
     </footer>

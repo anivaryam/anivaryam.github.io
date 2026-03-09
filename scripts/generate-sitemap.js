@@ -11,7 +11,7 @@ const blogPostsFile = path.join(__dirname, '..', 'src', 'data', 'blogPosts.ts');
 const newsFile = path.join(__dirname, '..', 'src', 'data', 'news.ts');
 const publicSitemapFile = path.join(__dirname, '..', 'public', 'sitemap.xml');
 const distSitemapFile = path.join(__dirname, '..', 'dist', 'sitemap.xml');
-const baseUrl = 'https://rosettascript.github.io';
+const baseUrl = 'https://anivaryam.github.io';
 
 /**
  * Extract blog posts with IDs and dates from blogPosts.ts

@@ -19,11 +19,11 @@ export default function UrlEncoder() {
       <SEO
         title="URL Encoder/Decoder - Free Online Tool"
         description="Encode special characters for URLs or decode URL-encoded strings instantly. Free online URL encoder and decoder. Handle percent encoding and query parameters. No signup required."
-        canonical="https://rosettascript.github.io/tools/url-encoder"
+        canonical="https://anivaryam.github.io/tools/url-encoder"
 breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools" },
-          { name: "URL Encoder", url: "https://rosettascript.github.io/tools/url-encoder" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Tools", url: "https://anivaryam.github.io/tools" },
+          { name: "URL Encoder", url: "https://anivaryam.github.io/tools/url-encoder" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

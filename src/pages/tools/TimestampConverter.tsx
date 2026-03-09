@@ -19,11 +19,11 @@ export default function TimestampConverter() {
       <SEO
         title="Timestamp Converter - Unix Epoch to Date"
         description="Convert between Unix timestamps and human-readable dates instantly. Supports seconds and milliseconds precision. Free online timestamp converter. Perfect for working with APIs and databases."
-        canonical="https://rosettascript.github.io/tools/timestamp-converter"
+        canonical="https://anivaryam.github.io/tools/timestamp-converter"
 breadcrumbs={[
-          { name: "Home", url: "https://rosettascript.github.io/" },
-          { name: "Tools", url: "https://rosettascript.github.io/tools" },
-          { name: "Timestamp Converter", url: "https://rosettascript.github.io/tools/timestamp-converter" },
+          { name: "Home", url: "https://anivaryam.github.io/" },
+          { name: "Tools", url: "https://anivaryam.github.io/tools" },
+          { name: "Timestamp Converter", url: "https://anivaryam.github.io/tools/timestamp-converter" },
         ]}
         structuredData={{
           type: "SoftwareApplication",

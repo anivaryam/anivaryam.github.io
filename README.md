@@ -1,13 +1,13 @@
-# RosettaScript
+# Anivaryam
 
 > Developer tools for converting, automating, and building. From Word to HTML converters to database visualization—we've got you covered.
 
-[![Live Site](https://img.shields.io/badge/Live%20Site-rosettascript.github.io-22c55e?style=flat-square)](https://rosettascript.github.io)
+[![Live Site](https://img.shields.io/badge/Live%20Site-anivaryam.github.io-22c55e?style=flat-square)](https://anivaryam.github.io)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
-RosettaScript is a collection of powerful, free online developer tools designed to streamline your workflow. Whether you need to convert Word documents to HTML, format JSON, encode/decode Base64, or manage databases, RosettaScript has the tools you need.
+Anivaryam is a collection of powerful, free online developer tools designed to streamline your workflow. Whether you need to convert Word documents to HTML, format JSON, encode/decode Base64, or manage databases, Anivaryam has the tools you need.
 
-## ✨ Features
+##  Features
 
 ### Text & Formatting Tools
 - **Word to HTML Converter** - Convert Word documents to clean, semantic HTML with multiple output formats
@@ -34,7 +34,7 @@ RosettaScript is a collection of powerful, free online developer tools designed 
 - **Image Tool** - Compress, convert formats, resize images, and generate favicons
 - **Random Universe Cipher** - 256-bit quantum-resistant symmetric encryption cipher
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 
@@ -45,8 +45,8 @@ RosettaScript is a collection of powerful, free online developer tools designed 
 
 ```bash
 # Clone the repository
-git clone https://github.com/rosettascript/rosettascript.github.io.git
-cd rosettascript.github.io
+git clone https://github.com/anivaryam/anivaryam.github.io.git
+cd anivaryam.github.io
 
 # Install dependencies
 npm install
@@ -73,10 +73,10 @@ npm run preview
 - **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS framework
 - **[React Router](https://reactrouter.com/)** - Client-side routing
 
-## 📦 Project Structure
+##  Project Structure
 
 ```
-rosettascript.github.io/
+anivaryam.github.io/
 ├── src/
 │   ├── components/     # Reusable UI components
 │   ├── pages/          # Page components
@@ -88,7 +88,7 @@ rosettascript.github.io/
 
 ## 🚢 Deployment
 
-This project is configured for automatic deployment to GitHub Pages using GitHub Actions. The site is served at `https://rosettascript.github.io`.
+This project is configured for automatic deployment to GitHub Pages using GitHub Actions. The site is served at `https://anivaryam.github.io`.
 
 ### Manual Deployment
 
@@ -98,14 +98,14 @@ npm run build
 
 The build output will be in the `dist/` directory, ready for deployment.
 
-## 📝 License
+##  License
 
 This project is open source and available under the [MIT License](LICENSE).
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/rosettascript/rosettascript.github.io/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/anivaryam/anivaryam.github.io/issues).
 
 ---
 
-Built with ❤️ by [RosettaScript](https://rosettascript.github.io)
+Built with ❤️ by [Anivaryam](https://anivaryam.github.io)
