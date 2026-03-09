@@ -19,7 +19,11 @@ const categoryIcons: Record<string, React.ComponentType<{ className?: string }>>
   downloads: Package,
 };
 
-export function FAQ() {
+interface FAQProps {
+  injectSchema?: boolean;
+}
+
+export function FAQ({ injectSchema = true }: FAQProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [openCategories, setOpenCategories] = useState<string[]>([]);
 
@@ -61,8 +65,10 @@ export function FAQ() {
     }
   }, [searchQuery, groupedFAQs]);
 
-  // Inject JSON-LD schema
+  // Inject JSON-LD schema only if enabled
   useEffect(() => {
+    if (!injectSchema) return;
+    
     const scriptId = "faq-schema";
     let script = document.getElementById(scriptId) as HTMLScriptElement;
 
@@ -81,7 +87,7 @@ export function FAQ() {
     };
 
     script.textContent = JSON.stringify(updatedSchema);
-  }, []);
+  }, [injectSchema]);
 
   const visibleCategories = faqCategories.filter(
     (cat) => groupedFAQs[cat.id] && groupedFAQs[cat.id].length > 0

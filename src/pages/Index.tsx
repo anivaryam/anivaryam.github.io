@@ -498,7 +498,7 @@ export default function Index() {
       </section>
 
       {/* FAQ Section */}
-      <FAQ />
+      <FAQ injectSchema={false} />
 
       {/* CTA Section */}
       <section className="py-12 bg-gradient-to-r from-primary/10 via-secondary/10 to-accent/10">
