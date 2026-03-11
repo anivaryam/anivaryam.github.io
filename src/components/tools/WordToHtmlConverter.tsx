@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Copy, Check, FileText, Code, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash } from "lucide-react";
+import { Copy, Check, FileText, Code, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash, Link, AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -132,6 +132,9 @@ export function WordToHtmlConverter() {
   const [inputHtml, setInputHtml] = useState("");
   const [outputFormat, setOutputFormat] = useState<OutputMode>("regular");
   const [copied, setCopied] = useState(false);
+  const [checkingLinks, setCheckingLinks] = useState(false);
+  const [linkCheckResult, setLinkCheckResult] = useState<{ total: number; good: number; broken: number; serverErrors: number; blocked: number; goodLinks: { url: string; status: number }[]; brokenLinks: { url: string; status: number }[]; serverErrors: { url: string; status: number }[]; blockedLinks: { url: string; error: string; errorMessage: string }[] } | null>(null);
+  const [showLinkResults, setShowLinkResults] = useState(false);
   const [showBlogsFeatures, setShowBlogsFeatures] = useState(false);
   const [showShoppablesFeatures, setShowShoppablesFeatures] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -260,6 +263,89 @@ export function WordToHtmlConverter() {
   const conversionResult = getConversionResult();
   const outputHtml = conversionResult.formatted;
   const previewHtml = conversionResult.unformatted;
+
+  // Function to extract all links from HTML
+  const extractLinks = (html: string): string[] => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const anchors = doc.querySelectorAll('a[href]');
+    const links: string[] = [];
+    anchors.forEach((anchor) => {
+      const href = anchor.getAttribute('href');
+      if (href && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('javascript:')) {
+        links.push(href);
+      }
+    });
+    return [...new Set(links)]; // Remove duplicates
+  };
+
+  // Function to check links using Cloudflare Worker API
+  const checkLinks = async () => {
+    if (!previewHtml) return;
+    
+    const links = extractLinks(previewHtml);
+    if (links.length === 0) {
+      toast({
+        title: "No links found",
+        description: "There are no links to check in the output",
+      });
+      return;
+    }
+
+    setCheckingLinks(true);
+    setLinkCheckResult(null);
+
+    try {
+      const response = await fetch('https://link-checker.rosettascript.workers.dev', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ links }),
+      });
+      
+      const result = await response.json();
+      setLinkCheckResult(result);
+      
+      // Build detailed feedback message
+      let feedbackTitle = "";
+      let feedbackDesc = "";
+      
+      if (result.good === result.total) {
+        feedbackTitle = "✅ All links valid";
+        feedbackDesc = `${result.good} link${result.good > 1 ? 's' : ''} checked successfully`;
+      } else {
+        const issues = result.broken + result.serverErrors + result.blocked;
+        feedbackTitle = `⚠️ ${issues} issue${issues > 1 ? 's' : ''} found`;
+        
+        // Build detailed list
+        const details = [];
+        if (result.good > 0) {
+          details.push(`✅ ${result.good} valid: ${result.goodLinks.map((l: { url: string }) => l.url).join(', ')}`);
+        }
+        if (result.broken > 0) {
+          details.push(`❌ ${result.broken} 404 (not found): ${result.brokenLinks.map((l: { url: string }) => l.url).join(', ')}`);
+        }
+        if (result.serverErrors > 0) {
+          details.push(`⚠️ ${result.serverErrors} server error (500+): ${result.serverErrorLinks.map((l: { url: string }) => l.url).join(', ')}`);
+        }
+        if (result.blocked > 0) {
+          details.push(`🚫 ${result.blocked} blocked (CORS/bot protection): ${result.blockedLinks.map((l: { url: string }) => l.url).join(', ')}`);
+        }
+        feedbackDesc = details.join('\n\n');
+      }
+      
+      // Show detailed results in dialog
+      setShowLinkResults(true);
+    } catch (error) {
+      console.error('Link check error:', error);
+      toast({
+        title: "Error checking links",
+        description: "Failed to check links. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setCheckingLinks(false);
+    }
+  };
 
   // Run validation when output changes
   const validationResults = useMemo<ValidationResults | null>(() => {
@@ -724,6 +810,25 @@ export function WordToHtmlConverter() {
                   <Check className="h-4 w-4 text-green-500" />
                 ) : (
                   <Copy className="h-4 w-4" />
+                )}
+              </Button>
+              {/* Check Links Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={checkLinks}
+                disabled={!previewHtml || checkingLinks}
+                className="h-8 w-8 p-0"
+                title="Check Links"
+              >
+                {checkingLinks ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : linkCheckResult && linkCheckResult.broken > 0 ? (
+                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                ) : linkCheckResult && linkCheckResult.broken === 0 ? (
+                  <Link className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Link className="h-4 w-4" />
                 )}
               </Button>
             </div>
@@ -1243,6 +1348,129 @@ export function WordToHtmlConverter() {
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Link Check Results Dialog */}
+      <Dialog open={showLinkResults} onOpenChange={setShowLinkResults}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {linkCheckResult?.good === linkCheckResult?.total ? (
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-yellow-500" />
+              )}
+              Link Check Results
+            </DialogTitle>
+          </DialogHeader>
+          
+          {linkCheckResult && (
+            <div className="space-y-4 mt-4">
+              {/* Summary */}
+              <div className="flex gap-4 text-sm">
+                {linkCheckResult.good > 0 && (
+                  <span className="text-green-600 font-medium">✅ {linkCheckResult.good} valid</span>
+                )}
+                {linkCheckResult.broken > 0 && (
+                  <span className="text-red-600 font-medium">❌ {linkCheckResult.broken} 404</span>
+                )}
+                {linkCheckResult.serverErrors > 0 && (
+                  <span className="text-orange-600 font-medium">⚠️ {linkCheckResult.serverErrors} server error</span>
+                )}
+                {linkCheckResult.blocked > 0 && (
+                  <span className="text-gray-500 font-medium">🚫 {linkCheckResult.blocked} blocked</span>
+                )}
+              </div>
+              
+              {/* Valid Links */}
+              {linkCheckResult.goodLinks.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-green-600 mb-2">✅ Working Links</h4>
+                  <ul className="space-y-1">
+                    {linkCheckResult.goodLinks.map((link, i) => (
+                      <li key={i}>
+                        <a 
+                          href={link.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-green-700 hover:underline text-sm break-all"
+                        >
+                          {link.url}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {/* Broken Links (404) */}
+              {linkCheckResult.brokenLinks.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-red-600 mb-2">❌ Not Found (404)</h4>
+                  <ul className="space-y-1">
+                    {linkCheckResult.brokenLinks.map((link, i) => (
+                      <li key={i}>
+                        <a 
+                          href={link.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-red-700 hover:underline text-sm break-all"
+                        >
+                          {link.url}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {/* Server Errors */}
+              {linkCheckResult.serverErrors.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-orange-600 mb-2">⚠️ Server Errors (5xx)</h4>
+                  <ul className="space-y-1">
+                    {linkCheckResult.serverErrors.map((link, i) => (
+                      <li key={i}>
+                        <a 
+                          href={link.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-orange-700 hover:underline text-sm break-all"
+                        >
+                          {link.url}
+                        </a>
+                        <span className="text-xs text-orange-500 ml-2">Status: {link.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {/* Blocked Links */}
+              {linkCheckResult.blockedLinks.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-gray-600 mb-2">🚫 Blocked (CORS/Bot Protection)</h4>
+                  <p className="text-xs text-gray-500 mb-2">These links couldn't be checked because the website blocks automated requests.</p>
+                  <ul className="space-y-1">
+                    {linkCheckResult.blockedLinks.map((link, i) => (
+                      <li key={i}>
+                        <a 
+                          href={link.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-gray-600 hover:underline text-sm break-all"
+                        >
+                          {link.url}
+                        </a>
+                        <span className="text-xs text-gray-500 ml-2">{link.errorMessage}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
