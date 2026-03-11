@@ -694,18 +694,31 @@ export function WordToHtmlConverter() {
                 size="sm"
                 onClick={async () => {
                   if (outputHtml) {
-                    await navigator.clipboard.writeText(outputHtml);
+                    if (showPreview && previewHtml) {
+                      // Copy as rich text (HTML) for preview mode
+                      const blob = new Blob([previewHtml], { type: 'text/html' });
+                      await navigator.clipboard.write([
+                        new ClipboardItem({ 'text/html': blob })
+                      ]);
+                      toast({
+                        title: "Copied!",
+                        description: "Formatted HTML copied to clipboard",
+                      });
+                    } else {
+                      // Copy as plain text for code mode
+                      await navigator.clipboard.writeText(outputHtml);
+                      toast({
+                        title: "Copied!",
+                        description: "HTML copied to clipboard",
+                      });
+                    }
                     setCopied(true);
-                    toast({
-                      title: "Copied!",
-                      description: "HTML copied to clipboard",
-                    });
                     setTimeout(() => setCopied(false), 2000);
                   }
                 }}
                 disabled={!outputHtml}
                 className="h-8 w-8 p-0"
-                title="Copy HTML"
+                title={showPreview ? "Copy Formatted HTML" : "Copy HTML"}
               >
                 {copied ? (
                   <Check className="h-4 w-4 text-green-500" />
@@ -1132,18 +1145,31 @@ export function WordToHtmlConverter() {
                   size="sm"
                   onClick={async () => {
                     if (outputHtml) {
-                      await navigator.clipboard.writeText(outputHtml);
+                      if (maximizedPreviewMode && previewHtml) {
+                        // Copy as rich text (HTML) for preview mode
+                        const blob = new Blob([previewHtml], { type: 'text/html' });
+                        await navigator.clipboard.write([
+                          new ClipboardItem({ 'text/html': blob })
+                        ]);
+                        toast({
+                          title: "Copied!",
+                          description: "Formatted HTML copied to clipboard",
+                        });
+                      } else {
+                        // Copy as plain text for code mode
+                        await navigator.clipboard.writeText(outputHtml);
+                        toast({
+                          title: "Copied!",
+                          description: "HTML copied to clipboard",
+                        });
+                      }
                       setCopied(true);
-                      toast({
-                        title: "Copied!",
-                        description: "HTML copied to clipboard",
-                      });
                       setTimeout(() => setCopied(false), 2000);
                     }
                   }}
                   disabled={!outputHtml}
                   className="h-8 w-8 p-0"
-                  title="Copy HTML"
+                  title={maximizedPreviewMode ? "Copy Formatted HTML" : "Copy HTML"}
                 >
                   {copied ? (
                     <Check className="h-4 w-4 text-green-500" />
