@@ -11,6 +11,7 @@ import { normalizeLists } from './mode-list-normalize';
 import { convertOlHeaders } from './mode-ol-header-conversion';
 import { convertToRelativePaths } from './mode-relative-paths';
 import { normalizeSources } from './mode-sources-normalize';
+import { removeSourcesLinks } from './mode-remove-sources-links';
 import { addSpacing } from './mode-spacing';
 import { addLinkSpacing } from './mode-link-spacing';
 import { addBrBeforeReadMore, addBrBeforeSources } from './mode-br-spacing';
@@ -76,6 +77,11 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = convertToRelativePaths(processedHtml);
     }
 
+    // Remove links in Sources section (must run before normalizeSources)
+    if (features.removeSourcesLinks !== false) {
+      processedHtml = removeSourcesLinks(processedHtml);
+    }
+
     // Sources normalization
     if (features.sourcesNormalize !== false) {
       processedHtml = normalizeSources(processedHtml);
@@ -123,6 +129,11 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
     // BR spacing before sources (works independently, replaces &nbsp; if spacing rules added them)
     if (features.brBeforeSources === true) {
       processedHtml = addBrBeforeSources(processedHtml);
+    }
+
+    // Remove links in Sources section (must run before normalizeSources)
+    if (features.removeSourcesLinks !== false) {
+      processedHtml = removeSourcesLinks(processedHtml);
     }
 
     // Sources normalization

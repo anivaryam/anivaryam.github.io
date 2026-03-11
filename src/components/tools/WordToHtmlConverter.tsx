@@ -150,6 +150,7 @@ export function WordToHtmlConverter() {
     spacing: undefined, // undefined allows blogs mode to be checked by default (undefined !== false) and shoppables to be unchecked (undefined === true is false)
     olHeaderConversion: true,
     sourcesNormalize: true,
+    removeSourcesLinks: true,
   });
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
@@ -391,6 +392,13 @@ export function WordToHtmlConverter() {
               />
               <span className="text-sm">Normalize Sources</span>
             </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <Checkbox
+                checked={features.removeSourcesLinks !== false}
+                onCheckedChange={(checked) => setFeatures({ ...features, removeSourcesLinks: checked as boolean })}
+              />
+              <span className="text-sm">Remove Links in Sources</span>
+            </label>
                   </CollapsibleContent>
                 </Collapsible>
               )}
@@ -458,6 +466,13 @@ export function WordToHtmlConverter() {
                         onCheckedChange={(checked) => setFeatures({ ...features, sourcesNormalize: checked as boolean })}
                       />
                       <span className="text-sm">Normalize Sources</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <Checkbox
+                        checked={features.removeSourcesLinks !== false}
+                        onCheckedChange={(checked) => setFeatures({ ...features, removeSourcesLinks: checked as boolean })}
+                      />
+                      <span className="text-sm">Remove Links in Sources</span>
                     </label>
                   </CollapsibleContent>
                 </Collapsible>
