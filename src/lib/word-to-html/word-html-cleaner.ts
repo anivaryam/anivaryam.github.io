@@ -504,6 +504,11 @@ export function cleanWordHtml(html: string): string {
       return /[\s\u00A0]$/.test(text);
     };
     
+    // Helper function to check if text ends with opening punctuation
+    const endsWithOpeningPunctuation = (text: string): boolean => {
+      return /[\("'\[\{\u201C\u2018]$/.test(text);
+    };
+    
     // Helper function to find the last meaningful text node before the anchor
     const findLastTextBeforeAnchor = (): { textNode: Text | null; text: string } => {
       if (!prevSibling) {
@@ -540,13 +545,15 @@ export function cleanWordHtml(html: string): string {
     
     const { textNode, text } = findLastTextBeforeAnchor();
     
-    // If we found a text node with content that doesn't end with whitespace, add a space to it
-    if (textNode && text.trim() && !endsWithWhitespace(text)) {
+    // If we found a text node with content that doesn't end with whitespace or opening punctuation, add a space to it
+    if (textNode && text.trim() && !endsWithWhitespace(text) && !endsWithOpeningPunctuation(text)) {
       textNode.textContent = text + ' ';
     } else if (!textNode) {
-      // If no text node found at all, insert a space node before the anchor
-      const spaceNode = document.createTextNode(' ');
-      anchor.parentNode!.insertBefore(spaceNode, anchor);
+      // If no text node found at all, insert a space node before the anchor only if it's not the first child
+      if (prevSibling) {
+        const spaceNode = document.createTextNode(' ');
+        anchor.parentNode!.insertBefore(spaceNode, anchor);
+      }
     } else if (textNode && !text.trim()) {
       // If text node exists but is empty/whitespace only, replace it with a space
       textNode.textContent = ' ';
