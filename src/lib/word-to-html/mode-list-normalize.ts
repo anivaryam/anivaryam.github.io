@@ -52,11 +52,37 @@ function mergeAdjacentUl(doc: Document): void {
  * Wraps text before colon in ordered list items with <strong>
  * This handles cases where Google Docs/Word exports bold labels in ordered lists
  * but the bold gets lost during sanitization
+ * EXCLUDES: Sources section lists (uses same logic as normalizeSources)
  */
 function wrapOlLabelsInStrong(doc: Document): void {
+  // First, identify Sources ol lists (same logic as normalizeSources)
+  const sourcesOlSelectors = new Set<Element>();
+  
+  const paragraphs = doc.querySelectorAll('p');
+  paragraphs.forEach(p => {
+    const text = p.textContent?.trim() || '';
+    const lowerText = text.toLowerCase();
+    
+    // Check if this is a Sources paragraph
+    if (lowerText === 'sources' || lowerText === 'sources:' || lowerText.startsWith('sources:')) {
+      // Find the next ol after this paragraph
+      let nextSibling = p.nextElementSibling;
+      while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
+        nextSibling = nextSibling.nextElementSibling;
+      }
+      if (nextSibling) {
+        sourcesOlSelectors.add(nextSibling);
+      }
+    }
+  });
+  
+  // Now process all ol items, skipping Sources
   const olItems = doc.querySelectorAll('ol > li');
   
   olItems.forEach(li => {
+    // Skip if this ol is a Sources list
+    if (sourcesOlSelectors.has(li.parentElement!)) return;
+    
     // Get all text nodes directly in the li (not in children)
     const textNodes: Text[] = [];
     li.childNodes.forEach(node => {
