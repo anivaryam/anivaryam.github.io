@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Copy, Check, FileText, Code, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash, Link, AlertTriangle, Loader2 } from "lucide-react";
+import { Copy, Check, FileText, Code, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash, Link, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -345,6 +345,14 @@ export function WordToHtmlConverter() {
     } finally {
       setCheckingLinks(false);
     }
+  };
+
+  // Open all blocked links in new tabs
+  const openAllBlockedLinks = () => {
+    if (!linkCheckResult?.blockedLinks) return;
+    linkCheckResult.blockedLinks.forEach((link) => {
+      window.open(link.url, '_blank', 'noopener,noreferrer');
+    });
   };
 
   // Run validation when output changes
@@ -1450,7 +1458,18 @@ export function WordToHtmlConverter() {
               {/* Blocked Links */}
               {linkCheckResult.blockedLinks.length > 0 && (
                 <div>
-                  <h4 className="font-medium text-gray-600 mb-2">🚫 Blocked (CORS/Bot Protection)</h4>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium text-gray-600">🚫 Blocked (CORS/Bot Protection)</h4>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={openAllBlockedLinks}
+                      title="Open all blocked links"
+                      className="h-6 px-2"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </Button>
+                  </div>
                   <p className="text-xs text-gray-500 mb-2">These links couldn't be checked because the website blocks automated requests.</p>
                   <ul className="space-y-1">
                     {linkCheckResult.blockedLinks.map((link, i) => (
