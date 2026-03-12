@@ -133,6 +133,7 @@ export function WordToHtmlConverter() {
   const [outputFormat, setOutputFormat] = useState<OutputMode>("regular");
   const [copied, setCopied] = useState(false);
   const [checkingLinks, setCheckingLinks] = useState(false);
+  const [showValidationWarnings, setShowValidationWarnings] = useState(true);
   const [linkCheckResult, setLinkCheckResult] = useState<{ total: number; good: number; broken: number; serverErrors: number; blocked: number; goodLinks: { url: string; status: number }[]; brokenLinks: { url: string; status: number }[]; serverErrors: { url: string; status: number }[]; blockedLinks: { url: string; error: string; errorMessage: string }[] } | null>(null);
   const [showLinkResults, setShowLinkResults] = useState(false);
   const [showBlogsFeatures, setShowBlogsFeatures] = useState(false);
@@ -367,6 +368,187 @@ export function WordToHtmlConverter() {
       return null;
     }
   }, [previewHtml, outputFormat, features]);
+
+  // Process validation results to add warning attributes to HTML elements
+  const previewHtmlWithWarnings = useMemo(() => {
+    if (!previewHtml || !validationResults || !showValidationWarnings) {
+      return previewHtml;
+    }
+
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(previewHtml, 'text/html');
+      
+      // Map warnings to elements - process all failed validations
+      validationResults.results.forEach(result => {
+        // Only process failed validations
+        if (result.passed) return;
+        
+        // Heading strong - flag ALL headings when this validation fails
+        if (result.ruleId === 'heading-strong') {
+          const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
+          headings.forEach(h => {
+            h.setAttribute('data-warning', 'Heading should be wrapped in <strong>');
+          });
+        }
+        
+        // OL bold labels - flag all li with colon but no strong
+        if (result.ruleId === 'ol-bold-labels') {
+          const olItems = doc.querySelectorAll('ol > li');
+          olItems.forEach(li => {
+            const text = li.textContent || '';
+            if (text.includes(':') && !li.querySelector('strong')) {
+              li.setAttribute('data-warning', 'Missing bold label before colon');
+            }
+          });
+        }
+        
+        // Link spacing - flag all links
+        if (result.ruleId === 'link-spacing') {
+          const links = doc.querySelectorAll('a');
+          links.forEach(a => {
+            a.setAttribute('data-warning', 'Link spacing issue');
+          });
+        }
+        
+        // Remove sources links - flag all links in sources
+        if (result.ruleId === 'remove-sources-links') {
+          const paragraphs = doc.querySelectorAll('p');
+          let inSources = false;
+          paragraphs.forEach(p => {
+            const text = p.textContent?.trim().toLowerCase() || '';
+            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
+              inSources = true;
+            }
+            if (inSources) {
+              const links = p.querySelectorAll('a');
+              links.forEach(a => {
+                a.setAttribute('data-warning', 'Link in Sources section');
+              });
+            }
+          });
+          // Check next ol after sources
+          paragraphs.forEach(p => {
+            const text = p.textContent?.trim().toLowerCase() || '';
+            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
+              let next = p.nextElementSibling;
+              while (next && next.tagName.toLowerCase() !== 'ol') {
+                next = next.nextElementSibling;
+              }
+              if (next) {
+                const links = next.querySelectorAll('a');
+                links.forEach(a => {
+                  a.setAttribute('data-warning', 'Link in Sources section');
+                });
+              }
+            }
+          });
+        }
+        
+        // List normalization - flag all li
+        if (result.ruleId === 'list-normalization') {
+          const listItems = doc.querySelectorAll('li');
+          listItems.forEach(li => {
+            li.setAttribute('data-warning', 'List formatting issue');
+          });
+        }
+        
+        // Sources normalization - flag sources section and list
+        if (result.ruleId === 'sources-normalization') {
+          const paragraphs = doc.querySelectorAll('p');
+          paragraphs.forEach(p => {
+            const text = p.textContent?.trim().toLowerCase() || '';
+            if (text === 'sources' || text === 'sources:') {
+              p.setAttribute('data-warning', 'Sources section formatting issue');
+              // Also flag the next ol after sources
+              let next = p.nextElementSibling;
+              while (next && next.tagName.toLowerCase() !== 'ol') {
+                next = next.nextElementSibling;
+              }
+              if (next) {
+                next.setAttribute('data-warning', 'Sources list formatting issue');
+              }
+            }
+          });
+        }
+        
+        // Key takeaways - flag key takeaways heading AND the list below it
+        if (result.ruleId === 'key-takeaways') {
+          const headings = doc.querySelectorAll('h2, h3');
+          headings.forEach(h => {
+            const text = h.textContent?.toLowerCase() || '';
+            if (text.includes('key takeaways')) {
+              h.setAttribute('data-warning', result.message);
+              // Also flag the next list after the heading
+              let next = h.nextElementSibling;
+              while (next && next.tagName.toLowerCase() !== 'ul' && next.tagName.toLowerCase() !== 'ol') {
+                next = next.nextElementSibling;
+              }
+              if (next) {
+                next.setAttribute('data-warning', 'Key Takeaways list formatting issue');
+              }
+            }
+          });
+        }
+        
+        // Link attributes - flag all links
+        if (result.ruleId === 'link-attributes') {
+          const links = doc.querySelectorAll('a[href]');
+          links.forEach(a => {
+            const target = a.getAttribute('target');
+            const rel = a.getAttribute('rel');
+            if (target !== '_blank' || !rel?.includes('noopener')) {
+              a.setAttribute('data-warning', 'Link missing proper attributes');
+            }
+          });
+        }
+        
+        // Spacing rules - flag paragraphs
+        if (result.ruleId === 'spacing-rules') {
+          const paragraphs = doc.querySelectorAll('p');
+          paragraphs.forEach(p => {
+            const text = p.textContent || '';
+            if (text.trim() === '' || text === '\u00A0') {
+              p.setAttribute('data-warning', 'Spacing element issue');
+            }
+          });
+        }
+        
+        // OL header conversion - flag all ol
+        if (result.ruleId === 'ol-header-conversion') {
+          const olElements = doc.querySelectorAll('ol');
+          olElements.forEach(ol => {
+            ol.setAttribute('data-warning', 'OL header conversion issue');
+          });
+        }
+        
+        // H1 after key takeaways - flag h1 elements
+        if (result.ruleId === 'h1-after-key-takeaways') {
+          const h1Elements = doc.querySelectorAll('h1');
+          h1Elements.forEach(h1 => {
+            h1.setAttribute('data-warning', 'H1 should not appear after Key Takeaways');
+          });
+        }
+        
+        // Relative paths - only flag links with absolute URLs in href
+        if (result.ruleId === 'relative-paths') {
+          const links = doc.querySelectorAll('a[href]');
+          links.forEach(a => {
+            const href = a.getAttribute('href');
+            // Only flag if href itself is absolute (not the link text)
+            if (href && (href.includes('://') || href.startsWith('//'))) {
+              a.setAttribute('data-warning', 'Link should use relative path');
+            }
+          });
+        }
+      });
+      
+      return doc.body.innerHTML;
+    } catch (error) {
+      console.error('Error adding warning attributes:', error);
+      return previewHtml;
+    }
+  }, [previewHtml, validationResults, showValidationWarnings]);
 
   return (
     <div className="flex flex-col gap-3 md:gap-4 w-full max-w-full">
@@ -655,7 +837,7 @@ export function WordToHtmlConverter() {
         </div>
 
         {/* Input Section */}
-        <div className="flex flex-col bg-card/50 border border-border/50 rounded-xl p-3 md:p-4 backdrop-blur-sm min-w-0 max-w-full lg:h-[calc(100vh-280px)] lg:min-h-[400px] lg:max-h-[700px]">
+        <div className="relative flex flex-col bg-card/50 border border-border/50 rounded-xl p-3 md:p-4 backdrop-blur-sm min-w-0 max-w-full lg:h-[calc(100vh-280px)] lg:min-h-[400px] lg:max-h-[700px]">
           <div className="flex items-center justify-between mb-3 flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded bg-muted">
@@ -768,6 +950,20 @@ export function WordToHtmlConverter() {
                   <Hash className="h-3.5 w-3.5" />
                 </Button>
               )}
+              {/* Validation Warnings Toggle */}
+              {showPreview && validationResults && validationResults.summary.failed > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowValidationWarnings(!showValidationWarnings)}
+                  className={`h-7 w-7 p-0 ml-1 ${
+                    showValidationWarnings ? 'bg-yellow-500 text-white' : 'text-muted-foreground hover:bg-muted/30'
+                  }`}
+                  title={showValidationWarnings ? 'Hide Validation Warnings' : 'Show Validation Warnings'}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                </Button>
+              )}
               {/* Maximize Button */}
               <Button
                 variant="outline"
@@ -855,7 +1051,7 @@ export function WordToHtmlConverter() {
                   fontFamily: 'var(--font-sans)',
                 }}
                 dangerouslySetInnerHTML={{ 
-                  __html: previewHtml || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
+                  __html: previewHtmlWithWarnings || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
                 }}
               />
               <style>{`
@@ -1091,6 +1287,36 @@ export function WordToHtmlConverter() {
                 .output-preview a * {
                   color: inherit !important;
                 }
+                /* Validation warning styles */
+                .output-preview [data-warning] {
+                  outline: 3px dashed hsl(var(--destructive)) !important;
+                  outline-offset: 2px !important;
+                  position: relative;
+                  cursor: help;
+                  background-color: hsl(var(--destructive) / 0.15) !important;
+                }
+                .output-preview [data-warning]:hover::after {
+                  content: attr(data-warning);
+                  position: absolute;
+                  bottom: 100%;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  background: hsl(var(--destructive)) !important;
+                  color: white !important;
+                  padding: 0.25rem 0.5rem;
+                  border-radius: 0.25rem;
+                  font-size: 0.75rem;
+                  white-space: nowrap;
+                  z-index: 9999;
+                  pointer-events: none;
+                }
+                /* Links with warnings need explicit styling */
+                .output-preview a[data-warning] {
+                  outline: 3px dashed hsl(var(--destructive)) !important;
+                  background-color: hsl(var(--destructive) / 0.15) !important;
+                  text-decoration: underline !important;
+                  text-decoration-color: hsl(var(--destructive)) !important;
+                }
               `}</style>
               {/* Code Area */}
               <div 
@@ -1304,7 +1530,7 @@ export function WordToHtmlConverter() {
                   fontFamily: 'var(--font-sans)',
                 }}
                 dangerouslySetInnerHTML={{ 
-                  __html: previewHtml || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
+                  __html: previewHtmlWithWarnings || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
                 }}
               />
             ) : (

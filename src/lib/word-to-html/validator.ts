@@ -1376,6 +1376,9 @@ export function validateMode(html: string, mode: OutputMode, features: FeatureFl
     results.addResult(validateHeadingStrong(doc, mode, features));
     results.addResult(validateLinkAttributes(doc, mode, features));
     results.addResult(validateListNormalize(doc, mode));
+    results.addResult(validateLinkSpacing(doc, mode, features));
+    results.addResult(validateOlBoldLabels(doc, mode, features));
+    results.addResult(validateOlHeaderConversion(doc, mode, features));
   }
 
   if (mode === 'blogs') {
