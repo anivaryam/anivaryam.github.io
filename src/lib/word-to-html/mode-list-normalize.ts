@@ -129,9 +129,28 @@ export function normalizeLists(html: string): string {
     // Apply bold to text before colon in ordered lists
     wrapOlLabelsInStrong(doc);
     
+    // Additional fix: Wrap <li> elements with <em> if they have font-style: italic in style
+    // This handles formats that html-sanitizer might miss
     const listItems = doc.querySelectorAll('li');
-    
     listItems.forEach(li => {
+      const style = li.getAttribute('style') || '';
+      if (style.includes('font-style') && style.includes('italic')) {
+        // Check if content is already wrapped in em
+        const hasEm = li.querySelector('em');
+        if (!hasEm) {
+          const em = document.createElement('em');
+          // Move all children to em
+          while (li.firstChild) {
+            em.appendChild(li.firstChild);
+          }
+          li.appendChild(em);
+        }
+      }
+    });
+    
+    const normalizedListItems = doc.querySelectorAll('li');
+    
+    normalizedListItems.forEach(li => {
       // SAFEGUARD: Only query for existing <strong> tags - NEVER create new ones
       // This ensures list items with colons that weren't originally bold remain unbolded
       const strongTags = li.querySelectorAll('strong');

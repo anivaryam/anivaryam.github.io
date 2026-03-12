@@ -248,13 +248,32 @@ export function WordToHtmlConverter() {
     }
 
     try {
+      // DEBUG: Log INPUT HTML (only ul/ol for lists)
+      console.log('=== INPUT HTML (lists only) ===');
+      const inputDoc = new DOMParser().parseFromString(inputHtml, 'text/html');
+      console.log('UL/OL:', inputDoc.querySelectorAll('ul, ol').length);
+      inputDoc.querySelectorAll('ul, ol').forEach((el, i) => console.log(`List ${i}:`, el.outerHTML.substring(0, 500)));
+      
       // Step 1: Clean Word HTML first (preserves formatting)
-      // This matches: const cleanedHtml = cleanWordHtml(inputArea.innerHTML);
       const cleanedHtml = cleanWordHtml(inputHtml);
       
+      // DEBUG: Log CLEANED HTML (only ul/ol)
+      console.log('=== CLEANED HTML (lists only) ===');
+      const cleanedDoc = new DOMParser().parseFromString(cleanedHtml, 'text/html');
+      console.log('UL/OL:', cleanedDoc.querySelectorAll('ul, ol').length);
+      cleanedDoc.querySelectorAll('ul, ol').forEach((el, i) => console.log(`List ${i}:`, el.outerHTML.substring(0, 500)));
+      
       // Step 2-4: Convert using the main conversion function
-      // This matches: convertToHtml(cleanedHtml);
-      return convertToHtml(cleanedHtml, outputFormat, features);
+      const result = convertToHtml(cleanedHtml, outputFormat, features);
+      
+      // DEBUG: Log FINAL OUTPUT (only ul/ol)
+      console.log('=== FINAL OUTPUT (lists only) ===');
+      const finalDoc = new DOMParser().parseFromString(result.unformatted, 'text/html');
+      console.log('UL/OL:', finalDoc.querySelectorAll('ul, ol').length);
+      finalDoc.querySelectorAll('ul, ol').forEach((el, i) => console.log(`List ${i}:`, el.outerHTML.substring(0, 500)));
+      console.log('===========================================');
+      
+      return result;
     } catch (error) {
       console.error('Conversion error:', error);
       return { formatted: '', unformatted: '' };
@@ -384,12 +403,25 @@ export function WordToHtmlConverter() {
         // Only process failed validations
         if (result.passed) return;
         
-        // Heading strong - flag ALL headings when this validation fails
+        // Heading strong - flag based on mode
         if (result.ruleId === 'heading-strong') {
           const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
-          headings.forEach(h => {
-            h.setAttribute('data-warning', 'Heading should be wrapped in <strong>');
-          });
+          
+          if (outputFormat === 'regular') {
+            // Regular mode: headings should NOT be wrapped in <strong>
+            headings.forEach(h => {
+              if (h.querySelector('strong')) {
+                h.setAttribute('data-warning', 'Heading should not be wrapped in <strong>');
+              }
+            });
+          } else {
+            // Blogs/shoppables: headings SHOULD be wrapped in <strong>
+            headings.forEach(h => {
+              if (!h.querySelector('strong') && !h.querySelector('b')) {
+                h.setAttribute('data-warning', 'Heading should be wrapped in <strong>');
+              }
+            });
+          }
         }
         
         // OL bold labels - flag all li with colon but no strong
