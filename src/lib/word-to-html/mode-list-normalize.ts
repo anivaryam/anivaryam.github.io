@@ -48,6 +48,46 @@ function mergeAdjacentUl(doc: Document): void {
   }
 }
 
+/**
+ * Wraps text before colon in ordered list items with <strong>
+ * This handles cases where Google Docs/Word exports bold labels in ordered lists
+ * but the bold gets lost during sanitization
+ */
+function wrapOlLabelsInStrong(doc: Document): void {
+  const olItems = doc.querySelectorAll('ol > li');
+  
+  olItems.forEach(li => {
+    // Get all text nodes directly in the li (not in children)
+    const textNodes: Text[] = [];
+    li.childNodes.forEach(node => {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+        textNodes.push(node as Text);
+      }
+    });
+    
+    // Check if first text node contains text before a colon
+    if (textNodes.length > 0) {
+      const firstText = textNodes[0];
+      const text = firstText.textContent || '';
+      const colonIndex = text.indexOf(':');
+      
+      if (colonIndex > 0) {
+        // Split text: before colon and after colon
+        const beforeColon = text.substring(0, colonIndex + 1);
+        const afterColon = text.substring(colonIndex + 1);
+        
+        // Wrap before colon in <strong>
+        const strong = doc.createElement('strong');
+        strong.textContent = beforeColon;
+        
+        // Replace the text node with strong + remaining text
+        firstText.textContent = afterColon;
+        li.insertBefore(strong, firstText);
+      }
+    }
+  });
+}
+
 export function normalizeLists(html: string): string {
   if (!html || typeof html !== 'string') {
     return '';
@@ -59,6 +99,9 @@ export function normalizeLists(html: string): string {
     
     // Merge adjacent ul elements first
     mergeAdjacentUl(doc);
+    
+    // Apply bold to text before colon in ordered lists
+    wrapOlLabelsInStrong(doc);
     
     const listItems = doc.querySelectorAll('li');
     

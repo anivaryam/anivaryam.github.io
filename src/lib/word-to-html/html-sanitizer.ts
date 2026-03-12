@@ -240,15 +240,13 @@ function sanitizeElement(element: Element): void {
       const formatting = extractFormatting(style);
       
       // Handle formatting styles on allowed elements (becomes inner wrappers)
-      // EXCEPTION: For <li> elements, do NOT wrap content in <strong> when the <li> itself
-      // has bold styling - this is often a Word artifact (list style formatting), not
-      // intentional formatting. Only sanitize children, don't wrap.
+      // For <li> elements, skip wrapping at the li level - let children handle their own formatting
+      
       const isListItem = tagName === 'li';
-      const isLiWithOnlyBold = isListItem && formatting?.isBold && !formatting.isItalic && !formatting.isSuperscript && !formatting.isSubscript;
       
       if (formatting) {
-        // If it's an <li> with only bold (no italic/sup/sub), skip wrapping but still sanitize children
-        if (isLiWithOnlyBold) {
+        // For <li> elements, skip wrapping - sanitize children only
+        if (isListItem) {
           sanitizeElement(node);
         } else {
           // Sanitize children first
