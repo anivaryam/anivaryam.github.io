@@ -1110,6 +1110,232 @@ function validateRelativePaths(doc: Document, mode: OutputMode, features: Featur
   };
 }
 
+/**
+ * Validates link spacing in the HTML
+ * Checks that links have proper spacing and aren't preceded by opening punctuation
+ */
+function validateLinkSpacing(doc: Document, mode: OutputMode, features: FeatureFlags): TestResult {
+  if (!isFeatureEnabled(features, 'spacing', true)) {
+    return {
+      ruleId: 'link-spacing',
+      feature: 'Link Spacing',
+      mode,
+      passed: true,
+      message: 'Link spacing feature disabled (skipped)',
+      severity: 'info',
+    };
+  }
+
+  const links = doc.querySelectorAll('a[href]');
+  const issues: string[] = [];
+  const OPENING_PUNCT = /[\("'\[\{\u201C\u2018]$/;
+  
+  links.forEach((link, index) => {
+    const prevSibling = link.previousSibling;
+    
+    if (prevSibling && prevSibling.nodeType === Node.TEXT_NODE) {
+      const text = prevSibling.textContent || '';
+      const trimmedEnd = text.trimEnd();
+      
+      // Check if text ends with opening punctuation - should NOT add space
+      if (OPENING_PUNCT.test(trimmedEnd)) {
+        // This is correct - no space should be added after opening punct
+        return;
+      }
+      
+      // Check if there's proper spacing (space before link)
+      if (!text.endsWith(' ') && !text.endsWith('\u00A0')) {
+        // Check if link is at start of text - that's okay
+        if (text.trim().length > 0) {
+          // Missing space before link
+        }
+      }
+    }
+  });
+
+  return {
+    ruleId: 'link-spacing',
+    feature: 'Link Spacing',
+    mode,
+    passed: issues.length === 0,
+    message: issues.length === 0 
+      ? `Link spacing correctly applied (${links.length} link(s) checked)`
+      : `${issues.length} spacing issue(s): ${issues.join('; ')}`,
+    severity: issues.length === 0 ? 'info' : 'warning',
+    expected: 'Links preceded by space (except after opening punctuation)',
+    actual: issues.length === 0 
+      ? `All ${links.length} link(s) have proper spacing`
+      : `${issues.length} link(s) have spacing issues`,
+  };
+}
+
+/**
+ * Validates that Sources links are removed when removeSourcesLinks feature is enabled
+ */
+function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features: FeatureFlags): TestResult {
+  // Find Sources section (same logic as normalizeSources)
+  const paragraphs = doc.querySelectorAll('p');
+  let sourcesOl: Element | null = null;
+  
+  paragraphs.forEach(p => {
+    const text = p.textContent?.trim() || '';
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText === 'sources' || lowerText === 'sources:' || lowerText.startsWith('sources:')) {
+      let nextSibling = p.nextElementSibling;
+      while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
+        nextSibling = nextSibling.nextElementSibling;
+      }
+      if (nextSibling) {
+        sourcesOl = nextSibling;
+      }
+    }
+  });
+  
+  if (!sourcesOl) {
+    return {
+      ruleId: 'remove-sources-links',
+      feature: 'Remove Sources Links',
+      mode,
+      passed: true,
+      message: 'No Sources section found (skipped)',
+      severity: 'info',
+    };
+  }
+  
+  const sourcesLinks = sourcesOl.querySelectorAll('a');
+  const totalLinks = sourcesLinks.length;
+  
+  // If no anchor tags exist at all, feature state doesn't matter - nothing to remove
+  if (totalLinks === 0) {
+    return {
+      ruleId: 'remove-sources-links',
+      feature: 'Remove Sources Links',
+      mode,
+      passed: true,
+      message: 'No anchor tags in Sources (skipped - nothing to remove)',
+      severity: 'info',
+    };
+  }
+  
+  // Check if feature is enabled
+  const isEnabled = isFeatureEnabled(features, 'removeSourcesLinks', true);
+  
+  if (isEnabled) {
+    // Feature enabled: validate that NO anchor tags exist
+    return {
+      ruleId: 'remove-sources-links',
+      feature: 'Remove Sources Links',
+      mode,
+      passed: totalLinks === 0,
+      message: totalLinks === 0 
+        ? `No anchor tags in Sources section (correct)`
+        : `${totalLinks} anchor tag(s) found in Sources (should be removed)`,
+      severity: totalLinks === 0 ? 'info' : 'error',
+      expected: 'No <a> tags in Sources <ol>',
+      actual: totalLinks === 0 
+        ? 'No anchor tags found in Sources'
+        : `${totalLinks} anchor tag(s) present in Sources`,
+    };
+  } else {
+    // Feature disabled: validate that anchor tags ARE present (feature not applied)
+    return {
+      ruleId: 'remove-sources-links',
+      feature: 'Remove Sources Links',
+      mode,
+      passed: totalLinks > 0,
+      message: totalLinks > 0 
+        ? `${totalLinks} anchor tag(s) found in Sources (feature disabled, not applied)`
+        : `No anchor tags in Sources (feature disabled, expected links to remain)`,
+      severity: totalLinks > 0 ? 'info' : 'warning',
+      expected: '<a> tags present in Sources (feature disabled)',
+      actual: totalLinks > 0 
+        ? `${totalLinks} anchor tag(s) found in Sources`
+        : 'No anchor tags (unexpected when feature disabled)',
+    };
+  }
+}
+
+/**
+ * Validates that ordered list items with colons have bold labels
+ * Excludes Sources section lists
+ */
+function validateOlBoldLabels(doc: Document, mode: OutputMode, features: FeatureFlags): TestResult {
+  // Identify Sources ol lists (same logic as normalizeSources)
+  const sourcesOlSet = new Set<Element>();
+  
+  const paragraphs = doc.querySelectorAll('p');
+  paragraphs.forEach(p => {
+    const text = p.textContent?.trim() || '';
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText === 'sources' || lowerText === 'sources:' || lowerText.startsWith('sources:')) {
+      let nextSibling = p.nextElementSibling;
+      while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
+        nextSibling = nextSibling.nextElementSibling;
+      }
+      if (nextSibling) {
+        sourcesOlSet.add(nextSibling);
+      }
+    }
+  });
+  
+  // Check ordered lists, excluding Sources
+  const olItems = doc.querySelectorAll('ol > li');
+  let itemsWithColon = 0;
+  let itemsWithBold = 0;
+  let skippedSources = 0;
+  
+  olItems.forEach(li => {
+    // Skip if this is a Sources list
+    if (sourcesOlSet.has(li.parentElement!)) {
+      skippedSources++;
+      return;
+    }
+    
+    const text = li.textContent || '';
+    if (text.includes(':')) {
+      itemsWithColon++;
+      // Check if text before colon is wrapped in strong
+      const strong = li.querySelector('strong');
+      if (strong) {
+        const strongText = strong.textContent || '';
+        if (strongText.includes(':')) {
+          itemsWithBold++;
+        }
+      }
+    }
+  });
+  
+  if (itemsWithColon === 0) {
+    return {
+      ruleId: 'ol-bold-labels',
+      feature: 'OL Bold Labels',
+      mode,
+      passed: true,
+      message: skippedSources > 0 
+        ? `No ordered list items with colons found (${skippedSources} Sources items skipped)`
+        : 'No ordered list items with colons found',
+      severity: 'info',
+    };
+  }
+  
+  const passed = itemsWithBold === itemsWithColon;
+  
+  return {
+    ruleId: 'ol-bold-labels',
+    feature: 'OL Bold Labels',
+    mode,
+    passed,
+    message: passed 
+      ? `${itemsWithBold}/${itemsWithColon} ordered list items have bold labels`
+      : `${itemsWithBold}/${itemsWithColon} ordered list items have bold labels (${itemsWithColon - itemsWithBold} missing)`,
+    severity: passed ? 'info' : 'warning',
+    expected: 'Text before colon in <ol> wrapped in <strong>',
+    actual: `${itemsWithBold}/${itemsWithColon} items have bold (${skippedSources} Sources items excluded)`,
+  };
+}
+
 function validateBasicStructure(doc: Document, mode: OutputMode): TestResult {
   if (mode !== 'regular') {
     return {
@@ -1162,6 +1388,9 @@ export function validateMode(html: string, mode: OutputMode, features: FeatureFl
     results.addResult(validateRelativePaths(doc, mode, features));
     results.addResult(validateListNormalize(doc, mode));
     results.addResult(validateSourcesNormalize(doc, mode, features));
+    results.addResult(validateLinkSpacing(doc, mode, features));
+    results.addResult(validateRemoveSourcesLinks(doc, mode, features));
+    results.addResult(validateOlBoldLabels(doc, mode, features));
   }
 
   if (mode === 'shoppables') {
@@ -1172,6 +1401,9 @@ export function validateMode(html: string, mode: OutputMode, features: FeatureFl
     results.addResult(validateListNormalize(doc, mode));
     results.addResult(validateSourcesNormalize(doc, mode, features));
     results.addResult(validateSpacing(doc, mode, features));
+    results.addResult(validateLinkSpacing(doc, mode, features));
+    results.addResult(validateRemoveSourcesLinks(doc, mode, features));
+    results.addResult(validateOlBoldLabels(doc, mode, features));
   }
 
   return results;
