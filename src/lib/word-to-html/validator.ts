@@ -1147,7 +1147,7 @@ function validateLinkSpacing(doc: Document, mode: OutputMode, features: FeatureF
       if (!text.endsWith(' ') && !text.endsWith('\u00A0')) {
         // Check if link is at start of text - that's okay
         if (text.trim().length > 0) {
-          // Missing space before link
+          issues.push(`Missing space before link: "${text.trim()}..."`);
         }
       }
     }
