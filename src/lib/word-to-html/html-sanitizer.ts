@@ -59,7 +59,7 @@ function extractFormatting(style: string): FormattingInfo | null {
   const isItalic = styleObj['font-style']?.toLowerCase().includes('italic') || false;
   const isBold = styleObj['font-weight'] && (
     styleObj['font-weight'].toLowerCase() === 'bold' || 
-    parseInt(styleObj['font-weight']) >= 700
+    parseInt(styleObj['font-weight'], 10) >= 700
   ) || false;
   const isSuperscript = styleObj['vertical-align'] && (
     styleObj['vertical-align'].toLowerCase() === 'super' ||
