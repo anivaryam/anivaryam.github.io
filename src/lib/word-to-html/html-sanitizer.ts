@@ -248,41 +248,9 @@ function sanitizeElement(element: Element): void {
         // Sanitize children first
         sanitizeElement(node);
         
-        // For <li> elements, wrap children with <em>/<strong> if they have font-style formatting
-        // This preserves the <li> element while adding italic/bold to content
-        if (isListItem) {
-          const { isItalic, isBold } = formatting;
-          
-          // Only wrap if there's italic or bold formatting
-          if (isItalic || isBold) {
-            const wrapper: Element[] = [];
-            
-            if (isItalic && isBold) {
-              const strong = document.createElement('strong');
-              const em = document.createElement('em');
-              while (node.firstChild) {
-                em.appendChild(node.firstChild);
-              }
-              strong.appendChild(em);
-              wrapper.push(strong);
-            } else if (isItalic) {
-              const em = document.createElement('em');
-              while (node.firstChild) {
-                em.appendChild(node.firstChild);
-              }
-              wrapper.push(em);
-            } else if (isBold) {
-              const strong = document.createElement('strong');
-              while (node.firstChild) {
-                strong.appendChild(node.firstChild);
-              }
-              wrapper.push(strong);
-            }
-            
-            // Append wrappers to li
-            wrapper.forEach(w => node.appendChild(w));
-          }
-        } else {
+        // For <li> elements, skip wrapping - let children handle their own formatting
+        // Wrapping entire li in strong/em was causing issues (e.g., <li><strong>entire content</strong></li>)
+        if (!isListItem) {
           // Original logic for non-li elements
           const { isItalic, isBold, isSuperscript, isSubscript } = formatting;
           let wrapper: Element | null = null;
