@@ -248,30 +248,11 @@ export function WordToHtmlConverter() {
     }
 
     try {
-      // DEBUG: Log INPUT HTML (only ul/ol for lists)
-      console.log('=== INPUT HTML (lists only) ===');
-      const inputDoc = new DOMParser().parseFromString(inputHtml, 'text/html');
-      console.log('UL/OL:', inputDoc.querySelectorAll('ul, ol').length);
-      inputDoc.querySelectorAll('ul, ol').forEach((el, i) => console.log(`List ${i}:`, el.outerHTML.substring(0, 500)));
-      
       // Step 1: Clean Word HTML first (preserves formatting)
       const cleanedHtml = cleanWordHtml(inputHtml);
       
-      // DEBUG: Log CLEANED HTML (only ul/ol)
-      console.log('=== CLEANED HTML (lists only) ===');
-      const cleanedDoc = new DOMParser().parseFromString(cleanedHtml, 'text/html');
-      console.log('UL/OL:', cleanedDoc.querySelectorAll('ul, ol').length);
-      cleanedDoc.querySelectorAll('ul, ol').forEach((el, i) => console.log(`List ${i}:`, el.outerHTML.substring(0, 500)));
-      
       // Step 2-4: Convert using the main conversion function
       const result = convertToHtml(cleanedHtml, outputFormat, features);
-      
-      // DEBUG: Log FINAL OUTPUT (only ul/ol)
-      console.log('=== FINAL OUTPUT (lists only) ===');
-      const finalDoc = new DOMParser().parseFromString(result.unformatted, 'text/html');
-      console.log('UL/OL:', finalDoc.querySelectorAll('ul, ol').length);
-      finalDoc.querySelectorAll('ul, ol').forEach((el, i) => console.log(`List ${i}:`, el.outerHTML.substring(0, 500)));
-      console.log('===========================================');
       
       return result;
     } catch (error) {
