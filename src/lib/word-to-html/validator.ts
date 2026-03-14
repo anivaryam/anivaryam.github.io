@@ -6,78 +6,6 @@
 import type { OutputMode, FeatureFlags } from './converter';
 
 /**
- * Rule Metadata Registry
- * Enables documentation, UI toggles, and SEO content generation
- */
-export const RULE_META: Record<string, {
-  severity: 'error' | 'warning' | 'info';
-  appliesTo: OutputMode[];
-  docs?: string;
-  description: string;
-}> = {
-  'heading-strong': {
-    severity: 'error',
-    appliesTo: ['blogs', 'shoppables'],
-    docs: '/docs/heading-strong',
-    description: 'Validates that headings are wrapped in <strong> tags for SEO and styling consistency',
-  },
-  'link-attributes': {
-    severity: 'error',
-    appliesTo: ['blogs', 'shoppables'],
-    docs: '/docs/link-attributes',
-    description: 'Ensures external links have target="_blank" and rel="noopener noreferrer" for security and UX',
-  },
-  'spacing-rules': {
-    severity: 'warning',
-    appliesTo: ['blogs', 'shoppables'],
-    docs: '/docs/spacing-rules',
-    description: 'Validates proper spacing elements before headings and special sections for readability',
-  },
-  'key-takeaways': {
-    severity: 'error',
-    appliesTo: ['blogs'],
-    docs: '/docs/key-takeaways',
-    description: 'Removes <em> tags from Key Takeaways section for consistent formatting',
-  },
-  'h1-after-key-takeaways': {
-    severity: 'error',
-    appliesTo: ['blogs'],
-    docs: '/docs/h1-removal',
-    description: 'Removes H1 headings after Key Takeaways section to maintain proper heading hierarchy',
-  },
-  'ol-header-conversion': {
-    severity: 'warning',
-    appliesTo: ['blogs', 'shoppables'],
-    docs: '/docs/ol-header-conversion',
-    description: 'Converts ordered lists containing headers into manually numbered headings',
-  },
-  'sources-normalization': {
-    severity: 'error',
-    appliesTo: ['blogs', 'shoppables'],
-    docs: '/docs/sources-normalization',
-    description: 'Normalizes Sources section formatting with proper <strong><em> structure',
-  },
-  'relative-paths': {
-    severity: 'warning',
-    appliesTo: ['blogs', 'shoppables'],
-    docs: '/docs/relative-paths',
-    description: 'Converts absolute URLs to relative paths for better portability',
-  },
-  'list-normalization': {
-    severity: 'warning',
-    appliesTo: ['regular', 'blogs', 'shoppables'],
-    docs: '/docs/list-normalization',
-    description: 'Normalizes spacing after <strong> tags ending with colons in list items',
-  },
-  'basic-structure': {
-    severity: 'error',
-    appliesTo: ['regular'],
-    docs: '/docs/basic-structure',
-    description: 'Validates basic HTML structure and content presence',
-  },
-};
-
-/**
  * Centralized feature flag check with explicit defaults
  * Prevents logic drift and makes behavior explicit
  */
@@ -88,6 +16,72 @@ function isFeatureEnabled(
 ): boolean {
   const value = features?.[key];
   return value === undefined ? defaultValue : value;
+}
+
+interface KeyTakeawaysSection {
+  heading: Element;
+  list: Element;
+}
+
+function findKeyTakeawaysSection(doc: Document): KeyTakeawaysSection | null {
+  const headings = doc.querySelectorAll('h2');
+  let keyTakeawaysHeading: Element | null = null;
+
+  for (let heading of Array.from(headings)) {
+    const text = heading.textContent?.trim() || '';
+    if (text.toLowerCase().includes('key takeaways')) {
+      keyTakeawaysHeading = heading;
+      break;
+    }
+  }
+
+  if (!keyTakeawaysHeading) {
+    return null;
+  }
+
+  let nextSibling = keyTakeawaysHeading.nextElementSibling;
+  while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ul') {
+    nextSibling = nextSibling.nextElementSibling;
+  }
+
+  if (!nextSibling || nextSibling.tagName.toLowerCase() !== 'ul') {
+    return null;
+  }
+
+  return { heading: keyTakeawaysHeading, list: nextSibling };
+}
+
+interface SourcesSection {
+  paragraph: Element;
+  list: Element;
+}
+
+function findSourcesSection(doc: Document): SourcesSection | null {
+  const paragraphs = doc.querySelectorAll('p');
+
+  let sourcesParagraph: Element | null = null;
+  for (let p of Array.from(paragraphs)) {
+    const text = p.textContent?.trim().toLowerCase() || '';
+    if (text === 'sources' || text === 'sources:') {
+      sourcesParagraph = p;
+      break;
+    }
+  }
+
+  if (!sourcesParagraph) {
+    return null;
+  }
+
+  let nextSibling = sourcesParagraph.nextElementSibling;
+  while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
+    nextSibling = nextSibling.nextElementSibling;
+  }
+
+  if (!nextSibling || nextSibling.tagName.toLowerCase() !== 'ol') {
+    return null;
+  }
+
+  return { paragraph: sourcesParagraph, list: nextSibling };
 }
 
 export interface TestResult {
@@ -398,18 +392,9 @@ function validateKeyTakeaways(doc: Document, mode: OutputMode, features?: Featur
     };
   }
 
-  const headings = doc.querySelectorAll('h2');
-  let keyTakeawaysHeading: Element | null = null;
+  const section = findKeyTakeawaysSection(doc);
 
-  for (let heading of Array.from(headings)) {
-    const text = heading.textContent?.trim() || '';
-    if (text.toLowerCase().includes('key takeaways')) {
-      keyTakeawaysHeading = heading;
-      break;
-    }
-  }
-
-  if (!keyTakeawaysHeading) {
+  if (!section) {
     return {
       ruleId: 'key-takeaways',
       feature: 'Key Takeaways Formatting',
@@ -420,23 +405,7 @@ function validateKeyTakeaways(doc: Document, mode: OutputMode, features?: Featur
     };
   }
 
-  let nextSibling = keyTakeawaysHeading.nextElementSibling;
-  while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ul') {
-    nextSibling = nextSibling.nextElementSibling;
-  }
-
-  if (!nextSibling || nextSibling.tagName.toLowerCase() !== 'ul') {
-    return {
-      ruleId: 'key-takeaways',
-      feature: 'Key Takeaways Formatting',
-      mode,
-      passed: true,
-      message: 'Key Takeaways heading found but no list found (skipped)',
-      severity: 'info',
-    };
-  }
-
-  const listItems = nextSibling.querySelectorAll('li');
+  const listItems = section.list.querySelectorAll('li');
   const hasEmTags = Array.from(listItems).some((li) => li.querySelector('em'));
 
   // Check if feature is enabled (enabled by default)
@@ -491,18 +460,9 @@ function validateH1AfterKeyTakeaways(doc: Document, mode: OutputMode, features?:
     };
   }
 
-  const headings = doc.querySelectorAll('h2');
-  let keyTakeawaysHeading: Element | null = null;
+  const section = findKeyTakeawaysSection(doc);
 
-  for (let heading of Array.from(headings)) {
-    const text = heading.textContent?.trim() || '';
-    if (text.toLowerCase().includes('key takeaways')) {
-      keyTakeawaysHeading = heading;
-      break;
-    }
-  }
-
-  if (!keyTakeawaysHeading) {
+  if (!section) {
     return {
       ruleId: 'h1-after-key-takeaways',
       feature: 'H1 Removal',
@@ -513,23 +473,7 @@ function validateH1AfterKeyTakeaways(doc: Document, mode: OutputMode, features?:
     };
   }
 
-  let nextSibling = keyTakeawaysHeading.nextElementSibling;
-  while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ul') {
-    nextSibling = nextSibling.nextElementSibling;
-  }
-
-  if (!nextSibling || nextSibling.tagName.toLowerCase() !== 'ul') {
-    return {
-      ruleId: 'h1-after-key-takeaways',
-      feature: 'H1 Removal',
-      mode,
-      passed: true,
-      message: 'Key Takeaways heading found but no list found (skipped)',
-      severity: 'info',
-    };
-  }
-
-  let nodeAfterUl: Node | null = nextSibling.nextSibling;
+  let nodeAfterUl: Node | null = section.list.nextSibling;
   while (
     nodeAfterUl &&
     nodeAfterUl.nodeType === Node.TEXT_NODE &&
@@ -590,27 +534,12 @@ function isSpacingElement(element: Element | null): boolean {
  * Helper: Validate spacing after Key Takeaways section
  */
 function validateKeyTakeawaySpacing(doc: Document, issues: string[]): void {
-  const headings = doc.querySelectorAll('h2');
-  let keyTakeawaysHeading: Element | null = null;
-  
-  for (let heading of Array.from(headings)) {
-    const text = heading.textContent?.trim() || '';
-    if (text.toLowerCase().includes('key takeaways')) {
-      keyTakeawaysHeading = heading;
-      break;
-    }
-  }
+  const section = findKeyTakeawaysSection(doc);
 
-  if (keyTakeawaysHeading) {
-    let nextSibling = keyTakeawaysHeading.nextElementSibling;
-    while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ul') {
-      nextSibling = nextSibling.nextElementSibling;
-    }
-    if (nextSibling && nextSibling.tagName.toLowerCase() === 'ul') {
-      const elementAfterUl = nextSibling.nextElementSibling;
-      if (!isSpacingElement(elementAfterUl as Element)) {
-        issues.push('Missing spacing after Key Takeaways section');
-      }
+  if (section) {
+    const elementAfterUl = section.list.nextElementSibling;
+    if (!isSpacingElement(elementAfterUl)) {
+      issues.push('Missing spacing after Key Takeaways section');
     }
   }
 }
@@ -895,18 +824,9 @@ function validateOlHeaderConversion(doc: Document, mode: OutputMode, features?: 
 }
 
 function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
-  const paragraphs = doc.querySelectorAll('p');
+  const section = findSourcesSection(doc);
 
-  let sourcesParagraph: Element | null = null;
-  for (let p of Array.from(paragraphs)) {
-    const text = p.textContent?.trim().toLowerCase() || '';
-    if (text === 'sources' || text === 'sources:') {
-      sourcesParagraph = p;
-      break;
-    }
-  }
-
-  if (!sourcesParagraph) {
+  if (!section) {
     return {
       ruleId: 'sources-normalization',
       feature: 'Sources Normalization',
@@ -917,23 +837,7 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
     };
   }
 
-  let nextSibling = sourcesParagraph.nextElementSibling;
-  while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
-    nextSibling = nextSibling.nextElementSibling;
-  }
-
-  if (!nextSibling || nextSibling.tagName.toLowerCase() !== 'ol') {
-    return {
-      ruleId: 'sources-normalization',
-      feature: 'Sources Normalization',
-      mode,
-      passed: true,
-      message: 'Sources paragraph found but no <ol> list found (skipped)',
-      severity: 'info',
-    };
-  }
-
-  const listItems = nextSibling.querySelectorAll('li');
+  const listItems = section.list.querySelectorAll('li');
   if (listItems.length === 0) {
     return {
       ruleId: 'sources-normalization',
@@ -953,7 +857,7 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
     const issues: string[] = [];
 
     // Check paragraph formatting - should NOT have <strong><em> structure
-    const strongTag = sourcesParagraph.querySelector('strong');
+    const strongTag = section.paragraph.querySelector('strong');
     if (strongTag) {
       const emTag = strongTag.querySelector('em');
       if (emTag) {
@@ -996,7 +900,7 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
   // Feature is enabled, validate that sources ARE normalized
   const issues: string[] = [];
 
-  const strongTag = sourcesParagraph.querySelector('strong');
+  const strongTag = section.paragraph.querySelector('strong');
   if (!strongTag) {
     issues.push('Sources paragraph missing <strong> tag');
   } else {
@@ -1047,8 +951,9 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
   };
 }
 
-function validateRelativePaths(doc: Document, mode: OutputMode, features: FeatureFlags): TestResult {
-  if (!isFeatureEnabled(features, 'relativePaths', false)) {
+function validateRelativePaths(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  const enabled = features?.relativePaths ?? true;
+  if (!enabled) {
     return {
       ruleId: 'relative-paths',
       feature: 'Relative Paths',
@@ -1114,8 +1019,9 @@ function validateRelativePaths(doc: Document, mode: OutputMode, features: Featur
  * Validates link spacing in the HTML
  * Checks that links have proper spacing and aren't preceded by opening punctuation
  */
-function validateLinkSpacing(doc: Document, mode: OutputMode, features: FeatureFlags): TestResult {
-  if (!isFeatureEnabled(features, 'spacing', true)) {
+function validateLinkSpacing(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  const enabled = features?.spacing ?? true;
+  if (!enabled) {
     return {
       ruleId: 'link-spacing',
       feature: 'Link Spacing',
@@ -1172,7 +1078,8 @@ function validateLinkSpacing(doc: Document, mode: OutputMode, features: FeatureF
 /**
  * Validates that Sources links are removed when removeSourcesLinks feature is enabled
  */
-function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features: FeatureFlags): TestResult {
+function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  const enabled = features?.removeSourcesLinks ?? true;
   // Find Sources section (same logic as normalizeSources)
   const paragraphs = doc.querySelectorAll('p');
   let sourcesOl: Element | null = null;
@@ -1219,9 +1126,7 @@ function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features: F
   }
   
   // Check if feature is enabled
-  const isEnabled = isFeatureEnabled(features, 'removeSourcesLinks', true);
-  
-  if (isEnabled) {
+  if (enabled) {
     // Feature enabled: validate that NO anchor tags exist
     return {
       ruleId: 'remove-sources-links',
@@ -1260,7 +1165,7 @@ function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features: F
  * Validates that ordered list items with colons have bold labels
  * Excludes Sources section lists
  */
-function validateOlBoldLabels(doc: Document, mode: OutputMode, features: FeatureFlags): TestResult {
+function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
   // Identify Sources ol lists (same logic as normalizeSources)
   const sourcesOlSet = new Set<Element>();
   

@@ -33,6 +33,8 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
 };
 
 const SAFE_PROTOCOLS = ['http:', 'https:', 'mailto:'];
+const SAFE_REL_VALUES = ['nofollow', 'noopener', 'noreferrer', 'noopener,noreferrer'];
+const NOOPENER_REGEX = /\bnoopener\b/i;
 
 /**
  * Extracts formatting information from an element's style attribute
@@ -64,14 +66,13 @@ function extractFormatting(style: string): FormattingInfo | null {
   const isSuperscript = styleObj['vertical-align'] && (
     styleObj['vertical-align'].toLowerCase() === 'super' ||
     styleObj['vertical-align'].includes('super') ||
-    styleObj['vertical-align'].includes('35%') ||
-    styleObj['vertical-align'].includes('0.6')
+    /^[\d.]+%?$/.test(styleObj['vertical-align']) ||
+    !isNaN(parseFloat(styleObj['vertical-align']))
   ) || false;
   const isSubscript = styleObj['vertical-align'] && (
     styleObj['vertical-align'].toLowerCase() === 'sub' ||
     styleObj['vertical-align'].includes('sub') ||
-    styleObj['vertical-align'].includes('-35%') ||
-    styleObj['vertical-align'].includes('-0.6')
+    styleObj['vertical-align'].startsWith('-')
   ) || false;
   
   if (!isItalic && !isBold && !isSuperscript && !isSubscript) {
@@ -353,6 +354,24 @@ function sanitizeAttributes(element: Element, tagName: string): void {
         attrsToRemove.push(attr.name);
       }
     }
+
+    if (tagName === 'a' && attrName === 'rel') {
+      const relValue = attr.value.toLowerCase();
+      const relParts = relValue.split(/\s+/).filter(p => p);
+      const isValidRel = relParts.every(part => SAFE_REL_VALUES.includes(part));
+      if (!isValidRel) {
+        attrsToRemove.push(attr.name);
+      }
+    }
+
+    if (tagName === 'a' && attrName === 'target' && attr.value.toLowerCase() === '_blank') {
+      const relAttr = element.getAttribute('rel');
+      const relValue = relAttr ? relAttr.toLowerCase() : '';
+      if (!NOOPENER_REGEX.test(relValue)) {
+        const newRel = relValue ? relValue + ' noopener' : 'noopener';
+        element.setAttribute('rel', newRel);
+      }
+    }
   });
 
   attrsToRemove.forEach(attrName => {
@@ -365,13 +384,13 @@ function sanitizeAttributes(element: Element, tagName: string): void {
  * Note: This function normalizes URLs (changes their form) before validation.
  * This is intentional for handling Word-exported HTML with encoding issues.
  */
-function cleanUrl(url: string): string {
+function cleanUrl(url: string, baseUrl: string = ''): string {
   if (!url || typeof url !== 'string') {
     return url;
   }
 
   try {
-    let cleaned = decodeURIComponent(url);
+    let cleaned = url;
     // Normalize various dash types to standard hyphen
     cleaned = cleaned.replace(/[\u2011\u2012\u2013\u2014\u2015]/g, '-');
     // Normalize non-breaking spaces
@@ -383,9 +402,9 @@ function cleanUrl(url: string): string {
     // Remove hyphens adjacent to slashes
     cleaned = cleaned.replace(/\/-+/g, '/').replace(/-+\//g, '/');
     
-    if (cleaned !== decodeURIComponent(url)) {
+    if (cleaned !== url) {
       try {
-        const urlObj = new URL(cleaned, window.location.href);
+        const urlObj = new URL(cleaned, baseUrl || window.location.href);
         const cleanPath = urlObj.pathname
           .split('/')
           .map(segment => encodeURIComponent(decodeURIComponent(segment)))
@@ -409,7 +428,7 @@ function cleanUrl(url: string): string {
   }
 }
 
-function isSafeUrl(url: string): boolean {
+function isSafeUrl(url: string, baseUrl: string = ''): boolean {
   if (!url || typeof url !== 'string') {
     return false;
   }
@@ -419,7 +438,7 @@ function isSafeUrl(url: string): boolean {
       return true;
     }
 
-    const urlObj = new URL(url, window.location.href);
+    const urlObj = new URL(url, baseUrl || window.location.href);
     return SAFE_PROTOCOLS.includes(urlObj.protocol);
   } catch (e) {
     return url.startsWith('/') || url.startsWith('#');

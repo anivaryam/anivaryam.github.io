@@ -12,7 +12,7 @@ export function formatKeyTakeaways(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
-    const headings = doc.querySelectorAll('h2');
+    const headings = Array.from(doc.querySelectorAll('h2'));
     let keyTakeawaysHeading: Element | null = null;
     
     for (let heading of headings) {
@@ -49,9 +49,8 @@ export function formatKeyTakeaways(html: string): string {
 function formatKeyTakeawaysHeading(heading: Element): void {
   if (!heading) return;
   
-  let text = heading.textContent?.trim() || '';
   removeEmTags(heading);
-  text = heading.textContent?.trim() || '';
+  let text = heading.textContent?.trim() || '';
   
   if (!text.endsWith(':')) {
     const strongTag = heading.querySelector('strong');

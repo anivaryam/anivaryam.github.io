@@ -61,7 +61,7 @@ function normalizeSourcesListItems(olElement: Element, doc: Document): void {
     if (li.children.length === 1 && li.children[0].tagName.toLowerCase() === 'em') {
       const hasTextOutside = Array.from(li.childNodes).some(node => 
         node.nodeType === Node.TEXT_NODE && 
-        node !== li.children[0] && 
+        node.parentNode === li && 
         (node as Text).textContent?.trim()
       );
       if (!hasTextOutside) {

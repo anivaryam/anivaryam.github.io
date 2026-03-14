@@ -17,33 +17,34 @@
  */
 
 function mergeAdjacentUl(doc: Document): void {
-  const uls = Array.from(doc.querySelectorAll('ul'));
+  let hasChanges = true;
+  
+  while (hasChanges) {
+    hasChanges = false;
+    const uls = Array.from(doc.querySelectorAll('ul'));
 
-  for (let i = 0; i < uls.length - 1; i++) {
-    const currentUl = uls[i];
-    const nextUl = uls[i + 1];
+    for (let i = 0; i < uls.length - 1; i++) {
+      const currentUl = uls[i];
+      const nextUl = uls[i + 1];
 
-    // Check for adjacency, skipping whitespace-only text nodes
-    let sibling: Node | null = currentUl.nextSibling;
-    while (
-      sibling &&
-      sibling.nodeType === Node.TEXT_NODE &&
-      !sibling.textContent?.trim()
-    ) {
-      sibling = sibling.nextSibling;
-    }
+      let sibling: Node | null = currentUl.nextSibling;
+      while (
+        sibling &&
+        sibling.nodeType === Node.TEXT_NODE &&
+        !sibling.textContent?.trim()
+      ) {
+        sibling = sibling.nextSibling;
+      }
 
-    if (sibling === nextUl) {
-      // Move only direct child <li> elements to avoid corrupting nested lists
-      const lis = Array.from(nextUl.children).filter(
-        el => el.tagName === 'LI'
-      );
+      if (sibling === nextUl) {
+        const lis = Array.from(nextUl.children).filter(
+          el => el.tagName === 'LI'
+        );
 
-      lis.forEach(li => currentUl.appendChild(li));
-      nextUl.remove();
-
-      uls.splice(i + 1, 1);
-      i--;
+        lis.forEach(li => currentUl.appendChild(li));
+        nextUl.remove();
+        hasChanges = true;
+      }
     }
   }
 }
@@ -134,11 +135,10 @@ export function normalizeLists(html: string): string {
     listItems.forEach(li => {
       const style = li.getAttribute('style') || '';
       if (style.includes('font-style') && style.includes('italic')) {
-        // Check if content is already wrapped in em
         const hasEm = li.querySelector('em');
-        if (!hasEm) {
+        const hasNestedList = li.querySelector('ul, ol');
+        if (!hasEm && !hasNestedList) {
           const em = document.createElement('em');
-          // Move all children to em
           while (li.firstChild) {
             em.appendChild(li.firstChild);
           }

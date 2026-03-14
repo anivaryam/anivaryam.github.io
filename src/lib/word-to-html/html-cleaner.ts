@@ -209,12 +209,12 @@ function normalizeStrongEmNesting(element: Element): void {
           }
           
           if (strongElement.parentNode) {
-            // Insert new structure before original strong
+            const insertPosition = strongElement.nextSibling;
+            
             strongElement.parentNode.insertBefore(newEm, strongElement);
             
-            // Move other content after newEm
             for (let j = 0; j < otherContent.length; j++) {
-              strongElement.parentNode.insertBefore(otherContent[j], strongElement.nextSibling);
+              strongElement.parentNode.insertBefore(otherContent[j], insertPosition);
             }
             
             // Remove original strong (em is already empty and will be removed by DOM)
@@ -300,7 +300,7 @@ function mergeAdjacentEmTags(element: Element): void {
             (current as Element).appendChild(nextChildren[j]);
           }
           if ((next as Element).parentNode) {
-            (next as Element).parentNode!.removeChild(next);
+            (next as Element).parentNode.removeChild(next);
           }
           merged = true;
           break; // Restart scan after modification
@@ -337,8 +337,9 @@ function trimAnchorWhitespace(element: Element): void {
   let firstTextNode: Text | null = null;
   let lastTextNode: Text | null = null;
   
-  for (let i = 0; i < element.childNodes.length; i++) {
-    const node = element.childNodes[i];
+  const childNodes = Array.from(element.childNodes);
+  for (let i = 0; i < childNodes.length; i++) {
+    const node = childNodes[i];
     if (node.nodeType === Node.TEXT_NODE) {
       if (firstTextNode === null) {
         firstTextNode = node as Text;

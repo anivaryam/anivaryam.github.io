@@ -4,6 +4,17 @@
  * This matches the cleanWordHtml function from converter.js
  */
 
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, char => map[char]);
+}
+
 function parseStyle(styleString: string): Record<string, string> {
   const styles: Record<string, string> = {};
   if (!styleString) return styles;
@@ -205,7 +216,7 @@ function removeWordSpecificAttributes(element: Element): void {
     
     if (el.tagName === 'A' && (el as HTMLAnchorElement).href) {
       const href = el.getAttribute('href');
-      if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+      if (href && !href.startsWith('#') && !/^(javascript|vbscript|data):/i.test(href)) {
         el.setAttribute('href', href);
       }
     }
@@ -309,6 +320,18 @@ function normalizeFormattingTags(element: Element): void {
 }
 
 function removeWordWrapperElements(element: Element): void {
+  // Remove Google Docs wrapper elements
+  const googleDocsWrappers = element.querySelectorAll('[id^="docs-internal-guid"]');
+  googleDocsWrappers.forEach(el => {
+    const parent = el.parentNode;
+    if (parent) {
+      while (el.firstChild) {
+        parent.insertBefore(el.firstChild, el);
+      }
+      parent.removeChild(el);
+    }
+  });
+  
   const wordElements = element.querySelectorAll('[class*="Mso"], [class*="mso-"]');
   wordElements.forEach(el => {
     const parent = el.parentNode;

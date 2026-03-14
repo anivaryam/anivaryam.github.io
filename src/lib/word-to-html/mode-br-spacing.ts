@@ -11,7 +11,7 @@ function isSpacingElement(element: Element | null): boolean {
   const text = (element.textContent || '').trim();
   const html = element.innerHTML.trim();
   
-  const isOnlyNbsp = (html === '&nbsp;' || html === '\u00A0');
+  const isOnlyNbsp = (html === '&nbsp;' || html === '&#160;' || html === '\u00A0');
   const isOnlySpaceChar = (text === '\u00A0' || text === '');
   
   return isOnlyNbsp && isOnlySpaceChar;

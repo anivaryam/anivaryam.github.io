@@ -17,7 +17,7 @@ function isSpacingElement(element: Element): boolean {
 }
 
 function addSpacingAfterKeyTakeaways(doc: Document): void {
-  const headings = doc.querySelectorAll('h2');
+  const headings = Array.from(doc.querySelectorAll('h2'));
   let keyTakeawaysHeading: Element | null = null;
   
   for (let heading of headings) {
@@ -42,14 +42,21 @@ function addSpacingAfterKeyTakeaways(doc: Document): void {
       }
       
       const spacing = doc.createElement('p');
-      spacing.innerHTML = '&nbsp;';
-      nextSibling.parentNode!.insertBefore(spacing, elementAfterUl);
+      spacing.textContent = '\u00A0';
+      const parentNode = nextSibling.parentNode;
+      if (parentNode) {
+        if (elementAfterUl) {
+          parentNode.insertBefore(spacing, elementAfterUl);
+        } else {
+          parentNode.appendChild(spacing);
+        }
+      }
     }
   }
 }
 
 function addSpacingBeforeHeadings(doc: Document): void {
-  const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  const headings = Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, h6'));
   let isFirstFaqQuestion = false;
   let foundFaqSection = false;
   
@@ -86,7 +93,10 @@ function addSpacingBeforeHeadings(doc: Document): void {
     
     const spacing = doc.createElement('p');
     spacing.innerHTML = '&nbsp;';
-    heading.parentNode!.insertBefore(spacing, heading);
+    const headingParent = heading.parentNode;
+    if (headingParent) {
+      headingParent.insertBefore(spacing, heading);
+    }
   });
 }
 
@@ -114,7 +124,10 @@ function addSpacingBeforeReadSection(doc: Document): void {
       
       const spacing = doc.createElement('p');
       spacing.innerHTML = '&nbsp;';
-      p.parentNode!.insertBefore(spacing, p);
+      const pParent = p.parentNode;
+      if (pParent) {
+        pParent.insertBefore(spacing, p);
+      }
     }
   });
 }
@@ -144,7 +157,10 @@ function addSpacingBeforeSources(doc: Document): void {
       
       const spacing = doc.createElement('p');
       spacing.innerHTML = '&nbsp;';
-      p.parentNode!.insertBefore(spacing, p);
+      const pParent = p.parentNode;
+      if (pParent) {
+        pParent.insertBefore(spacing, p);
+      }
     }
   });
 }
@@ -172,7 +188,10 @@ function addSpacingBeforeDisclaimer(doc: Document): void {
       
       const spacing = doc.createElement('p');
       spacing.innerHTML = '&nbsp;';
-      p.parentNode!.insertBefore(spacing, p);
+      const pParent = p.parentNode;
+      if (pParent) {
+        pParent.insertBefore(spacing, p);
+      }
     }
   });
 }
@@ -200,7 +219,10 @@ function addSpacingBeforeAltImageText(doc: Document): void {
       
       const spacing = doc.createElement('p');
       spacing.innerHTML = '&nbsp;';
-      p.parentNode!.insertBefore(spacing, p);
+      const pParent = p.parentNode;
+      if (pParent) {
+        pParent.insertBefore(spacing, p);
+      }
     }
   });
 }

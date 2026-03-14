@@ -12,7 +12,7 @@ export function removeH1AfterKeyTakeaways(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
-    const headings = doc.querySelectorAll('h2');
+    const headings = Array.from(doc.querySelectorAll('h2'));
     let keyTakeawaysHeading: Element | null = null;
     
     for (let heading of headings) {
@@ -30,16 +30,16 @@ export function removeH1AfterKeyTakeaways(html: string): string {
       }
       
       if (nextSibling && nextSibling.tagName.toLowerCase() === 'ul') {
-        let elementAfterUl = nextSibling.nextElementSibling;
+        let elementAfterUl: Element | null = nextSibling.nextElementSibling;
         
         while (elementAfterUl && 
                elementAfterUl.nodeType === Node.TEXT_NODE && 
-               !(elementAfterUl as Text).textContent?.trim()) {
-          elementAfterUl = elementAfterUl.nextSibling;
+               !(elementAfterUl.textContent?.trim())) {
+          elementAfterUl = elementAfterUl.nextElementSibling;
         }
         
         if (elementAfterUl && elementAfterUl.nodeType === Node.ELEMENT_NODE &&
-            (elementAfterUl as Element).tagName.toLowerCase() === 'h1') {
+            elementAfterUl.tagName.toLowerCase() === 'h1') {
           elementAfterUl.remove();
         }
       }

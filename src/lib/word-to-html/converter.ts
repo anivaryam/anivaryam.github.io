@@ -3,6 +3,17 @@
  * Integrates advanced conversion logic from word-to-html-v2
  */
 
+const isNode = typeof process !== 'undefined' && process.versions?.node;
+const isBrowser = typeof window !== 'undefined';
+
+function logError(message: string, error: unknown): void {
+  if (isNode) {
+    console.error(message, error);
+  } else if (isBrowser) {
+    console.error(message, error);
+  }
+}
+
 import { cleanHtml } from './html-cleaner';
 import { sanitizeHtml } from './html-sanitizer';
 import { formatCompact } from './html-formatter';
@@ -41,20 +52,32 @@ export function convertToHtml(
   try {
     // Step 1: Sanitize HTML (removes styling and unsafe attributes)
     let sanitized = sanitizeHtml(cleanedHtml);
+    if (!sanitized) {
+      throw new Error('Sanitization returned null or undefined');
+    }
     
     // Step 2: Clean HTML structure (remove unnecessary tags, unwrap elements)
     let cleanedStructure = cleanHtml(sanitized);
+    if (!cleanedStructure) {
+      throw new Error('HTML cleaning returned null or undefined');
+    }
     
     // Step 3: Apply mode-specific processing
     let processed = processMode(cleanedStructure, mode, features);
+    if (!processed) {
+      throw new Error('Mode processing returned null or undefined');
+    }
     
     // Step 4: Format HTML for display
     const formatted = formatCompact(processed);
+    if (!formatted) {
+      throw new Error('HTML formatting returned null or undefined');
+    }
     
     return { formatted, unformatted: processed };
   } catch (error) {
-    console.error('Conversion error:', error);
-    return { formatted: '', unformatted: '' };
+    logError('Conversion error:', error);
+    throw error instanceof Error ? error : new Error(String(error));
   }
 }
 

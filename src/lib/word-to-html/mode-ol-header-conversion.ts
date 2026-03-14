@@ -100,7 +100,7 @@ export function convertOlHeaders(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    const olElements = doc.querySelectorAll('ol');
+    const olElements = Array.from(doc.querySelectorAll('ol'));
     const olsToProcess: Element[] = [];
 
     olElements.forEach(ol => {

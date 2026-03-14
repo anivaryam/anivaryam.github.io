@@ -150,6 +150,7 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
     return processedHtml;
   }
 
-  return processedHtml;
+  console.warn(`Unknown mode: ${mode}`);
+  throw new Error(`Unknown mode: ${mode}`);
 }
 

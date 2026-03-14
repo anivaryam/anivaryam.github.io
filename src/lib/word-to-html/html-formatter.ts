@@ -17,6 +17,16 @@ const BLOCK_ELEMENTS = [
 
 const SELF_CLOSING = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'];
 
+function escapeHtmlAttr(str: unknown): string {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function isSpacingParagraph(node: Element): boolean {
   if (!node || node.tagName.toLowerCase() !== 'p') return false;
   const html = (node.innerHTML || '').trim();
@@ -46,7 +56,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
     if (element.attributes && element.attributes.length > 0) {
       for (let i = 0; i < element.attributes.length; i++) {
         const attr = element.attributes[i];
-        tag += ` ${attr.name}="${attr.value}"`;
+        tag += ` ${attr.name}="${escapeHtmlAttr(attr.value)}"`;
       }
     }
     tag += '>';
@@ -57,7 +67,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
   if (element.attributes && element.attributes.length > 0) {
     for (let i = 0; i < element.attributes.length; i++) {
       const attr = element.attributes[i];
-      openingTag += ` ${attr.name}="${attr.value}"`;
+      openingTag += ` ${attr.name}="${escapeHtmlAttr(attr.value)}"`;
     }
   }
   openingTag += '>';
@@ -109,7 +119,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
                                (nextSibling && nextSibling.nodeType === Node.ELEMENT_NODE);
       
       if (text.trim() || (isSpaceOnly && isBetweenElements)) {
-        content += text;
+        content += text ?? '';
         hasContent = true;
       }
     }
@@ -154,6 +164,11 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
 export function formatCompact(html: string): string {
   if (!html || typeof html !== 'string') {
     return '';
+  }
+
+  if (html.length > 1000000) {
+    console.warn('HTML input too large, truncating to 1MB');
+    html = html.substring(0, 1000000);
   }
 
   try {
