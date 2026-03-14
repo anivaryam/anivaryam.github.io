@@ -138,6 +138,205 @@ Built for product-driven content such as Shopify or affiliate articles.
 
 *Shoppables mode is optimized for e-commerce content, with link-aware formatting and spacing rules that work seamlessly with Shopify and other e-commerce platforms.*
 
+## Comprehensive Feature Guide
+
+The Anivaryam Word-to-HTML Converter includes a powerful set of features designed for different publishing workflows. Here's a complete breakdown of everything the converter can do.
+
+### Feature Flags
+
+The converter supports granular control through feature flags, allowing you to enable or disable specific transformations:
+
+| Feature Flag | Description |
+|-------------|-------------|
+| headingStrong | Wrap headings in strong tags for SEO |
+| keyTakeaways | Format Key Takeaways section with em tags |
+| h1Removal | Remove H1 headings after Key Takeaways |
+| linkAttributes | Add target="_blank" and rel attributes to external links |
+| relativePaths | Convert absolute URLs to relative paths |
+| spacing | Add spacing between sections |
+| olHeaderConversion | Convert ordered list headers to bold text |
+| sourcesNormalize | Normalize Sources section formatting |
+| removeSourcesLinks | Remove links from Sources section |
+| brBeforeReadMore | Add br before Read More sections |
+| brBeforeSources | Add br before Sources section |
+
+### Feature Breakdown
+
+#### 1. Heading Strong Tags
+
+Converts heading elements to include strong tags for better SEO and visual hierarchy:
+
+**Before:**
+\`\`\`html
+<h2>My Heading</h2>
+\`\`\`
+
+**After:**
+\`\`\`html
+<h2><strong>My Heading</strong></h2>
+\`\`\`
+
+#### 2. Key Takeaways Formatting
+
+Detects and formats "Key Takeaways" or "Key Points" sections:
+
+**Before:**
+\`\`\`html
+<h2>Key Takeaways</h2>
+<ul><li>Point 1</li></ul>
+\`\`\`
+
+**After:**
+\`\`\`html
+<h2><em>Key Takeaways</em></h2>
+<ul><li><em>Point 1</em></li></ul>
+\`\`\`
+
+#### 3. H1 Removal
+
+Removes H1 headings that appear after Key Takeaways sections to maintain proper heading hierarchy.
+
+#### 4. Link Attributes
+
+Adds security attributes to external links:
+
+- target="_blank" - Opens link in new tab
+- rel="noopener noreferrer" - Prevents tabnabbing attacks
+
+**Before:**
+\`\`\`html
+<a href="https://example.com">Link</a>
+\`\`\`
+
+**After:**
+\`\`\`html
+<a href="https://example.com" target="_blank" rel="noopener noreferrer">Link</a>
+\`\`\`
+
+#### 5. Relative Paths
+
+Converts absolute URLs to relative paths for better portability:
+
+**Before:**
+\`\`\`html
+<a href="https://anivaryam.github.io/page">Link</a>
+\`\`\`
+
+**After:**
+\`\`\`html
+<a href="/page">Link</a>
+\`\`\`
+
+#### 6. Spacing Rules
+
+Adds proper spacing between content sections for better readability:
+
+- Spacing after Key Takeaways
+- Spacing before headings
+- Spacing before Read More sections
+- Spacing before Sources
+
+#### 7. Ordered List Header Conversion
+
+Converts ordered lists with header-style content to properly formatted headings:
+
+**Before:**
+\`\`\`html
+<ol><li><strong>First Item</strong></li></ol>
+\`\`\`
+
+**After:**
+\`\`\`html
+<ol><li><strong>1.</strong> First Item</li></ol>
+\`\`\`
+
+#### 8. Sources Normalization
+
+Formats the Sources section consistently:
+
+**Before:**
+\`\`\`html
+<p>Sources:</p>
+<ol><li>Source 1</li></ol>
+\`\`\`
+
+**After:**
+\`\`\`html
+<p><strong><em>Sources:</em></strong></p>
+<ol><li>Source 1</li></ol>
+\`\`\`
+
+#### 9. Remove Sources Links
+
+Removes all hyperlinks from the Sources section while keeping the text.
+
+#### 10. BR Before Read More / Sources
+
+Adds `<br>` tags before special sections for proper rendering in editors that need line breaks.
+
+### The Cleaning Pipeline
+
+Behind the scenes, the converter runs your HTML through a multi-stage cleaning pipeline:
+
+1. **Word HTML Cleanup** - Removes Word-specific attributes (mso-, class, style), removes unnecessary wrapper elements, flattens nested spans, cleans empty elements, removes Google Docs wrapper elements
+
+2. **Sanitization** - Strips dangerous HTML elements (script, iframe, object), removes event handlers (onclick, onload, etc.), validates URL protocols, adds security attributes to links
+
+3. **Structure Cleaning** - Removes unnecessary divs and spans, unwraps redundant elements, normalizes list structures
+
+4. **Formatting** - Applies mode-specific formatting, compacts the final output
+
+5. **Mode Processing** - Applies transformations based on selected mode, respects feature flags
+
+### Validator
+
+The converter includes a built-in validator that checks your output for quality issues:
+
+- Heading structure validation
+- Link attribute validation
+- Spacing rule validation
+- Key Takeaways formatting validation
+- Sources section validation
+- List normalization validation
+- And more...
+
+The validator helps ensure your cleaned HTML meets quality standards before publishing.
+
+### Mode Comparison
+
+| Feature | Regular | Blog | Shoppables |
+|---------|---------|------|------------|
+| List Normalization | Yes | Yes | Yes |
+| Link Spacing | Yes | Yes | Yes |
+| Heading Strong | - | Yes | Yes |
+| Key Takeaways | - | Yes | - |
+| H1 Removal | - | Yes | - |
+| Link Attributes | - | Yes | Yes |
+| Relative Paths | - | Yes | Yes |
+| Spacing Rules | - | Yes | Yes |
+| OL Header Conversion | - | Yes | Yes |
+| Sources Normalization | - | Yes | Yes |
+| Remove Sources Links | - | - | Yes |
+| BR Before Read More | - | - | Yes |
+| BR Before Sources | - | - | Yes |
+
+### Security Features
+
+The converter prioritizes security:
+
+- **No data upload** - All processing happens in your browser
+- **HTML sanitization** - Removes dangerous elements and attributes
+- **URL validation** - Prevents javascript: and data: URL attacks
+- **Tabnabbing protection** - Adds rel="noopener noreferrer" to external links
+- **Input limits** - Prevents DoS attacks with large inputs
+
+### Technical Details
+
+- **Browser-based** - Uses DOMParser for HTML parsing
+- **TypeScript** - Fully typed for reliability
+- **No dependencies** - Minimal bundle size
+- **Deterministic** - Same input always produces same output
+
 ## Example: Word HTML vs Clean HTML
 
 ### Before (Typical Word Output)
