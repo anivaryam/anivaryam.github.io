@@ -162,6 +162,7 @@ export function WordToHtmlConverter() {
   // Regular mode: all features off by default (user can enable if needed)
   // Blogs mode: features on by default
   // Shoppables mode: uses its own specific defaults
+  // Reset to defaults when switching modes
   useEffect(() => {
     if (outputFormat === 'regular') {
       setFeatures({
@@ -182,7 +183,7 @@ export function WordToHtmlConverter() {
         h1Removal: true,
         linkAttributes: true,
         relativePaths: false,
-        spacing: undefined,
+        spacing: true,
         olHeaderConversion: true,
         sourcesNormalize: true,
         removeSourcesLinks: true,
