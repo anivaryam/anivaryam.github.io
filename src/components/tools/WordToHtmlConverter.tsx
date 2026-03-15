@@ -509,10 +509,31 @@ export function WordToHtmlConverter() {
           }
         }
         
-        // OL bold labels - flag all li with colon but no strong
+        // OL bold labels - flag all li with colon but no strong EXCEPT Sources section
         if (result.ruleId === 'ol-bold-labels') {
+          // Find Sources section to exclude (same logic as validator)
+          let sourcesOl: Element | null = null;
+          const paragraphs = doc.querySelectorAll('p');
+          for (const p of Array.from(paragraphs)) {
+            const text = p.textContent?.trim().toLowerCase() || '';
+            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
+              let nextSibling = p.nextElementSibling;
+              while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
+                nextSibling = nextSibling.nextElementSibling;
+              }
+              if (nextSibling) {
+                sourcesOl = nextSibling;
+              }
+              break;
+            }
+          }
+          
           const olItems = doc.querySelectorAll('ol > li');
           olItems.forEach(li => {
+            // Skip list items in the Sources section
+            if (sourcesOl && sourcesOl.contains(li)) {
+              return;
+            }
             const text = li.textContent || '';
             if (text.includes(':') && !li.querySelector('strong')) {
               li.setAttribute('data-warning', 'Missing bold label before colon');
@@ -562,10 +583,31 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // List normalization - flag all li
+        // List normalization - flag all li EXCEPT Sources section
         if (result.ruleId === 'list-normalization') {
+          // Find Sources section to exclude (same logic as validator)
+          let sourcesOl: Element | null = null;
+          const paragraphs = doc.querySelectorAll('p');
+          for (const p of Array.from(paragraphs)) {
+            const text = p.textContent?.trim().toLowerCase() || '';
+            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
+              let nextSibling = p.nextElementSibling;
+              while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
+                nextSibling = nextSibling.nextElementSibling;
+              }
+              if (nextSibling) {
+                sourcesOl = nextSibling;
+              }
+              break;
+            }
+          }
+          
           const listItems = doc.querySelectorAll('li');
           listItems.forEach(li => {
+            // Skip list items in the Sources section
+            if (sourcesOl && sourcesOl.contains(li)) {
+              return;
+            }
             li.setAttribute('data-warning', 'List formatting issue');
           });
         }

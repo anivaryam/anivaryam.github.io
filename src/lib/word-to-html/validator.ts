@@ -62,7 +62,8 @@ function findSourcesSection(doc: Document): SourcesSection | null {
   let sourcesParagraph: Element | null = null;
   for (let p of Array.from(paragraphs)) {
     const text = p.textContent?.trim().toLowerCase() || '';
-    if (text === 'sources' || text === 'sources:') {
+    // More flexible matching: exact "sources" or starts with "sources:" (handles "sources: xxx" variations)
+    if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
       sourcesParagraph = p;
       break;
     }
@@ -614,7 +615,8 @@ function validateSpecialParagraphSpacing(doc: Document, issues: string[]): void 
       }
     }
     
-    if (text.startsWith('sources:')) {
+    // More flexible matching for Sources section (handles "sources", "sources:", "sources: xxx")
+    if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacingElement(prevSibling)) {
         issues.push('Missing spacing before "Sources:" section');
