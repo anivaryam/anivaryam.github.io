@@ -49,71 +49,6 @@ function mergeAdjacentUl(doc: Document): void {
   }
 }
 
-/**
- * Wraps text before colon in ordered list items with <strong>
- * This handles cases where Google Docs/Word exports bold labels in ordered lists
- * but the bold gets lost during sanitization
- */
-function wrapOlLabelsInStrong(doc: Document): void {
-  // First, identify Sources ol lists (same logic as normalizeSources)
-  const sourcesOlSelectors = new Set<Element>();
-  
-  const paragraphs = doc.querySelectorAll('p');
-  paragraphs.forEach(p => {
-    const text = p.textContent?.trim() || '';
-    const lowerText = text.toLowerCase();
-    
-    // Check if this is a Sources paragraph
-    if (lowerText === 'sources' || lowerText === 'sources:' || lowerText.startsWith('sources:')) {
-      // Find the next ol after this paragraph
-      let nextSibling = p.nextElementSibling;
-      while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
-        nextSibling = nextSibling.nextElementSibling;
-      }
-      if (nextSibling) {
-        sourcesOlSelectors.add(nextSibling);
-      }
-    }
-  });
-  
-  // Now process all ol items, skipping Sources
-  const olItems = doc.querySelectorAll('ol > li');
-  
-  olItems.forEach(li => {
-    // Skip if this ol is a Sources list
-    if (sourcesOlSelectors.has(li.parentElement!)) return;
-    
-    // Get all text nodes directly in the li (not in children)
-    const textNodes: Text[] = [];
-    li.childNodes.forEach(node => {
-      if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-        textNodes.push(node as Text);
-      }
-    });
-    
-    // Check if first text node contains text before a colon
-    if (textNodes.length > 0) {
-      const firstText = textNodes[0];
-      const text = firstText.textContent || '';
-      const colonIndex = text.indexOf(':');
-      
-      if (colonIndex > 0) {
-        // Split text: before colon and after colon
-        const beforeColon = text.substring(0, colonIndex + 1);
-        const afterColon = text.substring(colonIndex + 1);
-        
-        // Wrap before colon in <strong>
-        const strong = doc.createElement('strong');
-        strong.textContent = beforeColon;
-        
-        // Replace the text node with strong + remaining text
-        firstText.textContent = afterColon;
-        li.insertBefore(strong, firstText);
-      }
-    }
-  });
-}
-
 export function normalizeLists(html: string): string {
   if (!html || typeof html !== 'string') {
     return '';
@@ -123,30 +58,18 @@ export function normalizeLists(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
+    // DEBUG: Log all LIs before processing
+    const allLisBefore = doc.querySelectorAll('li');
+    console.log('=== normalizeLists: BEFORE ===');
+    allLisBefore.forEach((li, i) => {
+      console.log(`LI[${i}]:`, li.outerHTML.substring(0, 200));
+    });
+    
     // Merge adjacent ul elements first
     mergeAdjacentUl(doc);
     
-    // Apply bold to text before colon in ordered lists
-    wrapOlLabelsInStrong(doc);
-    
-    // Additional fix: Wrap <li> elements with <em> if they have font-style: italic in style
-    // This handles formats that html-sanitizer might miss
-    const listItems = doc.querySelectorAll('li');
-    listItems.forEach(li => {
-      const style = li.getAttribute('style') || '';
-      if (style.includes('font-style') && style.includes('italic')) {
-        const hasEm = li.querySelector('em');
-        const hasNestedList = li.querySelector('ul, ol');
-        if (!hasEm && !hasNestedList) {
-          const em = document.createElement('em');
-          while (li.firstChild) {
-            em.appendChild(li.firstChild);
-          }
-          li.appendChild(em);
-        }
-      }
-    });
-    
+    // List item normalization: just clean up spacing, don't wrap with EM
+    // (style attribute will be removed elsewhere in the pipeline)
     const normalizedListItems = doc.querySelectorAll('li');
     
     normalizedListItems.forEach(li => {

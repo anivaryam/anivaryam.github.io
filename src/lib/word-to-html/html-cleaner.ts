@@ -50,6 +50,10 @@ export function cleanHtml(html: string): string {
   }
 
   try {
+    // DEBUG: Log input
+    console.log('=== cleanHtml: INPUT ===');
+    console.log(html.substring(0, 500));
+    
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
@@ -57,6 +61,10 @@ export function cleanHtml(html: string): string {
     removeBrAtStartOfBlockElements(doc.body);
     removeBrAfterBlockElements(doc.body);
     removeConsecutiveBr(doc.body);
+
+    // DEBUG: Log output
+    console.log('=== cleanHtml: OUTPUT ===');
+    console.log(doc.body.innerHTML.substring(0, 500));
     removeParagraphsFromListItems(doc.body);
     trimAnchorWhitespace(doc.body);
     
@@ -189,7 +197,8 @@ function normalizeStrongEmNesting(element: Element): void {
           const newEm = document.createElement('em');
           const newStrong = document.createElement('strong');
           
-          // Move content from em to newStrong (preserves references)
+          // Move ALL content from em to newStrong (preserves references)
+          // This ensures the strong tag is properly created with the em's content
           while (directEm.firstChild) {
             newStrong.appendChild(directEm.firstChild);
           }
@@ -211,13 +220,15 @@ function normalizeStrongEmNesting(element: Element): void {
           if (strongElement.parentNode) {
             const insertPosition = strongElement.nextSibling;
             
+            // Insert the new structure BEFORE the original strong element
             strongElement.parentNode.insertBefore(newEm, strongElement);
             
+            // Move any content that was after the em
             for (let j = 0; j < otherContent.length; j++) {
               strongElement.parentNode.insertBefore(otherContent[j], insertPosition);
             }
             
-            // Remove original strong (em is already empty and will be removed by DOM)
+            // Remove original strong element (the empty em inside will be removed too)
             strongElement.parentNode.removeChild(strongElement);
             
             // Recurse into new structure to catch nested patterns (e.g., <em><em>text</em></em>)

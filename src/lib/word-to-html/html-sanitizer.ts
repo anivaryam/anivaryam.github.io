@@ -157,10 +157,18 @@ export function sanitizeHtml(html: string): string {
     return '';
   }
 
+  // DEBUG: Log input
+  console.log('=== sanitizeHtml: INPUT ===');
+  console.log(html.substring(0, 500));
+
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = html;
 
   sanitizeElement(tempDiv);
+
+  // DEBUG: Log output
+  console.log('=== sanitizeHtml: OUTPUT ===');
+  console.log(tempDiv.innerHTML.substring(0, 500));
 
   // Unwrap single disallowed wrapper elements
   if (tempDiv.children.length === 1) {
@@ -241,17 +249,67 @@ function sanitizeElement(element: Element): void {
       const formatting = extractFormatting(style);
       
       // Handle formatting styles on allowed elements (becomes inner wrappers)
-      // For <li> elements, skip wrapping at the li level - let children handle their own formatting
+      // For <li> elements: remove style attribute, don't add em/strong tags
       
       const isListItem = tagName === 'li';
+      
+      // For LI elements with formatting: remove style attribute, don't wrap children
+      if (isListItem && formatting) {
+        // Just sanitize children, preserve style attribute (handled in sanitizeAttributes)
+        sanitizeElement(node);
+        sanitizeAttributes(node, tagName);
+        continue;
+      }
+      
+      // DEBUG
+      if (isListItem) {
+        const style = node.getAttribute('style') || '';
+        console.log('=== html-sanitizer: Processing LI ===');
+        console.log('LI outerHTML:', node.outerHTML.substring(0, 300));
+        console.log('style:', style);
+        const formatting = extractFormatting(style);
+        console.log('formatting:', formatting);
+        const hasChildElements = Array.from(node.childNodes).some(c => c.nodeType === Node.ELEMENT_NODE);
+        console.log('hasChildElements:', hasChildElements);
+        if (hasChildElements) {
+          const children = Array.from(node.children);
+          console.log('children:', children.map(c => c.tagName));
+        }
+      }
+      
+      // Check if li has child elements (not just text)
+      let hasChildElements = false;
+      if (isListItem) {
+        const childNodes = Array.from(node.childNodes);
+        hasChildElements = childNodes.some(
+          child => child.nodeType === Node.ELEMENT_NODE
+        );
+      }
+      
+      // Check if LI already has em/strong children - if so, just sanitize, don't modify
+      let hasExistingEmphasis = false;
+      if (isListItem && hasChildElements) {
+        const childElements = Array.from(node.children);
+        hasExistingEmphasis = childElements.some(
+          child => child.tagName.toLowerCase() === 'em' || child.tagName.toLowerCase() === 'strong'
+        );
+      }
+      
+      // If LI already has em/strong, just remove style and sanitize children - don't modify tags
+      if (isListItem && hasExistingEmphasis) {
+        sanitizeElement(node);
+        sanitizeAttributes(node, tagName);
+        continue;
+      }
       
       if (formatting) {
         // Sanitize children first
         sanitizeElement(node);
         
-        // For <li> elements, skip wrapping - let children handle their own formatting
-        // Wrapping entire li in strong/em was causing issues (e.g., <li><strong>entire content</strong></li>)
-        if (!isListItem) {
+        // For <li> elements, only skip wrapping if they have child elements that can handle formatting
+        // If li has only text content, we need to wrap it to preserve formatting
+        // (wrapping entire li was causing issues when it has nested lists or other elements)
+        if (!isListItem || (isListItem && !hasChildElements)) {
           // Original logic for non-li elements
           const { isItalic, isBold, isSuperscript, isSubscript } = formatting;
           let wrapper: Element | null = null;
@@ -303,6 +361,80 @@ function sanitizeElement(element: Element): void {
             node.innerHTML = '';
             node.appendChild(wrapper);
           }
+        } else if (isListItem && hasChildElements) {
+          // LI has child elements (like nested lists) - wrap only text nodes, preserve elements
+          // This ensures italic/bold formatting is preserved for the text content
+          const { isItalic, isBold, isSuperscript, isSubscript } = formatting;
+          
+          // Collect all direct child nodes that are text or inline elements (not block elements)
+          const directChildren = Array.from(node.childNodes);
+          const textAndInlineNodes: Node[] = [];
+          const blockElements: Element[] = [];
+          
+          directChildren.forEach(child => {
+            if (child.nodeType === Node.TEXT_NODE) {
+              if (child.textContent?.trim()) {
+                textAndInlineNodes.push(child);
+              }
+            } else if (child.nodeType === Node.ELEMENT_NODE) {
+              const childTag = (child as Element).tagName.toLowerCase();
+              // Skip if already formatted - preserve as-is outside the wrapper
+              const skipTags = ['strong', 'em', 'a', 'sup', 'sub'];
+              if (skipTags.includes(childTag)) {
+                // Preserve this element as-is outside the wrapper
+                blockElements.push(child as Element);
+                return;
+              }
+              // Check if it's an inline element that should be wrapped
+              const inlineTags = ['span', 'code'];
+              if (inlineTags.includes(childTag)) {
+                textAndInlineNodes.push(child);
+              } else {
+                // It's a block element (like ul, ol) - preserve it outside the wrapper
+                blockElements.push(child as Element);
+              }
+            }
+          });
+          
+          if (textAndInlineNodes.length > 0) {
+            // Build wrapper for inline content
+            let wrapper: Element | null = null;
+            
+            if (isItalic && isBold) {
+              wrapper = document.createElement('strong');
+              const em = document.createElement('em');
+              textAndInlineNodes.forEach(child => em.appendChild(child));
+              wrapper.appendChild(em);
+            } else if (isItalic) {
+              wrapper = document.createElement('em');
+              textAndInlineNodes.forEach(child => wrapper!.appendChild(child));
+            } else if (isBold) {
+              wrapper = document.createElement('strong');
+              textAndInlineNodes.forEach(child => wrapper!.appendChild(child));
+            }
+            
+            // Handle superscript/subscript (outer tags)
+            if (isSuperscript) {
+              const sup = document.createElement('sup');
+              if (wrapper) {
+                sup.appendChild(wrapper);
+              }
+              wrapper = sup;
+            } else if (isSubscript) {
+              const sub = document.createElement('sub');
+              if (wrapper) {
+                sub.appendChild(wrapper);
+              }
+              wrapper = sub;
+            }
+            
+            if (wrapper) {
+              // Rebuild LI: wrapper for inline content + block elements
+              node.innerHTML = '';
+              node.appendChild(wrapper);
+              blockElements.forEach(el => node.appendChild(el));
+            }
+          }
         }
       }
       
@@ -324,10 +456,10 @@ function sanitizeAttributes(element: Element, tagName: string): void {
   Array.from(element.attributes).forEach(attr => {
     const attrName = attr.name.toLowerCase();
 
-    // Remove presentational and unsafe attributes
-    // Note: ARIA attributes are removed as they're considered accessibility metadata,
-    // not core HTML semantics (which are preserved via element types)
-    if (attrName === 'style' || 
+    // Always remove style attributes (including on LI elements)
+    const isStyleAttr = attrName === 'style';
+    
+    if (isStyleAttr || 
         attrName === 'class' || 
         attrName.startsWith('data-') ||
         attrName.startsWith('on') ||

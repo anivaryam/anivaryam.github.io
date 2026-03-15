@@ -18,7 +18,7 @@ export function normalizeSources(html: string): string {
       const text = p.textContent?.trim() || '';
       const lowerText = text.toLowerCase();
       
-      if (lowerText === 'sources' || lowerText === 'sources:') {
+      if (lowerText === 'sources' || lowerText === 'sources:' || lowerText.startsWith('sources:')) {
         normalizeSourcesParagraph(p, doc);
         
         let nextSibling = p.nextElementSibling;
@@ -58,6 +58,7 @@ function normalizeSourcesListItems(olElement: Element, doc: Document): void {
   const listItems = olElement.querySelectorAll('li');
   
   listItems.forEach(li => {
+    // Skip if already wrapped in EM without any text outside
     if (li.children.length === 1 && li.children[0].tagName.toLowerCase() === 'em') {
       const hasTextOutside = Array.from(li.childNodes).some(node => 
         node.nodeType === Node.TEXT_NODE && 
@@ -69,15 +70,30 @@ function normalizeSourcesListItems(olElement: Element, doc: Document): void {
       }
     }
     
-    const children = Array.from(li.childNodes);
-    li.innerHTML = '';
+    // Skip if already has EM - preserve existing formatting (bold, EM, etc.)
+    if (li.querySelector('em')) {
+      return;
+    }
     
-    const em = doc.createElement('em');
-    children.forEach(child => {
-      em.appendChild(child);
+    // Only wrap text nodes in EM if there's no existing EM wrapper
+    const textNodes: Node[] = [];
+    const otherNodes: Node[] = [];
+    
+    li.childNodes.forEach(child => {
+      if (child.nodeType === Node.TEXT_NODE && (child as Text).textContent?.trim()) {
+        textNodes.push(child);
+      } else {
+        otherNodes.push(child);
+      }
     });
     
-    li.appendChild(em);
+    if (textNodes.length > 0 && otherNodes.length === 0) {
+      // Only plain text, safe to wrap in EM
+      const em = doc.createElement('em');
+      textNodes.forEach(node => em.appendChild(node));
+      li.appendChild(em);
+    }
+    // If there are other elements (strong, em, etc.), preserve them as-is
   });
 }
 
