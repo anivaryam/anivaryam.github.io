@@ -190,18 +190,11 @@ export function sanitizeHtml(html: string): string {
     return '';
   }
 
-  // DEBUG: Log input
-  console.log('=== sanitizeHtml: INPUT ===');
-  console.log(html.substring(0, 500));
 
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = html;
 
   sanitizeElement(tempDiv);
-
-  // DEBUG: Log output
-  console.log('=== sanitizeHtml: OUTPUT ===');
-  console.log(tempDiv.innerHTML.substring(0, 500));
 
   // Unwrap single disallowed wrapper elements
   if (tempDiv.children.length === 1) {
@@ -282,43 +275,21 @@ function sanitizeElement(element: Element): void {
       const formatting = extractFormatting(style);
       
       // === LIFT AND SCRUB FOR LI ELEMENTS ===
-      // 1. Analyze children: check if text inside LI has bold/italic formatting
-      // 2. Convert to semantic: turn span styles to em/strong
-      // 3. Strip LI: remove all attributes from LI
-      // 4. Discard LI-only styles: if LI had bold but children don't have semantic tags, discard it
+      // Inside-Out Rule:
+      // 1. First sanitize children: convert span styles to semantic tags (strong/em)
+      // 2. Then strip all attributes from LI
+      // 3. IGNORE LI's own styling - don't propagate to children
+      //    (child spans' formatting is preserved; LI's formatting is discarded)
       
       const isListItem = tagName === 'li';
       
       if (isListItem) {
-        // Reuse the formatting extracted above
-        const liFormatting = formatting;
-        
-        // Step 1 & 2: First sanitize children to convert span styles to semantic tags
+        // Step 1: First sanitize children to convert span styles to semantic tags
         sanitizeElement(node);
         
-        // Step 3: Check if children now have semantic em/strong tags
-        const childElements = Array.from(node.children);
-        const hasSemanticItalic = childElements.some(c => c.tagName.toLowerCase() === 'em');
-        const hasSemanticBold = childElements.some(c => c.tagName.toLowerCase() === 'strong');
-        
-        // Step 4: Strip all attributes from LI (including style)
+        // Step 2: Strip all attributes from LI (including style)
+        // LI's own font-weight/font-style is IGNORED - not propagated to children
         sanitizeAttributes(node, tagName);
-        
-        // Apply LI's formatting to children ONLY if they already have semantic tags
-        // If LI had bold but children don't have strong, discard it
-        if (liFormatting) {
-          const { isItalic, isBold } = liFormatting;
-          
-          // Only wrap with em if child already has em (from span conversion)
-          if (isItalic && hasSemanticItalic) {
-            wrapTextContentInElement(node, 'em');
-          }
-          
-          // Only wrap with strong if child already has strong (from span conversion)
-          if (isBold && hasSemanticBold) {
-            wrapTextContentInElement(node, 'strong');
-          }
-        }
         
         continue;
       }
