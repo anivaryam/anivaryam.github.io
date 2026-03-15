@@ -314,6 +314,10 @@ function validateLinkAttributes(doc: Document, mode: OutputMode, features?: Feat
 }
 
 function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
+  // Find Sources section to exclude from validation
+  const sourcesSection = findSourcesSection(doc);
+  const sourcesOl = sourcesSection?.list ?? null;
+
   const listItems = doc.querySelectorAll('li');
 
   if (listItems.length === 0) {
@@ -330,6 +334,11 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
   const issues: string[] = [];
 
   listItems.forEach((li) => {
+    // Skip list items in the Sources section
+    if (sourcesOl && sourcesOl.contains(li)) {
+      return;
+    }
+
     const strongTags = li.querySelectorAll('strong');
 
     strongTags.forEach((strong) => {
