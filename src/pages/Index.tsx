@@ -6,6 +6,7 @@ import { JsonLDScript } from "@/components/JsonLDScript";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { LenisContainer } from "@/components/LenisContainer";
 import { 
   Terminal, 
   Code2, 
@@ -311,7 +312,8 @@ export default function Index() {
                     </p>
                   </div>
 
-                  <div className="space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 250px)' }}>
+                  <div className="space-y-3" style={{ maxHeight: 'calc(100vh - 250px)' }}>
+                    <LenisContainer className="overflow-y-auto">
                     {getLatestNews(2).map((article, index) => (
                       <Link key={article.id} to={`/news/${article.slug}`} className="block">
                         <Card 
@@ -350,6 +352,7 @@ export default function Index() {
                         </Card>
                       </Link>
                     ))}
+                    </LenisContainer>
                   </div>
 
                   <div className="mt-6">

@@ -36,9 +36,60 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
   // List normalization - applies to all modes (regular, blogs, shoppables)
   processedHtml = normalizeLists(processedHtml);
 
-  // Regular mode: minimal processing (list + link spacing only)
+  // Regular mode: minimal processing by default, but apply features when enabled
   if (mode === 'regular') {
     processedHtml = addLinkSpacing(processedHtml);
+
+    // Apply features when enabled (same as blogs mode)
+    // Heading strong tags
+    processedHtml = applyHeadingStrong(processedHtml, features);
+
+    // Key Takeaways formatting
+    if (features.keyTakeaways !== false) {
+      processedHtml = formatKeyTakeaways(processedHtml);
+    }
+
+    // H1 removal
+    if (features.h1Removal !== false) {
+      processedHtml = removeH1AfterKeyTakeaways(processedHtml);
+    }
+
+    // Link attributes
+    if (features.linkAttributes !== false) {
+      processedHtml = addLinkAttributes(processedHtml);
+    }
+
+    // OL Header Conversion
+    if (features.olHeaderConversion !== false) {
+      processedHtml = convertOlHeaders(processedHtml);
+    }
+
+    // Spacing
+    if (features.spacing !== false) {
+      processedHtml = addSpacing(processedHtml);
+    }
+
+    // Relative paths (disabled by default)
+    if (features.relativePaths === true) {
+      processedHtml = convertToRelativePaths(processedHtml);
+    }
+
+    // Remove links in Sources section
+    if (features.removeSourcesLinks !== false) {
+      processedHtml = removeSourcesLinks(processedHtml);
+    }
+
+    // Sources normalization
+    if (features.sourcesNormalize !== false) {
+      processedHtml = normalizeSources(processedHtml);
+    }
+
+    // Link spacing (after all other processing)
+    processedHtml = addLinkSpacing(processedHtml);
+
+    // Final list normalization pass
+    processedHtml = normalizeLists(processedHtml);
+
     return processedHtml;
   }
 

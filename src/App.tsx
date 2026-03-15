@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-ro
 import { ThemeProvider } from "next-themes";
 import { useEffect, lazy, Suspense } from "react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { LenisProvider } from "@/components/LenisProvider";
 
 const Index = lazy(() => import("./pages/Index"));
 const Tools = lazy(() => import("./pages/Tools"));
@@ -97,15 +98,16 @@ const PageLoader = () => (
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter basename={import.meta.env.BASE_URL}>
-          <RedirectHandler />
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/tools" element={<Tools />} />
+      <LenisProvider duration={1.2} smoothWheel smoothTouch={false}>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter basename={import.meta.env.BASE_URL}>
+            <RedirectHandler />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/tools" element={<Tools />} />
               <Route path="/tools/word-to-html" element={<WordToHtml />} />
               <Route path="/tools/json-formatter" element={<JsonFormatter />} />
               <Route path="/tools/base64" element={<Base64 />} />
@@ -139,7 +141,8 @@ const App = () => (
             </Routes>
           </Suspense>
         </BrowserRouter>
-      </TooltipProvider>
+        </TooltipProvider>
+      </LenisProvider>
     </ThemeProvider>
   </QueryClientProvider>
 );

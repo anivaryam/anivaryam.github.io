@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import Lenis from "lenis";
 import { Copy, Check, FileText, Code, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash, Link, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -144,20 +145,122 @@ export function WordToHtmlConverter() {
   const [maximizedPreviewMode, setMaximizedPreviewMode] = useState(false);
   const [showHeadingVisualizer, setShowHeadingVisualizer] = useState(false);
   
-  // Feature flags
+  // Feature flags - initial state for Regular mode (will be updated by useEffect when mode changes)
   const [features, setFeatures] = useState<FeatureFlags>({
-    headingStrong: true,
-    keyTakeaways: true,
-    h1Removal: true,
-    linkAttributes: true,
+    headingStrong: false,
+    keyTakeaways: false,
+    h1Removal: false,
+    linkAttributes: false,
     relativePaths: false,
-    spacing: undefined, // undefined allows blogs mode to be checked by default (undefined !== false) and shoppables to be unchecked (undefined === true is false)
-    olHeaderConversion: true,
-    sourcesNormalize: true,
-    removeSourcesLinks: true,
+    spacing: false,
+    olHeaderConversion: false,
+    sourcesNormalize: false,
+    removeSourcesLinks: false,
   });
+  
+  // Initialize features based on output format
+  // Regular mode: all features off by default (user can enable if needed)
+  // Blogs mode: features on by default
+  // Shoppables mode: uses its own specific defaults
+  useEffect(() => {
+    if (outputFormat === 'regular') {
+      setFeatures({
+        headingStrong: false,
+        keyTakeaways: false,
+        h1Removal: false,
+        linkAttributes: false,
+        relativePaths: false,
+        spacing: false,
+        olHeaderConversion: false,
+        sourcesNormalize: false,
+        removeSourcesLinks: false,
+      });
+    } else if (outputFormat === 'blogs') {
+      setFeatures({
+        headingStrong: true,
+        keyTakeaways: true,
+        h1Removal: true,
+        linkAttributes: true,
+        relativePaths: false,
+        spacing: undefined,
+        olHeaderConversion: true,
+        sourcesNormalize: true,
+        removeSourcesLinks: true,
+      });
+    } else if (outputFormat === 'shoppables') {
+      setFeatures({
+        headingStrong: true,
+        keyTakeaways: false,
+        h1Removal: false,
+        linkAttributes: true,
+        relativePaths: false,
+        spacing: false,
+        olHeaderConversion: true,
+        sourcesNormalize: true,
+        removeSourcesLinks: true,
+        brBeforeReadMore: false,
+        brBeforeSources: false,
+      });
+    }
+  }, [outputFormat]);
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
+  const outputPreviewRef = useRef<HTMLDivElement>(null);
+  const codeAreaRef = useRef<HTMLDivElement>(null);
+  const modalCodeAreaRef = useRef<HTMLDivElement>(null);
+
+  // Initialize Lenis smooth scroll for input and output containers
+  useEffect(() => {
+    const lenisInstances: Lenis[] = [];
+
+    // Initialize Lenis for input area
+    if (inputAreaRef.current) {
+      const inputLenis = new Lenis({
+        wrapper: inputAreaRef.current,
+        content: inputAreaRef.current,
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+      });
+      lenisInstances.push(inputLenis);
+    }
+
+    // Initialize Lenis for output preview
+    if (outputPreviewRef.current) {
+      const outputLenis = new Lenis({
+        wrapper: outputPreviewRef.current,
+        content: outputPreviewRef.current,
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+      });
+      lenisInstances.push(outputLenis);
+    }
+
+    // Initialize Lenis for code area
+    if (codeAreaRef.current) {
+      const codeLenis = new Lenis({
+        wrapper: codeAreaRef.current,
+        content: codeAreaRef.current,
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+      });
+      lenisInstances.push(codeLenis);
+    }
+
+    // Animation loop for Lenis
+    function raf(time: number) {
+      lenisInstances.forEach((lenis) => lenis.raf(time));
+      requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+
+    // Cleanup
+    return () => {
+      lenisInstances.forEach((lenis) => lenis.destroy());
+    };
+  }, []);
 
   // Auto-focus the input area when component mounts
   // The container is focused first to establish focus context, then the input gets focus
@@ -617,124 +720,137 @@ export function WordToHtmlConverter() {
                 </div>
               </div>
 
-              {/* Feature toggles for Blogs mode */}
-              {outputFormat === 'blogs' && (
-                <Collapsible open={showBlogsFeatures} onOpenChange={setShowBlogsFeatures}>
+              {/* Feature toggles for all modes - Regular shows disabled/unchecked by default */}
+              {(outputFormat === 'regular' || outputFormat === 'blogs' || outputFormat === 'shoppables') && (
+                <Collapsible open={outputFormat === 'shoppables' ? showShoppablesFeatures : showBlogsFeatures} onOpenChange={outputFormat === 'shoppables' ? setShowShoppablesFeatures : setShowBlogsFeatures}>
                   <CollapsibleTrigger className="flex items-center justify-between w-full p-2 text-sm font-medium hover:bg-muted/30 rounded-md transition-colors">
-                    <span>Blogs Features:</span>
-                    <ChevronDown className={`h-4 w-4 transition-transform ${showBlogsFeatures ? 'rotate-180' : ''}`} />
+                    <span>
+                      {outputFormat === 'regular' ? 'Features:' : 
+                       outputFormat === 'blogs' ? 'Blogs Features:' : 'Shoppables Features:'}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 transition-transform ${(outputFormat === 'shoppables' ? showShoppablesFeatures : showBlogsFeatures) ? 'rotate-180' : ''}`} />
                   </CollapsibleTrigger>
                   <CollapsibleContent className="mt-2 space-y-2">
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <Checkbox
-                checked={features.headingStrong !== false}
-                onCheckedChange={(checked) => setFeatures({ ...features, headingStrong: checked as boolean })}
-              />
-              <span className="text-sm">Heading Strong Tags</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <Checkbox
-                checked={features.keyTakeaways !== false}
-                onCheckedChange={(checked) => setFeatures({ ...features, keyTakeaways: checked as boolean })}
-              />
-              <span className="text-sm">Key Takeaways Formatting</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <Checkbox
-                checked={features.h1Removal !== false}
-                onCheckedChange={(checked) => setFeatures({ ...features, h1Removal: checked as boolean })}
-              />
-              <span className="text-sm">Remove H1 after Key Takeaways</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <Checkbox
-                checked={features.linkAttributes !== false}
-                onCheckedChange={(checked) => setFeatures({ ...features, linkAttributes: checked as boolean })}
-              />
-              <span className="text-sm">Link Attributes</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <Checkbox
-                checked={features.spacing !== false}
-                onCheckedChange={(checked) => setFeatures({ ...features, spacing: checked as boolean })}
-              />
-              <span className="text-sm">Spacing Rules</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <Checkbox
-                checked={features.relativePaths === true}
-                onCheckedChange={(checked) => setFeatures({ ...features, relativePaths: checked as boolean })}
-              />
-              <span className="text-sm">Relative Paths</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <Checkbox
-                checked={features.olHeaderConversion !== false}
-                onCheckedChange={(checked) => setFeatures({ ...features, olHeaderConversion: checked as boolean })}
-              />
-              <span className="text-sm">OL Header Conversion</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <Checkbox
-                checked={features.sourcesNormalize !== false}
-                onCheckedChange={(checked) => setFeatures({ ...features, sourcesNormalize: checked as boolean })}
-              />
-              <span className="text-sm">Normalize Sources</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <Checkbox
-                checked={features.removeSourcesLinks !== false}
-                onCheckedChange={(checked) => setFeatures({ ...features, removeSourcesLinks: checked as boolean })}
-              />
-              <span className="text-sm">Remove Links in Sources</span>
-            </label>
-                  </CollapsibleContent>
-                </Collapsible>
-              )}
-
-              {/* Feature toggles for Shoppables mode */}
-              {outputFormat === 'shoppables' && (
-                <Collapsible open={showShoppablesFeatures} onOpenChange={setShowShoppablesFeatures}>
-                  <CollapsibleTrigger className="flex items-center justify-between w-full p-2 text-sm font-medium hover:bg-muted/30 rounded-md transition-colors">
-                    <span>Shoppables Features:</span>
-                    <ChevronDown className={`h-4 w-4 transition-transform ${showShoppablesFeatures ? 'rotate-180' : ''}`} />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="mt-2 space-y-2">
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <Checkbox
-                        checked={features.headingStrong !== false}
-                        onCheckedChange={(checked) => setFeatures({ ...features, headingStrong: checked as boolean })}
-                      />
-                      <span className="text-sm">Heading Strong Tags</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <Checkbox
-                        checked={features.linkAttributes !== false}
-                        onCheckedChange={(checked) => setFeatures({ ...features, linkAttributes: checked as boolean })}
-                      />
-                      <span className="text-sm">Link Attributes</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <Checkbox
-                        checked={features.relativePaths === true}
-                        onCheckedChange={(checked) => setFeatures({ ...features, relativePaths: checked as boolean })}
-                      />
-                      <span className="text-sm">Relative Paths</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <Checkbox
-                        checked={features.olHeaderConversion !== false}
-                        onCheckedChange={(checked) => setFeatures({ ...features, olHeaderConversion: checked as boolean })}
-                      />
-                      <span className="text-sm">OL Header Conversion</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <Checkbox
-                        checked={features.spacing === true}
-                        onCheckedChange={(checked) => setFeatures({ ...features, spacing: checked as boolean })}
-                      />
-                      <span className="text-sm">Spacing Rules</span>
-                    </label>
+                    {outputFormat === 'regular' && (
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Enable features manually for Regular mode output
+                      </p>
+                    )}
+                    {/* Checkboxes for Regular mode - only show specific features */}
+                    {outputFormat === 'regular' && (
+                      <>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.headingStrong !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, headingStrong: checked as boolean })}
+                          />
+                          <span className="text-sm">Heading Strong Tags</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.linkAttributes !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, linkAttributes: checked as boolean })}
+                          />
+                          <span className="text-sm">Link Attributes</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.spacing !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, spacing: checked as boolean })}
+                          />
+                          <span className="text-sm">Spacing Rules</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.relativePaths === true}
+                            onCheckedChange={(checked) => setFeatures({ ...features, relativePaths: checked as boolean })}
+                          />
+                          <span className="text-sm">Relative Paths</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.olHeaderConversion !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, olHeaderConversion: checked as boolean })}
+                          />
+                          <span className="text-sm">OL Header Conversion</span>
+                        </label>
+                      </>
+                    )}
+                    {/* Checkboxes for Blogs and Shoppables modes - show all features */}
+                    {(outputFormat === 'blogs' || outputFormat === 'shoppables') && (
+                      <>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.headingStrong !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, headingStrong: checked as boolean })}
+                          />
+                          <span className="text-sm">Heading Strong Tags</span>
+                        </label>
+                        {/* Only show Key Takeaways and H1 Removal for Blogs mode, not Shoppables */}
+                        {outputFormat === 'blogs' && (
+                          <>
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <Checkbox
+                                checked={features.keyTakeaways !== false}
+                                onCheckedChange={(checked) => setFeatures({ ...features, keyTakeaways: checked as boolean })}
+                              />
+                              <span className="text-sm">Key Takeaways Formatting</span>
+                            </label>
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <Checkbox
+                                checked={features.h1Removal !== false}
+                                onCheckedChange={(checked) => setFeatures({ ...features, h1Removal: checked as boolean })}
+                              />
+                              <span className="text-sm">Remove H1 after Key Takeaways</span>
+                            </label>
+                          </>
+                        )}
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.linkAttributes !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, linkAttributes: checked as boolean })}
+                          />
+                          <span className="text-sm">Link Attributes</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.spacing !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, spacing: checked as boolean })}
+                          />
+                          <span className="text-sm">Spacing Rules</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.relativePaths === true}
+                            onCheckedChange={(checked) => setFeatures({ ...features, relativePaths: checked as boolean })}
+                          />
+                          <span className="text-sm">Relative Paths</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.olHeaderConversion !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, olHeaderConversion: checked as boolean })}
+                          />
+                          <span className="text-sm">OL Header Conversion</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.sourcesNormalize !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, sourcesNormalize: checked as boolean })}
+                          />
+                          <span className="text-sm">Normalize Sources</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.removeSourcesLinks !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, removeSourcesLinks: checked as boolean })}
+                          />
+                          <span className="text-sm">Remove Links in Sources</span>
+                        </label>
+                      </>
+                    )}
+                    {outputFormat === 'shoppables' && (
+                      <>
                     <label className="flex items-center space-x-2 cursor-pointer">
                       <Checkbox
                         checked={features.brBeforeReadMore === true}
@@ -749,23 +865,13 @@ export function WordToHtmlConverter() {
                       />
                       <span className="text-sm">Add BR Before Sources</span>
                     </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <Checkbox
-                        checked={features.sourcesNormalize !== false}
-                        onCheckedChange={(checked) => setFeatures({ ...features, sourcesNormalize: checked as boolean })}
-                      />
-                      <span className="text-sm">Normalize Sources</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <Checkbox
-                        checked={features.removeSourcesLinks !== false}
-                        onCheckedChange={(checked) => setFeatures({ ...features, removeSourcesLinks: checked as boolean })}
-                      />
-                      <span className="text-sm">Remove Links in Sources</span>
-                    </label>
+                      </>
+                    )}
                   </CollapsibleContent>
                 </Collapsible>
               )}
+
+              {/* Feature toggles for Shoppables mode - REMOVED, now unified above */}
             </div>
           </div>
 
@@ -1052,392 +1158,322 @@ export function WordToHtmlConverter() {
           </div>
           {/* Output Container - matches original structure */}
           <div className="relative flex-1 min-h-[200px] max-h-[50vh] lg:max-h-[calc(100vh-380px)] w-full overflow-hidden">
-            <div className="absolute inset-0 h-full w-full">
-              {/* Preview Area - matches .output-area from original */}
-              <div 
-                className={`absolute inset-0 pl-8 pr-4 pt-4 pb-4 border border-border/50 rounded-lg overflow-y-auto overflow-x-auto bg-background/80 output-preview ${
-                  showPreview ? 'block' : 'hidden'
-                }`}
-                style={{
+            {/* Preview Area - matches .output-area from original */}
+            {/* Using h-full instead of absolute to properly calculate scroll height */}
+            <div 
+              ref={outputPreviewRef}
+              className={`h-full pl-8 pr-4 pt-4 pb-4 border border-border/50 rounded-lg overflow-y-auto overflow-x-auto bg-background/80 output-preview ${
+                showPreview ? 'block' : 'hidden'
+              }`}
+              style={{
+                fontSize: '0.875rem',
+                lineHeight: '1.75',
+                fontFamily: 'var(--font-sans)',
+              }}
+              dangerouslySetInnerHTML={{ 
+                __html: previewHtmlWithWarnings || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
+              }}
+            />
+            <style>{`
+              .output-preview p {
+                margin: 0.5em 0;
+                color: hsl(var(--foreground) / 0.9);
+              }
+              .output-preview h1 {
+                margin: 1em 0 0.5em 0;
+                font-weight: bold;
+                font-size: 2em;
+                line-height: 1.2;
+                color: hsl(var(--foreground));
+                position: relative;
+                overflow-wrap: break-word;
+              }
+              .output-preview h1::before {
+                content: "H1";
+                position: absolute;
+                top: -0.25rem;
+                left: -2rem;
+                background: hsl(var(--destructive));
+                color: white;
+                font-size: 0.6rem;
+                font-weight: bold;
+                padding: 0.125rem 0.25rem;
+                border-radius: 0.25rem;
+                font-family: var(--font-mono);
+                pointer-events: none;
+                user-select: none;
+                display: ${showHeadingVisualizer ? 'block' : 'none'};
+              }
+              .output-preview h2 {
+                margin: 1em 0 0.5em 0;
+                font-weight: bold;
+                font-size: 1.5em;
+                line-height: 1.3;
+                color: hsl(var(--foreground));
+                position: relative;
+                overflow-wrap: break-word;
+              }
+              .output-preview h2::before {
+                content: "H2";
+                position: absolute;
+                top: -0.25rem;
+                left: -2rem;
+                background: hsl(var(--syntax-orange));
+                color: hsl(var(--foreground));
+                font-size: 0.6rem;
+                font-weight: bold;
+                padding: 0.125rem 0.25rem;
+                border-radius: 0.25rem;
+                font-family: var(--font-mono);
+                pointer-events: none;
+                user-select: none;
+                display: ${showHeadingVisualizer ? 'block' : 'none'};
+              }
+              .output-preview h3 {
+                margin: 1em 0 0.5em 0;
+                font-weight: bold;
+                font-size: 1.25em;
+                line-height: 1.4;
+                color: hsl(var(--foreground));
+                position: relative;
+                overflow-wrap: break-word;
+              }
+              .output-preview h3::before {
+                content: "H3";
+                position: absolute;
+                top: -0.25rem;
+                left: -2rem;
+                background: hsl(var(--syntax-yellow));
+                color: hsl(var(--foreground));
+                font-size: 0.6rem;
+                font-weight: bold;
+                padding: 0.125rem 0.25rem;
+                border-radius: 0.25rem;
+                font-family: var(--font-mono);
+                pointer-events: none;
+                user-select: none;
+                display: ${showHeadingVisualizer ? 'block' : 'none'};
+              }
+              .output-preview h4 {
+                margin: 1em 0 0.5em 0;
+                font-weight: bold;
+                font-size: 1.1em;
+                line-height: 1.4;
+                color: hsl(var(--foreground));
+                position: relative;
+                overflow-wrap: break-word;
+              }
+              .output-preview h4::before {
+                content: "H4";
+                position: absolute;
+                top: -0.25rem;
+                left: -2rem;
+                background: hsl(var(--syntax-green));
+                color: hsl(var(--foreground));
+                font-size: 0.6rem;
+                font-weight: bold;
+                padding: 0.125rem 0.25rem;
+                border-radius: 0.25rem;
+                font-family: var(--font-mono);
+                pointer-events: none;
+                user-select: none;
+                display: ${showHeadingVisualizer ? 'block' : 'none'};
+              }
+              .output-preview h5 {
+                margin: 1em 0 0.5em 0;
+                font-weight: bold;
+                font-size: 1em;
+                line-height: 1.5;
+                color: hsl(var(--foreground));
+                position: relative;
+                overflow-wrap: break-word;
+              }
+              .output-preview h5::before {
+                content: "H5";
+                position: absolute;
+                top: -0.25rem;
+                left: -2rem;
+                background: hsl(var(--syntax-blue));
+                color: white;
+                font-size: 0.6rem;
+                font-weight: bold;
+                padding: 0.125rem 0.25rem;
+                border-radius: 0.25rem;
+                font-family: var(--font-mono);
+                pointer-events: none;
+                user-select: none;
+                display: ${showHeadingVisualizer ? 'block' : 'none'};
+              }
+              .output-preview h6 {
+                margin: 1em 0 0.5em 0;
+                font-weight: bold;
+                font-size: 0.9em;
+                line-height: 1.5;
+                color: hsl(var(--foreground));
+                position: relative;
+                overflow-wrap: break-word;
+              }
+              .output-preview h6::before {
+                content: "H6";
+                position: absolute;
+                top: -0.25rem;
+                left: -2rem;
+                background: hsl(var(--syntax-purple));
+                color: white;
+                font-size: 0.6rem;
+                font-weight: bold;
+                padding: 0.125rem 0.25rem;
+                border-radius: 0.25rem;
+                font-family: var(--font-mono);
+                pointer-events: none;
+                user-select: none;
+                display: ${showHeadingVisualizer ? 'block' : 'none'};
+              }
+              .output-preview strong,
+              .output-preview b {
+                font-weight: bold;
+                color: hsl(var(--foreground));
+              }
+              .output-preview ul {
+                margin: 0.5em 0;
+                padding-left: 2em;
+                color: hsl(var(--foreground) / 0.9);
+                list-style-type: disc;
+                display: block;
+              }
+              .output-preview ol {
+                margin: 0.5em 0;
+                padding-left: 2em;
+                color: hsl(var(--foreground) / 0.9);
+                list-style-type: decimal;
+                display: block;
+              }
+              .output-preview li {
+                display: list-item;
+                margin: 0.25em 0;
+                color: hsl(var(--foreground) / 0.9);
+              }
+              .output-preview ul ul {
+                list-style-type: circle;
+                margin-top: 0.25em;
+                margin-bottom: 0.25em;
+              }
+              .output-preview ul ul ul {
+                list-style-type: square;
+              }
+              .output-preview ol ol {
+                list-style-type: lower-alpha;
+                margin-top: 0.25em;
+                margin-bottom: 0.25em;
+              }
+              .output-preview ol ol ol {
+                list-style-type: lower-roman;
+              }
+              .output-preview table {
+                border-collapse: collapse;
+                width: 100%;
+                margin: 1em 0;
+              }
+              .output-preview table td,
+              .output-preview table th {
+                border: 1px solid hsl(var(--border));
+                padding: 8px;
+              }
+              .output-preview table th {
+                background-color: hsl(var(--muted));
+                font-weight: bold;
+                color: hsl(var(--foreground));
+              }
+              .output-preview img {
+                max-width: 100%;
+                height: auto;
+              }
+              .output-preview a {
+                color: hsl(var(--primary)) !important;
+                text-decoration: underline;
+                text-decoration-color: hsl(var(--primary) / 0.5);
+                transition: color 0.2s, text-decoration-color 0.2s;
+              }
+              .output-preview a:hover {
+                color: hsl(var(--primary) / 0.8) !important;
+                text-decoration-color: hsl(var(--primary));
+              }
+              .output-preview a:visited {
+                color: hsl(var(--primary) / 0.7) !important;
+              }
+              .output-preview * {
+                color: hsl(var(--foreground)) !important;
+              }
+              .output-preview a * {
+                color: inherit !important;
+              }
+              /* Validation warning styles */
+              .output-preview [data-warning] {
+                outline: 3px dashed hsl(var(--destructive)) !important;
+                outline-offset: 2px !important;
+                position: relative;
+                cursor: help;
+                background-color: hsl(var(--destructive) / 0.15) !important;
+              }
+              .output-preview [data-warning]:hover::after {
+                content: attr(data-warning);
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%);
+                background: hsl(var(--destructive)) !important;
+                color: white !important;
+                padding: 0.25rem 0.5rem;
+                border-radius: 0.25rem;
+                font-size: 0.75rem;
+                white-space: nowrap;
+                z-index: 9999;
+                pointer-events: none;
+              }
+              /* Links with warnings need explicit styling */
+              .output-preview a[data-warning] {
+                outline: 3px dashed hsl(var(--destructive)) !important;
+                background-color: hsl(var(--destructive) / 0.15) !important;
+                text-decoration: underline !important;
+                text-decoration-color: hsl(var(--destructive)) !important;
+              }
+            `}</style>
+            {/* Code Area */}
+            <div 
+              ref={codeAreaRef}
+              data-lenisignore
+              className={`h-full border border-border/50 rounded-lg overflow-y-auto overflow-x-auto bg-background/80 p-4 ${
+                !showPreview ? 'block' : 'hidden'
+              }`}
+              style={{
+                fontSize: '0.875rem',
+                lineHeight: '1.75',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              <SyntaxHighlighter
+                language="html"
+                style={theme === 'dark' ? oneDark : oneLight}
+                customStyle={{
+                  margin: 0,
+                  padding: 0,
+                  background: 'transparent',
+                  height: 'auto',
+                  overflow: 'visible',
+                  fontFamily: 'var(--font-mono)',
                   fontSize: '0.875rem',
                   lineHeight: '1.75',
-                  fontFamily: 'var(--font-sans)',
                 }}
-                dangerouslySetInnerHTML={{ 
-                  __html: previewHtmlWithWarnings || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
+                codeTagProps={{
+                  style: {
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.875rem',
+                    lineHeight: '1.75',
+                  },
                 }}
-              />
-              <style>{`
-                .output-preview p {
-                  margin: 0.5em 0;
-                  color: hsl(var(--foreground) / 0.9);
-                }
-                .output-preview h1 {
-                  margin: 1em 0 0.5em 0;
-                  font-weight: bold;
-                  font-size: 2em;
-                  line-height: 1.2;
-                  color: hsl(var(--foreground));
-                  position: relative;
-                  overflow-wrap: break-word;
-                }
-                .output-preview h1::before {
-                  content: "H1";
-                  position: absolute;
-                  top: -0.25rem;
-                  left: -2rem;
-                  background: hsl(var(--destructive));
-                  color: white;
-                  font-size: 0.6rem;
-                  font-weight: bold;
-                  padding: 0.125rem 0.25rem;
-                  border-radius: 0.25rem;
-                  font-family: var(--font-mono);
-                  pointer-events: none;
-                  user-select: none;
-                  display: ${showHeadingVisualizer ? 'block' : 'none'};
-                }
-                .output-preview h2 {
-                  margin: 1em 0 0.5em 0;
-                  font-weight: bold;
-                  font-size: 1.5em;
-                  line-height: 1.3;
-                  color: hsl(var(--foreground));
-                  position: relative;
-                  overflow-wrap: break-word;
-                }
-                .output-preview h2::before {
-                  content: "H2";
-                  position: absolute;
-                  top: -0.25rem;
-                  left: -2rem;
-                  background: hsl(var(--syntax-orange));
-                  color: hsl(var(--foreground));
-                  font-size: 0.6rem;
-                  font-weight: bold;
-                  padding: 0.125rem 0.25rem;
-                  border-radius: 0.25rem;
-                  font-family: var(--font-mono);
-                  pointer-events: none;
-                  user-select: none;
-                  display: ${showHeadingVisualizer ? 'block' : 'none'};
-                }
-                .output-preview h3 {
-                  margin: 1em 0 0.5em 0;
-                  font-weight: bold;
-                  font-size: 1.25em;
-                  line-height: 1.4;
-                  color: hsl(var(--foreground));
-                  position: relative;
-                  overflow-wrap: break-word;
-                }
-                .output-preview h3::before {
-                  content: "H3";
-                  position: absolute;
-                  top: -0.25rem;
-                  left: -2rem;
-                  background: hsl(var(--syntax-yellow));
-                  color: hsl(var(--foreground));
-                  font-size: 0.6rem;
-                  font-weight: bold;
-                  padding: 0.125rem 0.25rem;
-                  border-radius: 0.25rem;
-                  font-family: var(--font-mono);
-                  pointer-events: none;
-                  user-select: none;
-                  display: ${showHeadingVisualizer ? 'block' : 'none'};
-                }
-                .output-preview h4 {
-                  margin: 1em 0 0.5em 0;
-                  font-weight: bold;
-                  font-size: 1.1em;
-                  line-height: 1.4;
-                  color: hsl(var(--foreground));
-                  position: relative;
-                  overflow-wrap: break-word;
-                }
-                .output-preview h4::before {
-                  content: "H4";
-                  position: absolute;
-                  top: -0.25rem;
-                  left: -2rem;
-                  background: hsl(var(--syntax-green));
-                  color: hsl(var(--foreground));
-                  font-size: 0.6rem;
-                  font-weight: bold;
-                  padding: 0.125rem 0.25rem;
-                  border-radius: 0.25rem;
-                  font-family: var(--font-mono);
-                  pointer-events: none;
-                  user-select: none;
-                  display: ${showHeadingVisualizer ? 'block' : 'none'};
-                }
-                .output-preview h5 {
-                  margin: 1em 0 0.5em 0;
-                  font-weight: bold;
-                  font-size: 1em;
-                  line-height: 1.5;
-                  color: hsl(var(--foreground));
-                  position: relative;
-                  overflow-wrap: break-word;
-                }
-                .output-preview h5::before {
-                  content: "H5";
-                  position: absolute;
-                  top: -0.25rem;
-                  left: -2rem;
-                  background: hsl(var(--syntax-blue));
-                  color: white;
-                  font-size: 0.6rem;
-                  font-weight: bold;
-                  padding: 0.125rem 0.25rem;
-                  border-radius: 0.25rem;
-                  font-family: var(--font-mono);
-                  pointer-events: none;
-                  user-select: none;
-                  display: ${showHeadingVisualizer ? 'block' : 'none'};
-                }
-                .output-preview h6 {
-                  margin: 1em 0 0.5em 0;
-                  font-weight: bold;
-                  font-size: 0.9em;
-                  line-height: 1.5;
-                  color: hsl(var(--foreground));
-                  position: relative;
-                  overflow-wrap: break-word;
-                }
-                .output-preview h6::before {
-                  content: "H6";
-                  position: absolute;
-                  top: -0.25rem;
-                  left: -2rem;
-                  background: hsl(var(--syntax-purple));
-                  color: white;
-                  font-size: 0.6rem;
-                  font-weight: bold;
-                  padding: 0.125rem 0.25rem;
-                  border-radius: 0.25rem;
-                  font-family: var(--font-mono);
-                  pointer-events: none;
-                  user-select: none;
-                  display: ${showHeadingVisualizer ? 'block' : 'none'};
-                }
-                .output-preview strong,
-                .output-preview b {
-                  font-weight: bold;
-                  color: hsl(var(--foreground));
-                }
-                .output-preview ul {
-                  margin: 0.5em 0;
-                  padding-left: 2em;
-                  color: hsl(var(--foreground) / 0.9);
-                  list-style-type: disc;
-                  display: block;
-                }
-                .output-preview ol {
-                  margin: 0.5em 0;
-                  padding-left: 2em;
-                  color: hsl(var(--foreground) / 0.9);
-                  list-style-type: decimal;
-                  display: block;
-                }
-                .output-preview li {
-                  display: list-item;
-                  margin: 0.25em 0;
-                  color: hsl(var(--foreground) / 0.9);
-                }
-                .output-preview ul ul {
-                  list-style-type: circle;
-                  margin-top: 0.25em;
-                  margin-bottom: 0.25em;
-                }
-                .output-preview ul ul ul {
-                  list-style-type: square;
-                }
-                .output-preview ol ol {
-                  list-style-type: lower-alpha;
-                  margin-top: 0.25em;
-                  margin-bottom: 0.25em;
-                }
-                .output-preview ol ol ol {
-                  list-style-type: lower-roman;
-                }
-                .output-preview table {
-                  border-collapse: collapse;
-                  width: 100%;
-                  margin: 1em 0;
-                }
-                .output-preview table td,
-                .output-preview table th {
-                  border: 1px solid hsl(var(--border));
-                  padding: 8px;
-                }
-                .output-preview table th {
-                  background-color: hsl(var(--muted));
-                  font-weight: bold;
-                  color: hsl(var(--foreground));
-                }
-                .output-preview img {
-                  max-width: 100%;
-                  height: auto;
-                }
-                .output-preview a {
-                  color: hsl(var(--primary)) !important;
-                  text-decoration: underline;
-                  text-decoration-color: hsl(var(--primary) / 0.5);
-                  transition: color 0.2s, text-decoration-color 0.2s;
-                }
-                .output-preview a:hover {
-                  color: hsl(var(--primary) / 0.8) !important;
-                  text-decoration-color: hsl(var(--primary));
-                }
-                .output-preview a:visited {
-                  color: hsl(var(--primary) / 0.7) !important;
-                }
-                .output-preview * {
-                  color: hsl(var(--foreground)) !important;
-                }
-                .output-preview a * {
-                  color: inherit !important;
-                }
-                /* Validation warning styles */
-                .output-preview [data-warning] {
-                  outline: 3px dashed hsl(var(--destructive)) !important;
-                  outline-offset: 2px !important;
-                  position: relative;
-                  cursor: help;
-                  background-color: hsl(var(--destructive) / 0.15) !important;
-                }
-                .output-preview [data-warning]:hover::after {
-                  content: attr(data-warning);
-                  position: absolute;
-                  bottom: 100%;
-                  left: 50%;
-                  transform: translateX(-50%);
-                  background: hsl(var(--destructive)) !important;
-                  color: white !important;
-                  padding: 0.25rem 0.5rem;
-                  border-radius: 0.25rem;
-                  font-size: 0.75rem;
-                  white-space: nowrap;
-                  z-index: 9999;
-                  pointer-events: none;
-                }
-                /* Links with warnings need explicit styling */
-                .output-preview a[data-warning] {
-                  outline: 3px dashed hsl(var(--destructive)) !important;
-                  background-color: hsl(var(--destructive) / 0.15) !important;
-                  text-decoration: underline !important;
-                  text-decoration-color: hsl(var(--destructive)) !important;
-                }
-              `}</style>
-              {/* Code Area */}
-              <div 
-                className={`absolute inset-0 border border-border/50 rounded-lg overflow-hidden ${
-                  !showPreview ? 'block' : 'hidden'
-                }`}
               >
-                <style>{`
-                  .syntax-highlighter-wrapper pre[class*="language-"] {
-                    margin: 0 !important;
-                    padding: 1rem !important;
-                    background: hsl(var(--background) / 0.8) !important;
-                    height: 100% !important;
-                    overflow: auto !important;
-                    font-family: var(--font-mono) !important;
-                    font-size: 0.875rem !important;
-                    line-height: 1.75 !important;
-                  }
-                  .syntax-highlighter-wrapper code[class*="language-"] {
-                    font-family: var(--font-mono) !important;
-                    font-size: 0.875rem !important;
-                    line-height: 1.75 !important;
-                    color: hsl(var(--foreground)) !important;
-                  }
-                  /* Ensure all text is visible with proper contrast */
-                  .syntax-highlighter-wrapper code[class*="language-"] * {
-                    color: inherit !important;
-                  }
-                  .syntax-highlighter-wrapper .token.comment {
-                    color: hsl(var(--muted-foreground)) !important;
-                    font-style: italic !important;
-                  }
-                  .syntax-highlighter-wrapper .token.tag {
-                    color: hsl(var(--syntax-orange)) !important;
-                  }
-                  .syntax-highlighter-wrapper .token.attr-name {
-                    color: hsl(var(--syntax-yellow)) !important;
-                  }
-                  .syntax-highlighter-wrapper .token.attr-value {
-                    color: hsl(var(--syntax-green)) !important;
-                  }
-                  .syntax-highlighter-wrapper .token.string {
-                    color: hsl(var(--syntax-green)) !important;
-                  }
-                  .syntax-highlighter-wrapper .token.punctuation {
-                    color: hsl(var(--foreground) / 0.7) !important;
-                  }
-                  .syntax-highlighter-wrapper .token.property {
-                    color: hsl(var(--syntax-blue)) !important;
-                  }
-                  .syntax-highlighter-wrapper .token.keyword {
-                    color: hsl(var(--syntax-purple)) !important;
-                  }
-                  .syntax-highlighter-wrapper .token.number,
-                  .syntax-highlighter-wrapper .token.boolean {
-                    color: hsl(var(--syntax-purple)) !important;
-                  }
-                  /* Ensure text content inside tags is visible */
-                  .syntax-highlighter-wrapper .token.plain {
-                    color: hsl(var(--foreground)) !important;
-                  }
-                  .syntax-highlighter-wrapper .token.script {
-                    color: hsl(var(--foreground)) !important;
-                  }
-                  .syntax-highlighter-wrapper .token.script .token.string {
-                    color: hsl(var(--syntax-green)) !important;
-                  }
-                  /* Ensure default text color is always visible */
-                  .syntax-highlighter-wrapper pre[class*="language-"] {
-                    color: hsl(var(--foreground)) !important;
-                  }
-                  /* Fix for plain text content inside tags - ensure it's visible */
-                  .syntax-highlighter-wrapper .token.plain,
-                  .syntax-highlighter-wrapper .token.tag > .token.plain {
-                    color: hsl(var(--foreground)) !important;
-                  }
-                  /* Ensure text between tags is visible */
-                  .syntax-highlighter-wrapper .token.tag + .token.plain,
-                  .syntax-highlighter-wrapper .token.tag ~ .token.plain {
-                    color: hsl(var(--foreground)) !important;
-                  }
-                `}</style>
-                <div className="syntax-highlighter-wrapper h-full">
-                  <SyntaxHighlighter
-                    language="html"
-                    style={theme === 'dark' ? oneDark : oneLight}
-                    customStyle={{
-                      margin: 0,
-                      padding: '1rem',
-                      background: 'hsl(var(--background) / 0.8)',
-                      height: '100%',
-                      overflow: 'auto',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.875rem',
-                      lineHeight: '1.75',
-                    }}
-                    codeTagProps={{
-                      style: {
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.875rem',
-                        lineHeight: '1.75',
-                      },
-                    }}
-                  >
-                    {outputHtml || "// Output will appear here..."}
-                  </SyntaxHighlighter>
-                </div>
-              </div>
+                {outputHtml || "// Output will appear here..."}
+              </SyntaxHighlighter>
             </div>
           </div>
         </div>
@@ -1445,7 +1481,7 @@ export function WordToHtmlConverter() {
 
       {/* Maximized Output Modal */}
       <Dialog open={showMaximizedOutput} onOpenChange={setShowMaximizedOutput}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full flex flex-col p-0">
+        <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-[95vh] flex flex-col p-0">
           <DialogHeader className="px-6 pt-6 pb-4 pr-14 border-b border-border flex-shrink-0">
             <div className="flex items-center justify-between">
               <DialogTitle className="flex items-center gap-2">
@@ -1532,11 +1568,18 @@ export function WordToHtmlConverter() {
               </div>
             </div>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden p-6">
+          <div 
+            data-lenisignore 
+            className="flex-1 overflow-y-auto overflow-x-auto"
+            onWheel={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+          >
             {maximizedPreviewMode ? (
               /* Preview in Modal */
               <div 
-                className="h-full w-full pl-8 pr-6 pt-6 pb-6 border border-border/50 rounded-lg overflow-y-auto overflow-x-auto bg-background/80 output-preview"
+                className="pl-8 pr-6 pt-6 pb-6 bg-background/80 output-preview"
                 style={{
                   fontSize: '1rem',
                   lineHeight: '1.75',
@@ -1548,35 +1591,17 @@ export function WordToHtmlConverter() {
               />
             ) : (
               /* Code in Modal */
-              <div className="h-full w-full overflow-hidden">
-                <style>{`
-                  .syntax-highlighter-modal-wrapper pre[class*="language-"] {
-                    margin: 0 !important;
-                    padding: 1.5rem !important;
-                    background: hsl(var(--background) / 0.8) !important;
-                    height: 100% !important;
-                    overflow: auto !important;
-                    font-family: var(--font-mono) !important;
-                    font-size: 0.875rem !important;
-                    line-height: 1.75 !important;
-                  }
-                  .syntax-highlighter-modal-wrapper code[class*="language-"] {
-                    font-family: var(--font-mono) !important;
-                    font-size: 0.875rem !important;
-                    line-height: 1.75 !important;
-                    color: hsl(var(--foreground)) !important;
-                  }
-                `}</style>
-                <div className="syntax-highlighter-modal-wrapper h-full border border-border/50 rounded-lg overflow-hidden">
-                  <SyntaxHighlighter
+              <div ref={modalCodeAreaRef} className="w-full p-4">
+                <SyntaxHighlighter
                     language="html"
                     style={theme === 'dark' ? oneDark : oneLight}
                     customStyle={{
                       margin: 0,
                       padding: '1.5rem',
                       background: 'hsl(var(--background) / 0.8)',
-                      height: '100%',
-                      overflow: 'auto',
+                      height: 'auto',
+                      minHeight: '100%',
+                      overflow: 'visible',
                       fontFamily: 'var(--font-mono)',
                       fontSize: '0.875rem',
                       lineHeight: '1.75',
@@ -1591,7 +1616,6 @@ export function WordToHtmlConverter() {
                   >
                     {outputHtml || "// Output will appear here..."}
                   </SyntaxHighlighter>
-                </div>
               </div>
             )}
           </div>
