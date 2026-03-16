@@ -137,7 +137,7 @@ function addSpacingBeforeSources(doc: Document): void {
   
   paragraphs.forEach(p => {
     const text = p.textContent?.trim().toLowerCase() || '';
-    if (text.startsWith('sources') &&
+    if ((text === 'sources' || text === 'sources:') &&
         p.previousElementSibling &&
         p.previousElementSibling.tagName.toLowerCase() === 'p') {
       
@@ -170,7 +170,7 @@ function addSpacingBeforeDisclaimer(doc: Document): void {
   
   paragraphs.forEach(p => {
     const text = p.textContent?.trim().toLowerCase() || '';
-    if (text.startsWith('disclaimer')) {
+    if (text === 'disclaimer' || text === 'disclaimer:') {
       
       let prevSibling = p.previousElementSibling;
       const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);

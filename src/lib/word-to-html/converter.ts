@@ -31,6 +31,7 @@ export interface FeatureFlags {
   spacing?: boolean;
   olHeaderConversion?: boolean;
   sourcesNormalize?: boolean;
+  sourcesItalic?: boolean;
   removeSourcesLinks?: boolean;
   brBeforeReadMore?: boolean;
   brBeforeSources?: boolean;

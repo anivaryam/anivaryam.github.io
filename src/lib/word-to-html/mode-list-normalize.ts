@@ -58,13 +58,6 @@ export function normalizeLists(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
-    // DEBUG: Log all LIs before processing
-    const allLisBefore = doc.querySelectorAll('li');
-    console.log('=== normalizeLists: BEFORE ===');
-    allLisBefore.forEach((li, i) => {
-      console.log(`LI[${i}]:`, li.outerHTML.substring(0, 200));
-    });
-    
     // Merge adjacent ul elements first
     mergeAdjacentUl(doc);
     

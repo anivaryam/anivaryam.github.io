@@ -50,10 +50,6 @@ export function cleanHtml(html: string): string {
   }
 
   try {
-    // DEBUG: Log input
-    console.log('=== cleanHtml: INPUT ===');
-    console.log(html.substring(0, 500));
-    
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
@@ -62,9 +58,6 @@ export function cleanHtml(html: string): string {
     removeBrAfterBlockElements(doc.body);
     removeConsecutiveBr(doc.body);
 
-    // DEBUG: Log output
-    console.log('=== cleanHtml: OUTPUT ===');
-    console.log(doc.body.innerHTML.substring(0, 500));
     removeParagraphsFromListItems(doc.body);
     trimAnchorWhitespace(doc.body);
     

@@ -81,7 +81,7 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
 
     // Sources normalization
     if (features.sourcesNormalize !== false) {
-      processedHtml = normalizeSources(processedHtml);
+      processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
     }
 
     // Link spacing (after all other processing)
@@ -135,7 +135,7 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
 
     // Sources normalization
     if (features.sourcesNormalize !== false) {
-      processedHtml = normalizeSources(processedHtml);
+      processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
     }
     
     // Link spacing (at the end, after all other processing)
@@ -189,7 +189,7 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
 
     // Sources normalization
     if (features.sourcesNormalize !== false) {
-      processedHtml = normalizeSources(processedHtml);
+      processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
     }
     
     // Link spacing (at the end, after all other processing)

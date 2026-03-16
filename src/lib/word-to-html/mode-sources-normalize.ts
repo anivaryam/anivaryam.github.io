@@ -3,7 +3,7 @@
  * Normalizes Sources section formatting for Blogs and Shoppables modes
  */
 
-export function normalizeSources(html: string): string {
+export function normalizeSources(html: string, sourcesItalic: boolean = true): string {
   if (!html || typeof html !== 'string') {
     return '';
   }
@@ -27,7 +27,7 @@ export function normalizeSources(html: string): string {
         }
         
         if (nextSibling && nextSibling.tagName.toLowerCase() === 'ol') {
-          normalizeSourcesListItems(nextSibling, doc);
+          normalizeSourcesListItems(nextSibling, doc, sourcesItalic);
         }
       }
     });
@@ -52,7 +52,7 @@ function normalizeSourcesParagraph(paragraph: Element, doc: Document): void {
   paragraph.appendChild(strong);
 }
 
-function normalizeSourcesListItems(olElement: Element, doc: Document): void {
+function normalizeSourcesListItems(olElement: Element, doc: Document, sourcesItalic: boolean = true): void {
   if (!olElement || !doc) return;
   
   const listItems = olElement.querySelectorAll('li');
@@ -94,6 +94,11 @@ function normalizeSourcesListItems(olElement: Element, doc: Document): void {
       li.appendChild(em);
     }
     // If there are other elements (strong, em, etc.), preserve them as-is
+
+    // Add italic style to li when sourcesItalic is enabled
+    if (sourcesItalic) {
+      li.setAttribute('style', 'font-style: italic');
+    }
   });
 }
 

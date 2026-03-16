@@ -377,7 +377,12 @@ export function WordToHtmlConverter() {
     const links: string[] = [];
     anchors.forEach((anchor) => {
       const href = anchor.getAttribute('href');
-      if (href && !href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('javascript:')) {
+      // Filter out dangerous URL protocols that could lead to XSS attacks
+      const isUnsafeProtocol = 
+        href.startsWith('javascript:') ||
+        href.startsWith('data:') ||
+        href.startsWith('vbscript:');
+      if (href && !href.startsWith('#') && !href.startsWith('mailto:') && !isUnsafeProtocol) {
         links.push(href);
       }
     });
@@ -662,13 +667,56 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // Spacing rules - flag paragraphs
+        // Spacing rules - parse details and highlight the target element (not spacing elements)
         if (result.ruleId === 'spacing-rules') {
-          const paragraphs = doc.querySelectorAll('p');
-          paragraphs.forEach(p => {
-            const text = p.textContent || '';
-            if (text.trim() === '' || text === '\u00A0') {
-              p.setAttribute('data-warning', 'Spacing element issue');
+          const details = result.details || [];
+          
+          details.forEach((message: string) => {
+            // Parse message formats:
+            // - 'Missing spacing before heading: "..."'
+            // - 'Missing spacing before Sources: section'
+            // - 'Missing spacing before Disclaimer: section'
+            // - 'Missing spacing before Alt Image Text: paragraph'
+            // - 'Missing spacing before "...'
+            
+            // Handle heading messages: 'Missing spacing before heading: "..."'
+            const headingMatch = message.match(/Missing spacing before heading: "([^"]+)"/);
+            if (headingMatch) {
+              const headingText = headingMatch[1];
+              const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
+              headings.forEach(h => {
+                if (h.textContent?.includes(headingText)) {
+                  h.setAttribute('data-warning', message);
+                }
+              });
+              return;
+            }
+            
+            // Handle section/paragraph messages: 'Missing spacing before "X:" section' or 'Missing spacing before "X:" paragraph'
+            const sectionMatch = message.match(/Missing spacing before "([^"]+):?"?\s*(section|paragraph)?"?$/i);
+            if (sectionMatch) {
+              const targetText = sectionMatch[1].toLowerCase();
+              const paragraphs = doc.querySelectorAll('p');
+              paragraphs.forEach(p => {
+                const text = p.textContent?.trim().toLowerCase() || '';
+                if (text === targetText || text.startsWith(targetText + ':') || text.startsWith(targetText + ' ')) {
+                  p.setAttribute('data-warning', message);
+                }
+              });
+              return;
+            }
+            
+            // Handle read also/read more messages: 'Missing spacing before "..."'
+            const readMoreMatch = message.match(/Missing spacing before "([^"]+\.\.\.)"/);
+            if (readMoreMatch) {
+              const readMoreText = readMoreMatch[1].toLowerCase();
+              const paragraphs = doc.querySelectorAll('p');
+              paragraphs.forEach(p => {
+                const text = p.textContent?.trim().toLowerCase() || '';
+                if (text.includes(readMoreText.replace('...', ''))) {
+                  p.setAttribute('data-warning', message);
+                }
+              });
             }
           });
         }
