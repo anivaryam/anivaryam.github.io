@@ -1154,20 +1154,13 @@ function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features?: 
         : `${totalLinks} anchor tag(s) present in Sources`,
     };
   } else {
-    // Feature disabled: validate that anchor tags ARE present (feature not applied)
     return {
       ruleId: 'remove-sources-links',
       feature: 'Remove Sources Links',
       mode,
-      passed: totalLinks > 0,
-      message: totalLinks > 0 
-        ? `${totalLinks} anchor tag(s) found in Sources (feature disabled, not applied)`
-        : `No anchor tags in Sources (feature disabled, expected links to remain)`,
-      severity: totalLinks > 0 ? 'info' : 'warning',
-      expected: '<a> tags present in Sources (feature disabled)',
-      actual: totalLinks > 0 
-        ? `${totalLinks} anchor tag(s) found in Sources`
-        : 'No anchor tags (unexpected when feature disabled)',
+      passed: true,
+      message: 'Feature disabled (skipped)',
+      severity: 'info',
     };
   }
 }

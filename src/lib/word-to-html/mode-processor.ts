@@ -74,14 +74,14 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = convertToRelativePaths(processedHtml);
     }
 
-    // Remove links in Sources section
-    if (features.removeSourcesLinks !== false) {
-      processedHtml = removeSourcesLinks(processedHtml);
-    }
-
     // Sources normalization
     if (features.sourcesNormalize !== false) {
       processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
+    }
+
+    // Remove links in Sources section
+    if (features.removeSourcesLinks !== false) {
+      processedHtml = removeSourcesLinks(processedHtml);
     }
 
     // Link spacing (after all other processing)
@@ -128,14 +128,14 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = convertToRelativePaths(processedHtml);
     }
 
-    // Remove links in Sources section (must run before normalizeSources)
-    if (features.removeSourcesLinks !== false) {
-      processedHtml = removeSourcesLinks(processedHtml);
-    }
-
     // Sources normalization
     if (features.sourcesNormalize !== false) {
       processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
+    }
+
+    // Remove links in Sources section (must run after normalizeSources)
+    if (features.removeSourcesLinks !== false) {
+      processedHtml = removeSourcesLinks(processedHtml);
     }
     
     // Link spacing (at the end, after all other processing)
@@ -182,14 +182,14 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = addBrBeforeSources(processedHtml);
     }
 
-    // Remove links in Sources section (must run before normalizeSources)
-    if (features.removeSourcesLinks !== false) {
-      processedHtml = removeSourcesLinks(processedHtml);
-    }
-
     // Sources normalization
     if (features.sourcesNormalize !== false) {
       processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
+    }
+
+    // Remove links in Sources section (must run after normalizeSources)
+    if (features.removeSourcesLinks !== false) {
+      processedHtml = removeSourcesLinks(processedHtml);
     }
     
     // Link spacing (at the end, after all other processing)
