@@ -365,6 +365,7 @@ export function QrCodeGeneratorTool() {
               onChange={(e) => setText(e.target.value)}
               placeholder="Enter text to generate QR code..."
               className="min-h-[100px] font-mono text-sm"
+              data-lenisignore
             />
           </div>
         </TabsContent>

@@ -9,7 +9,7 @@ import { shake256 } from '@noble/hashes/sha3.js';
 import { concatBytes, stringToBytes, numberToBytes } from './bigint-utils';
 
 // Lazy load hash-wasm
-let shake256Wasm: any = null;
+const shake256Wasm: any = null;
 let wasmInitialized = false;
 let wasmAvailable = false;
 

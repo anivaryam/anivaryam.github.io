@@ -250,6 +250,7 @@ export function RandomUniverseCipherTool() {
                   disabled={isProcessing}
                   rows={6}
                   className="font-mono text-sm"
+                  data-lenisignore
                 />
               </div>
 
@@ -315,6 +316,7 @@ export function RandomUniverseCipherTool() {
                     readOnly
                     rows={6}
                     className={`font-mono text-sm ${outputText.startsWith('Error:') ? 'text-destructive' : ''}`}
+                    data-lenisignore
                   />
                   {/* Show completion time for text operations */}
                   {lastOperationTime > 0 && !outputText.startsWith('Error:') && (

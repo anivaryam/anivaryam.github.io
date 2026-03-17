@@ -7,6 +7,16 @@ import { Copy, Check, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
+// Escape HTML to prevent XSS
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 interface Match {
   match: string;
   index: number;
@@ -75,7 +85,7 @@ export function RegexTesterTool() {
         }
 
         highlightedText = parts
-          .map((p) => (p.isMatch ? `<mark>${p.text}</mark>` : p.text))
+          .map((p) => (p.isMatch ? `<mark>${escapeHtml(p.text)}</mark>` : escapeHtml(p.text)))
           .join("");
       }
 
@@ -191,6 +201,7 @@ export function RegexTesterTool() {
             onChange={(e) => setTestString(e.target.value)}
             placeholder="Enter text to test against..."
             className="min-h-[200px] font-mono text-sm bg-background/50"
+            data-lenisignore
           />
         </div>
         <div className="space-y-2">
@@ -198,7 +209,7 @@ export function RegexTesterTool() {
             Matches ({results.matches.length})
           </label>
           <div
-            className="min-h-[200px] p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap"
+            className="min-h-[200px] p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap" data-lenisignore
             dangerouslySetInnerHTML={{
               __html: results.highlightedText || "Matches will be highlighted here...",
             }}
@@ -213,7 +224,7 @@ export function RegexTesterTool() {
       {results.matches.length > 0 && (
         <div className="space-y-2">
           <label className="text-sm font-medium text-muted-foreground">Match Details</label>
-          <div className="bg-background/50 border border-border rounded-md p-4 max-h-[200px] overflow-auto">
+          <div className="bg-background/50 border border-border rounded-md p-4 max-h-[200px] overflow-auto" data-lenisignore>
             <table className="w-full text-sm font-mono">
               <thead>
                 <tr className="text-muted-foreground border-b border-border">

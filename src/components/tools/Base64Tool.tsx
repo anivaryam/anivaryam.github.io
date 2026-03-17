@@ -116,6 +116,7 @@ export function Base64Tool() {
             onChange={(e) => setInput(e.target.value)}
             placeholder={mode === "encode" ? "Enter text to encode..." : "Enter Base64 string to decode..."}
             className="min-h-[200px] font-mono text-sm bg-background/50"
+            data-lenisignore
           />
         </div>
         <div className="space-y-2">
@@ -148,7 +149,7 @@ export function Base64Tool() {
               <p className="text-sm text-destructive font-mono">{error}</p>
             </div>
           ) : (
-            <pre className="min-h-[200px] p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap break-all">
+            <pre className="min-h-[200px] p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap break-all" data-lenisignore>
               {output || "Result will appear here..."}
             </pre>
           )}

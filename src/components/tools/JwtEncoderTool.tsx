@@ -220,6 +220,7 @@ export function JwtEncoderTool() {
           onChange={(e) => setHeaderJson(e.target.value)}
           placeholder='{"alg": "HS256", "typ": "JWT"}'
           className="min-h-[120px] font-mono text-sm bg-background/50"
+          data-lenisignore
         />
       </div>
 
@@ -232,6 +233,7 @@ export function JwtEncoderTool() {
           onChange={(e) => setPayloadJson(e.target.value)}
           placeholder='{"sub": "1234567890", "name": "John Doe"}'
           className="min-h-[120px] font-mono text-sm bg-background/50"
+          data-lenisignore
         />
       </div>
 
@@ -292,7 +294,7 @@ export function JwtEncoderTool() {
                 )}
               </Button>
             </div>
-            <pre className="p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono break-all">
+            <pre className="p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono break-all" data-lenisignore>
               {result.encodedHeader}
             </pre>
           </div>
@@ -320,7 +322,7 @@ export function JwtEncoderTool() {
                 )}
               </Button>
             </div>
-            <pre className="p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono break-all">
+            <pre className="p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono break-all" data-lenisignore>
               {result.encodedPayload}
             </pre>
           </div>
@@ -348,7 +350,7 @@ export function JwtEncoderTool() {
                 )}
               </Button>
             </div>
-            <pre className="p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono break-all">
+            <pre className="p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono break-all" data-lenisignore>
               {result.token}
             </pre>
             <p className="text-xs text-muted-foreground">
@@ -380,7 +382,7 @@ export function JwtEncoderTool() {
                   )}
                 </Button>
               </div>
-              <pre className="p-4 bg-primary/5 border border-primary/30 rounded-md overflow-auto text-sm font-mono break-all">
+              <pre className="p-4 bg-primary/5 border border-primary/30 rounded-md overflow-auto text-sm font-mono break-all" data-lenisignore>
                 {fullToken}
               </pre>
               <p className="text-xs text-muted-foreground">

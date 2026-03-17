@@ -121,6 +121,7 @@ export function JwtDecoderTool() {
           onChange={(e) => setInput(e.target.value)}
           placeholder="Paste your JWT token here..."
           className="min-h-[100px] font-mono text-sm bg-background/50"
+          data-lenisignore
         />
       </div>
 
@@ -157,7 +158,7 @@ export function JwtDecoderTool() {
                 )}
               </Button>
             </div>
-            <pre className="p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono">
+            <pre className="p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono" data-lenisignore>
               {JSON.stringify(result.decoded.header, null, 2)}
             </pre>
           </div>
@@ -185,7 +186,7 @@ export function JwtDecoderTool() {
                 )}
               </Button>
             </div>
-            <div className="p-4 bg-background/50 border border-border rounded-md overflow-auto">
+            <div className="p-4 bg-background/50 border border-border rounded-md overflow-auto" data-lenisignore>
               <table className="w-full text-sm font-mono">
                 <tbody>
                   {Object.entries(result.decoded.payload).map(([key, value]) => (
@@ -222,7 +223,7 @@ export function JwtDecoderTool() {
                 )}
               </Button>
             </div>
-            <pre className="p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono text-muted-foreground break-all">
+            <pre className="p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono text-muted-foreground break-all" data-lenisignore>
               {result.decoded.signature}
             </pre>
             <p className="text-xs text-muted-foreground">

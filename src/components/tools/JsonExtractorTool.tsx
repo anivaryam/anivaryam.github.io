@@ -87,7 +87,7 @@ export function JsonExtractorTool() {
   // Extract using path syntax (e.g., "users.name" or "data.items[].title")
   const extractPath = (obj: any, path: string): any[] => {
     const parts = path.split(".");
-    let current: any = obj;
+    const current: any = obj;
     const results: any[] = [];
 
     // Handle array notation like "items[]"
@@ -249,6 +249,7 @@ export function JsonExtractorTool() {
             onChange={(e) => setInputJson(e.target.value)}
             placeholder='{"users": [{"name": "John", "email": "john@example.com"}, {"name": "Jane", "email": "jane@example.com"}]}'
             className="min-h-[200px] font-mono text-sm bg-background/50"
+            data-lenisignore
           />
         </div>
 
@@ -319,7 +320,7 @@ export function JsonExtractorTool() {
 
             {/* List View */}
             <TabsContent value="list" className="mt-4">
-              <div className="space-y-2 max-h-[500px] overflow-y-auto">
+              <div className="space-y-2 max-h-[500px] overflow-y-auto" data-lenisignore>
                 {results.map((result, index) => (
                   <Card key={index} className="bg-card/50">
                     <CardHeader className="pb-2">
@@ -376,7 +377,7 @@ export function JsonExtractorTool() {
                 </CardHeader>
                 <CardContent>
                   <div className="bg-background/50 p-4 rounded-md border border-border">
-                    <pre className="text-sm font-mono whitespace-pre-wrap break-words max-h-[500px] overflow-auto">
+                    <pre className="text-sm font-mono whitespace-pre-wrap break-words max-h-[500px] overflow-auto" data-lenisignore>
                       {getCombinedText()}
                     </pre>
                   </div>
@@ -417,7 +418,7 @@ export function JsonExtractorTool() {
                 </CardHeader>
                 <CardContent>
                   <div className="bg-background/50 p-4 rounded-md border border-border">
-                    <pre className="text-xs font-mono overflow-x-auto max-h-[500px] overflow-y-auto">
+                    <pre className="text-xs font-mono overflow-x-auto max-h-[500px] overflow-y-auto" data-lenisignore>
                       {getResultsJSON()}
                     </pre>
                   </div>

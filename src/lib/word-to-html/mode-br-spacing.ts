@@ -47,7 +47,7 @@ export function addBrBeforeReadMore(html: string): string {
           text.includes('see more:')) {
         
         // Check if there's an existing spacing element before this paragraph
-        let prevSibling = p.previousElementSibling;
+        const prevSibling = p.previousElementSibling;
         const hasExistingNbspSpacing = prevSibling && isSpacingElement(prevSibling);
         const hasExistingBrSpacing = prevSibling && isBrSpacingElement(prevSibling);
         
@@ -113,7 +113,7 @@ export function addBrBeforeSources(html: string): string {
       if (text.startsWith('sources:')) {
         
         // Check if there's an existing spacing element before this paragraph
-        let prevSibling = p.previousElementSibling;
+        const prevSibling = p.previousElementSibling;
         const hasExistingNbspSpacing = prevSibling && isSpacingElement(prevSibling);
         const hasExistingBrSpacing = prevSibling && isBrSpacingElement(prevSibling);
         

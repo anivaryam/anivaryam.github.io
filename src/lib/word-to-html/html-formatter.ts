@@ -76,7 +76,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
   let hasBlockChildren = false;
   let hasOnlyInlineContent = true;
   let hasContent = false;
-  let blockChildTags: string[] = [];
+  const blockChildTags: string[] = [];
   
   for (let i = 0; i < element.childNodes.length; i++) {
     const node = element.childNodes[i];

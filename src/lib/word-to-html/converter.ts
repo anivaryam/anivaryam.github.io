@@ -52,19 +52,19 @@ export function convertToHtml(
 
   try {
     // Step 1: Sanitize HTML (removes styling and unsafe attributes)
-    let sanitized = sanitizeHtml(cleanedHtml);
+    const sanitized = sanitizeHtml(cleanedHtml);
     if (!sanitized) {
       throw new Error('Sanitization returned null or undefined');
     }
     
     // Step 2: Clean HTML structure (remove unnecessary tags, unwrap elements)
-    let cleanedStructure = cleanHtml(sanitized);
+    const cleanedStructure = cleanHtml(sanitized);
     if (!cleanedStructure) {
       throw new Error('HTML cleaning returned null or undefined');
     }
     
     // Step 3: Apply mode-specific processing
-    let processed = processMode(cleanedStructure, mode, features);
+    const processed = processMode(cleanedStructure, mode, features);
     if (!processed) {
       throw new Error('Mode processing returned null or undefined');
     }

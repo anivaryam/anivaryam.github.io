@@ -27,7 +27,7 @@ function findKeyTakeawaysSection(doc: Document): KeyTakeawaysSection | null {
   const headings = doc.querySelectorAll('h2');
   let keyTakeawaysHeading: Element | null = null;
 
-  for (let heading of Array.from(headings)) {
+  for (const heading of Array.from(headings)) {
     const text = heading.textContent?.trim() || '';
     if (text.toLowerCase().includes('key takeaways')) {
       keyTakeawaysHeading = heading;
@@ -60,7 +60,7 @@ function findSourcesSection(doc: Document): SourcesSection | null {
   const paragraphs = doc.querySelectorAll('p');
 
   let sourcesParagraph: Element | null = null;
-  for (let p of Array.from(paragraphs)) {
+  for (const p of Array.from(paragraphs)) {
     const text = p.textContent?.trim().toLowerCase() || '';
     // More flexible matching: exact "sources" or starts with "sources:" (handles "sources: xxx" variations)
     if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
@@ -354,7 +354,7 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
           );
         }
 
-        let nextNode = strong.nextSibling;
+        const nextNode = strong.nextSibling;
 
         if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
           const text = (nextNode as Text).textContent || '';
@@ -1031,17 +1031,8 @@ function validateRelativePaths(doc: Document, mode: OutputMode, features?: Featu
  * Checks that links have proper spacing and aren't preceded by opening punctuation
  */
 function validateLinkSpacing(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
-  const enabled = features?.spacing ?? true;
-  if (!enabled) {
-    return {
-      ruleId: 'link-spacing',
-      feature: 'Link Spacing',
-      mode,
-      passed: true,
-      message: 'Link spacing feature disabled (skipped)',
-      severity: 'info',
-    };
-  }
+  // Link spacing is always applied in mode-processor.ts (regardless of spacing feature flag)
+  // so we always validate it - there's no separate linkSpacing feature flag
 
   const links = doc.querySelectorAll('a[href]');
   const issues: string[] = [];

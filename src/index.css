@@ -145,6 +145,11 @@
 
   .lenis.lenis-scrolling iframe {
     pointer-events: none;
+
+  /* Enable native scroll for elements with data-lenisignore */
+  [data-lenisIgnore] {
+    overflow: auto !important;
+  }
   }
 }
 

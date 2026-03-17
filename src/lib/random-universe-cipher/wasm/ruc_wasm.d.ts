@@ -1,5 +1,5 @@
 /* tslint:disable */
-/* eslint-disable */
+ 
 
 export class CipherState {
   free(): void;

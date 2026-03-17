@@ -13,6 +13,14 @@ import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/pris
 import { useTheme } from "next-themes";
 import { prefixCss, removeInlineStylesFromHtml } from "@/lib/listicle-template";
 
+// Simple HTML sanitizer to prevent XSS
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '')
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+}
+
 type OutputTab = "css" | "html" | "preview";
 
 export function ListicleTemplateTool() {
@@ -162,6 +170,7 @@ export function ListicleTemplateTool() {
   padding: 20px;
 }"
             className="font-mono min-h-[300px] text-sm"
+            data-lenisignore
           />
         </div>
 
@@ -177,6 +186,7 @@ export function ListicleTemplateTool() {
   </div>
 </body>"
             className="font-mono min-h-[300px] text-sm"
+            data-lenisignore
           />
         </div>
       </div>
@@ -216,15 +226,15 @@ export function ListicleTemplateTool() {
       <Card>
         <CardContent className="p-0">
           {outputTab === "preview" ? (
-            <div className="p-4 bg-white dark:bg-gray-900 max-h-[1200px] overflow-auto">
+            <div className="p-4 bg-white dark:bg-gray-900 max-h-[1200px] overflow-auto" data-lenisignore>
               {output.previewHtml ? (
-                <div dangerouslySetInnerHTML={{ __html: output.previewHtml }} />
+                <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(output.previewHtml) }} />
               ) : (
                 <p className="text-muted-foreground text-sm">No HTML output to preview. Paste HTML in the HTML Input field above, and optionally add CSS to see the styled preview.</p>
               )}
             </div>
           ) : (
-            <div className="max-h-[400px] overflow-auto">
+            <div className="max-h-[400px] overflow-auto" data-lenisignore>
               <SyntaxHighlighter
                 language={outputTab === "css" ? "css" : "html"}
                 style={theme === "dark" ? oneDark : oneLight}

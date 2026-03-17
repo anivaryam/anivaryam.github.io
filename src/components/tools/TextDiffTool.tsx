@@ -150,6 +150,7 @@ export function TextDiffTool() {
             onChange={(e) => setText1(e.target.value)}
             placeholder="Enter original text..."
             className="min-h-[300px] font-mono text-sm bg-background/50"
+            data-lenisignore
           />
         </div>
         <div className="space-y-2">
@@ -159,6 +160,7 @@ export function TextDiffTool() {
             onChange={(e) => setText2(e.target.value)}
             placeholder="Enter modified text..."
             className="min-h-[300px] font-mono text-sm bg-background/50"
+            data-lenisignore
           />
         </div>
       </div>
@@ -172,7 +174,7 @@ export function TextDiffTool() {
             <span className="bg-red-600/20 dark:bg-red-500/30 text-red-700 dark:text-red-300 px-2 py-1 rounded font-medium">Removed</span>
           </div>
         </div>
-        <div className="min-h-[300px] p-4 bg-background/50 border border-border rounded-md overflow-auto">
+        <div className="min-h-[300px] p-4 bg-background/50 border border-border rounded-md overflow-auto" data-lenisignore>
           {diff ? (
             <pre className="text-sm font-mono whitespace-pre-wrap">
               {renderDiff()}

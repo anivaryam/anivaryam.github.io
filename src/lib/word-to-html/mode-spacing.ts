@@ -20,7 +20,7 @@ function addSpacingAfterKeyTakeaways(doc: Document): void {
   const headings = Array.from(doc.querySelectorAll('h2'));
   let keyTakeawaysHeading: Element | null = null;
   
-  for (let heading of headings) {
+  for (const heading of headings) {
     const text = heading.textContent?.trim() || '';
     if (text.toLowerCase().includes('key takeaways')) {
       keyTakeawaysHeading = heading;
@@ -35,7 +35,7 @@ function addSpacingAfterKeyTakeaways(doc: Document): void {
     }
     
     if (nextSibling && nextSibling.tagName.toLowerCase() === 'ul') {
-      let elementAfterUl = nextSibling.nextElementSibling;
+      const elementAfterUl = nextSibling.nextElementSibling;
       const hasExistingSpacing = elementAfterUl && isSpacingElement(elementAfterUl);
       if (hasExistingSpacing) {
         return;
@@ -77,7 +77,7 @@ function addSpacingBeforeHeadings(doc: Document): void {
       return;
     }
     
-    let prevSibling = heading.previousElementSibling;
+    const prevSibling = heading.previousElementSibling;
     const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);
     if (hasExistingSpacing) {
       return;
@@ -109,7 +109,7 @@ function addSpacingBeforeReadSection(doc: Document): void {
         text.includes('read more') || 
         text.includes('see more')) {
       
-      let prevSibling = p.previousElementSibling;
+      const prevSibling = p.previousElementSibling;
       if (prevSibling && isSpacingElement(prevSibling)) {
         return;
       }
@@ -141,7 +141,7 @@ function addSpacingBeforeSources(doc: Document): void {
         p.previousElementSibling &&
         p.previousElementSibling.tagName.toLowerCase() === 'p') {
       
-      let prevSibling = p.previousElementSibling;
+      const prevSibling = p.previousElementSibling;
       const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);
       if (hasExistingSpacing) {
         return;
@@ -172,7 +172,7 @@ function addSpacingBeforeDisclaimer(doc: Document): void {
     const text = p.textContent?.trim().toLowerCase() || '';
     if (text === 'disclaimer' || text === 'disclaimer:') {
       
-      let prevSibling = p.previousElementSibling;
+      const prevSibling = p.previousElementSibling;
       const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);
       if (hasExistingSpacing) {
         return;
@@ -203,7 +203,7 @@ function addSpacingBeforeAltImageText(doc: Document): void {
     const text = p.textContent?.trim().toLowerCase() || '';
     if (text.includes('alt image text:')) {
       
-      let prevSibling = p.previousElementSibling;
+      const prevSibling = p.previousElementSibling;
       const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);
       if (hasExistingSpacing) {
         return;

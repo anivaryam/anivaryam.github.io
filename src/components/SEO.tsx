@@ -179,7 +179,7 @@ export function SEO({
     ) as HTMLScriptElement;
 
     if (structuredData) {
-      let jsonLd: any = {
+      const jsonLd: any = {
         "@context": "https://schema.org",
       };
 

@@ -112,6 +112,7 @@ export function HashGeneratorTool() {
           onChange={(e) => setInput(e.target.value)}
           placeholder="Enter text to hash..."
           className="min-h-[150px] font-mono text-sm bg-background/50"
+          data-lenisignore
         />
       </div>
 

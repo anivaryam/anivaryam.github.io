@@ -103,29 +103,25 @@ export function LenisProvider({
       className: "lenis",
     });
 
-    // Handle scroll events - ignore elements with data-lenisIgnore attribute
-    lenis.on('scroll', (e) => {
-      // Check if the scroll target has data-lenisIgnore
-      const target = e.target;
-      if (target instanceof Element && target.hasAttribute('data-lenisIgnore')) {
+    // Check if element should be ignored by Lenis
+    const shouldIgnoreElement = (target: EventTarget | null): boolean => {
+      if (!target || !(target instanceof Element)) return false;
+      return target.hasAttribute('data-lenisIgnore') || 
+             target.closest('[data-lenisIgnore]') !== null;
+    };
+
+    // Listen to wheel events at window level to intercept before Lenis
+    // This is more reliable than overriding lenis.onWheel
+    const wheelHandler = (e: WheelEvent) => {
+      if (shouldIgnoreElement(e.target)) {
+        e.stopImmediatePropagation();
+        // Also prevent Lenis from seeing this event by stopping propagation
         e.stopPropagation();
       }
-    });
-
-    // Override wheel event handler to ignore specific elements
-    const originalWheel = lenis.onWheel;
-    lenis.onWheel = function(e) {
-      // Check if event target should be ignored
-      const target = e.target;
-      if (target instanceof Element) {
-        const ignoreElement = target.closest('[data-lenisIgnore]');
-        if (ignoreElement) {
-          return; // Let native scroll work
-        }
-      }
-      // @ts-ignore - call original handler
-      originalWheel?.call(this, e);
     };
+    
+    // Use capture phase to run before Lenis's listener
+    window.addEventListener('wheel', wheelHandler, { capture: true });
 
     lenisRef.current = lenis;
     setIsReady(true);
@@ -140,6 +136,7 @@ export function LenisProvider({
 
     // Cleanup
     return () => {
+      window.removeEventListener('wheel', wheelHandler, { capture: true });
       cancelAnimationFrame(animationId);
       lenis.destroy();
       lenisRef.current = null;

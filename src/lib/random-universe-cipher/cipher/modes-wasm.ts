@@ -119,7 +119,7 @@ export async function encryptCTRWASM(
     
     // Round keys (convert BigInt to bytes)
     const rkBytes = new Uint8Array(BYTES.REGISTER);
-    let rkValue = keyMaterial.roundKeys[r];
+    const rkValue = keyMaterial.roundKeys[r];
     for (let i = 0; i < BYTES.REGISTER; i++) {
       rkBytes[BYTES.REGISTER - 1 - i] = Number((rkValue >> BigInt(i * 8)) & 0xffn);
     }
@@ -130,7 +130,7 @@ export async function encryptCTRWASM(
   const registersFlat = new Uint8Array(CONFIG.registerCount * BYTES.REGISTER);
   for (let i = 0; i < CONFIG.registerCount; i++) {
     const regBytes = new Uint8Array(BYTES.REGISTER);
-    let regValue = keyMaterial.registers[i];
+    const regValue = keyMaterial.registers[i];
     for (let j = 0; j < BYTES.REGISTER; j++) {
       regBytes[BYTES.REGISTER - 1 - j] = Number((regValue >> BigInt(j * 8)) & 0xffn);
     }
@@ -254,7 +254,7 @@ export async function decryptCTRWASM(
     
     // Round keys (convert BigInt to bytes)
     const rkBytes = new Uint8Array(BYTES.REGISTER);
-    let rkValue = keyMaterial.roundKeys[r];
+    const rkValue = keyMaterial.roundKeys[r];
     for (let i = 0; i < BYTES.REGISTER; i++) {
       rkBytes[BYTES.REGISTER - 1 - i] = Number((rkValue >> BigInt(i * 8)) & 0xffn);
     }
@@ -265,7 +265,7 @@ export async function decryptCTRWASM(
   const registersFlat = new Uint8Array(CONFIG.registerCount * BYTES.REGISTER);
   for (let i = 0; i < CONFIG.registerCount; i++) {
     const regBytes = new Uint8Array(BYTES.REGISTER);
-    let regValue = keyMaterial.registers[i];
+    const regValue = keyMaterial.registers[i];
     for (let j = 0; j < BYTES.REGISTER; j++) {
       regBytes[BYTES.REGISTER - 1 - j] = Number((regValue >> BigInt(j * 8)) & 0xffn);
     }

@@ -546,24 +546,6 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // Link spacing - only flag links that actually have spacing issues
-        if (result.ruleId === 'link-spacing') {
-          const details = result.details || [];
-          details.forEach((detail: string) => {
-            const match = detail.match(/Missing space before link: "([^"]+)"/);
-            if (match) {
-              const problematicText = match[1];
-              const links = doc.querySelectorAll('a');
-              links.forEach(a => {
-                const prevText = a.previousSibling?.textContent || '';
-                if (prevText.includes(problematicText)) {
-                  a.setAttribute('data-warning', detail);
-                }
-              });
-            }
-          });
-        }
-        
         // Remove sources links - flag all links in sources
         if (result.ruleId === 'remove-sources-links') {
           const paragraphs = doc.querySelectorAll('p');

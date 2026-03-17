@@ -33,8 +33,45 @@ export function WebScraperTool() {
   const [endPage, setEndPage] = useState(3);
   const [paginationProgress, setPaginationProgress] = useState({ current: 0, total: 0 });
 
+  // Helper function to check if URL is internal/private (SSRF protection)
+  const isInternalUrl = (url: string): boolean => {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.toLowerCase();
+      
+      // Block localhost variants
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0') {
+        return true;
+      }
+      
+      // Block private IP ranges
+      if (hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.')) {
+        // 172.16-31.x.x
+        if (hostname.startsWith('172.') && hostname.length >= 7) {
+          const secondOctet = parseInt(hostname.split('.')[1]);
+          if (secondOctet >= 16 && secondOctet <= 31) return true;
+        }
+        return true;
+      }
+      
+      // Block link-local
+      if (hostname.startsWith('169.254.')) return true;
+      
+      // Block .local domains
+      if (hostname.endsWith('.local')) return true;
+      
+      return false;
+    } catch {
+      return true; // Invalid URLs treated as internal
+    }
+  };
+
   // Helper function to fetch HTML from a URL
   const fetchHtml = async (targetUrl: string): Promise<string> => {
+    // SSRF protection - block internal URLs
+    if (isInternalUrl(targetUrl)) {
+      throw new Error('Cannot access internal or private URLs');
+    }
     const proxies = [
       // AllOrigins - returns { contents: string }
       async (url: string) => {
@@ -595,7 +632,7 @@ export function WebScraperTool() {
                     <div className="space-y-1">
                       <p className="text-xs font-medium text-muted-foreground">Attributes:</p>
                       <div className="bg-background/50 p-3 rounded-md border border-border">
-                        <pre className="text-xs font-mono overflow-x-auto">
+                        <pre className="text-xs font-mono overflow-x-auto" data-lenisignore>
                           {JSON.stringify(result.attributes, null, 2)}
                         </pre>
                       </div>
@@ -607,7 +644,7 @@ export function WebScraperTool() {
                       HTML Content (click to expand)
                     </summary>
                     <div className="mt-2 bg-background/50 p-3 rounded-md border border-border">
-                      <pre className="text-xs font-mono overflow-x-auto whitespace-pre-wrap break-words">
+                      <pre className="text-xs font-mono overflow-x-auto whitespace-pre-wrap break-words" data-lenisignore>
                         {result.html}
                       </pre>
                     </div>
@@ -639,7 +676,7 @@ export function WebScraperTool() {
                 </CardHeader>
                 <CardContent>
                   <div className="bg-background/50 p-4 rounded-md border border-border">
-                    <pre className="text-sm font-mono whitespace-pre-wrap break-words max-h-[600px] overflow-auto">
+                    <pre className="text-sm font-mono whitespace-pre-wrap break-words max-h-[600px] overflow-auto" data-lenisignore>
                       {getCombinedText() || <span className="text-muted-foreground italic">No text content found</span>}
                     </pre>
                   </div>
@@ -680,7 +717,7 @@ export function WebScraperTool() {
                 </CardHeader>
                 <CardContent>
                   <div className="bg-background/50 p-4 rounded-md border border-border">
-                    <pre className="text-xs font-mono overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <pre className="text-xs font-mono overflow-x-auto max-h-[600px] overflow-y-auto" data-lenisignore>
                       {getCombinedJSON()}
                     </pre>
                   </div>

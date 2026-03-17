@@ -1,5 +1,5 @@
 /* tslint:disable */
-/* eslint-disable */
+ 
 export const memory: WebAssembly.Memory;
 export const __wbg_cipherstate_free: (a: number, b: number) => void;
 export const cipherstate_get_accumulator_sum: (a: number) => bigint;

@@ -134,6 +134,7 @@ export function JsonFormatterTool() {
             onChange={(e) => setInputJson(e.target.value)}
             placeholder='{"example": "Paste your JSON here..."}'
             className="min-h-[300px] font-mono text-sm bg-background/50"
+            data-lenisignore
           />
         </div>
         <div className="space-y-2">
@@ -164,7 +165,7 @@ export function JsonFormatterTool() {
               <p className="text-sm text-destructive font-mono">{error}</p>
             </div>
           ) : (
-            <pre className="min-h-[300px] p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap">
+            <pre className="min-h-[300px] p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap" data-lenisignore>
               {outputJson || "Formatted JSON will appear here..."}
             </pre>
           )}

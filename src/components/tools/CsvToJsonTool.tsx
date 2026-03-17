@@ -438,7 +438,7 @@ export function CsvToJsonTool() {
                     ? "Drag and drop a CSV file here, or paste CSV data...\n\nExample:\nname,age,city\nJohn,30,New York\nJane,25,London"
                     : 'Drag and drop a JSON file here, or paste JSON data...\n\nExample:\n[\n  {"name": "John", "age": 30, "city": "New York"}\n]'
                 }
-                className="h-full font-mono text-sm bg-transparent border-0 resize-none overflow-auto"
+                className="h-full font-mono text-sm bg-transparent border-0 resize-none overflow-auto" data-lenisignore
               />
             )}
             {!isDragging && (
@@ -453,7 +453,7 @@ export function CsvToJsonTool() {
           <label className="text-sm font-medium text-muted-foreground">
             {direction === "csv-to-json" ? "JSON Output" : "CSV Output"}
           </label>
-          <pre className="h-[400px] p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap">
+          <pre className="h-[400px] p-4 bg-background/50 border border-border rounded-md overflow-auto text-sm font-mono whitespace-pre-wrap" data-lenisignore>
             {direction === "csv-to-json" 
               ? (json || "Converted JSON will appear here...")
               : (csv || "Converted CSV will appear here...")

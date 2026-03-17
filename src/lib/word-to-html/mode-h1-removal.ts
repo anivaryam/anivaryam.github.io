@@ -15,7 +15,7 @@ export function removeH1AfterKeyTakeaways(html: string): string {
     const headings = Array.from(doc.querySelectorAll('h2'));
     let keyTakeawaysHeading: Element | null = null;
     
-    for (let heading of headings) {
+    for (const heading of headings) {
       const text = heading.textContent?.trim() || '';
       if (text.toLowerCase().includes('key takeaways')) {
         keyTakeawaysHeading = heading;

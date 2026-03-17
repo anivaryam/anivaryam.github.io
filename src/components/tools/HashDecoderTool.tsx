@@ -140,6 +140,7 @@ export function HashDecoderTool() {
           onChange={(e) => setHashInput(e.target.value)}
           placeholder="Enter hash value (e.g., 2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae)..."
           className="min-h-[100px] font-mono text-sm bg-background/50"
+          data-lenisignore
         />
       </div>
 
@@ -151,6 +152,7 @@ export function HashDecoderTool() {
           onChange={(e) => setTextInput(e.target.value)}
           placeholder="Enter text to check against the hash..."
           className="min-h-[100px] font-mono text-sm bg-background/50"
+          data-lenisignore
         />
       </div>
 
