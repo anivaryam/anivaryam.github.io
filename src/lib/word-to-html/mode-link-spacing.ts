@@ -102,9 +102,14 @@ export function addLinkSpacing(html: string): string {
         }
       }
       
-      // Add space if needed
+      // ALWAYS normalize multiple spaces to single space first (before any other logic)
+      if (textNodeToModify) {
+        textNodeToModify.textContent = textContent.replace(/\s+/g, ' ');
+        textContent = textNodeToModify.textContent || '';
+      }
+      
+      // Add space if needed (after normalization)
       if (textNodeToModify && textContent.trim() && !endsWithWhitespace(textContent) && !endsWithOpeningPunctuation(textContent)) {
-        // Text node exists, has content, doesn't end with whitespace, and doesn't end with opening punctuation - add space
         textNodeToModify.textContent = textContent + ' ';
       } else if (!textNodeToModify) {
         // No text node found - insert a space node before the anchor
