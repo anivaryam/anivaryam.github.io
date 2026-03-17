@@ -546,11 +546,21 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // Link spacing - flag all links
+        // Link spacing - only flag links that actually have spacing issues
         if (result.ruleId === 'link-spacing') {
-          const links = doc.querySelectorAll('a');
-          links.forEach(a => {
-            a.setAttribute('data-warning', 'Link spacing issue');
+          const details = result.details || [];
+          details.forEach((detail: string) => {
+            const match = detail.match(/Missing space before link: "([^"]+)"/);
+            if (match) {
+              const problematicText = match[1];
+              const links = doc.querySelectorAll('a');
+              links.forEach(a => {
+                const prevText = a.previousSibling?.textContent || '';
+                if (prevText.includes(problematicText)) {
+                  a.setAttribute('data-warning', detail);
+                }
+              });
+            }
           });
         }
         
@@ -588,32 +598,39 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // List normalization - flag all li EXCEPT Sources section
+        // List normalization - only flag list items with specific issues
         if (result.ruleId === 'list-normalization') {
-          // Find Sources section to exclude (same logic as validator)
-          let sourcesOl: Element | null = null;
-          const paragraphs = doc.querySelectorAll('p');
-          for (const p of Array.from(paragraphs)) {
-            const text = p.textContent?.trim().toLowerCase() || '';
-            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
-              let nextSibling = p.nextElementSibling;
-              while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
-                nextSibling = nextSibling.nextElementSibling;
+          const details = result.details || [];
+          const sourcesOl = (() => {
+            let sourcesOl: Element | null = null;
+            const paragraphs = doc.querySelectorAll('p');
+            for (const p of Array.from(paragraphs)) {
+              const text = p.textContent?.trim().toLowerCase() || '';
+              if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
+                let nextSibling = p.nextElementSibling;
+                while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
+                  nextSibling = nextSibling.nextElementSibling;
+                }
+                if (nextSibling) {
+                  sourcesOl = nextSibling;
+                }
+                break;
               }
-              if (nextSibling) {
-                sourcesOl = nextSibling;
-              }
-              break;
             }
-          }
+            return sourcesOl;
+          })();
           
           const listItems = doc.querySelectorAll('li');
           listItems.forEach(li => {
-            // Skip list items in the Sources section
             if (sourcesOl && sourcesOl.contains(li)) {
               return;
             }
-            li.setAttribute('data-warning', 'List formatting issue');
+            const liText = li.textContent || '';
+            details.forEach((detail: string) => {
+              if (detail.includes(liText.substring(0, 30))) {
+                li.setAttribute('data-warning', detail);
+              }
+            });
           });
         }
         
@@ -636,33 +653,35 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // Key takeaways - flag key takeaways heading AND the list below it
-        if (result.ruleId === 'key-takeaways') {
+        // Key takeaways - flag key takeaways heading AND the list below it (only if failed)
+        if (result.ruleId === 'key-takeaways' && !result.passed) {
           const headings = doc.querySelectorAll('h2, h3');
           headings.forEach(h => {
             const text = h.textContent?.toLowerCase() || '';
             if (text.includes('key takeaways')) {
               h.setAttribute('data-warning', result.message);
-              // Also flag the next list after the heading
               let next = h.nextElementSibling;
               while (next && next.tagName.toLowerCase() !== 'ul' && next.tagName.toLowerCase() !== 'ol') {
                 next = next.nextElementSibling;
               }
               if (next) {
-                next.setAttribute('data-warning', 'Key Takeaways list formatting issue');
+                next.setAttribute('data-warning', result.message);
               }
             }
           });
         }
         
-        // Link attributes - flag all links
-        if (result.ruleId === 'link-attributes') {
+        // Link attributes - flag links missing proper attributes (only if failed)
+        if (result.ruleId === 'link-attributes' && !result.passed) {
           const links = doc.querySelectorAll('a[href]');
           links.forEach(a => {
             const target = a.getAttribute('target');
             const rel = a.getAttribute('rel');
-            if (target !== '_blank' || !rel?.includes('noopener')) {
-              a.setAttribute('data-warning', 'Link missing proper attributes');
+            const missing: string[] = [];
+            if (target !== '_blank') missing.push('target="_blank"');
+            if (!rel?.includes('noopener') || !rel?.includes('noreferrer')) missing.push('rel="noopener noreferrer"');
+            if (missing.length > 0) {
+              a.setAttribute('data-warning', `Link missing: ${missing.join(', ')}`);
             }
           });
         }
@@ -721,11 +740,29 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // OL header conversion - flag all ol
-        if (result.ruleId === 'ol-header-conversion') {
+        // OL header conversion - only flag <ol> elements that are header lists (only if failed)
+        if (result.ruleId === 'ol-header-conversion' && !result.passed) {
           const olElements = doc.querySelectorAll('ol');
           olElements.forEach(ol => {
-            ol.setAttribute('data-warning', 'OL header conversion issue');
+            const listItems = ol.querySelectorAll(':scope > li');
+            const isHeaderList = Array.from(listItems).every((li) => {
+              const strongTag = li.querySelector(':scope > strong');
+              if (strongTag) {
+                const headingChildren = Array.from(strongTag.children).filter((node) =>
+                  /^h[1-6]$/i.test(node.tagName)
+                );
+                return headingChildren.length === 1;
+              }
+              const directHeading = li.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
+              if (directHeading) {
+                const strongInHeading = directHeading.querySelector(':scope > strong');
+                return strongInHeading !== null;
+              }
+              return false;
+            });
+            if (isHeaderList) {
+              ol.setAttribute('data-warning', result.message);
+            }
           });
         }
         

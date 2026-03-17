@@ -38,8 +38,6 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
 
   // Regular mode: minimal processing by default, but apply features when enabled
   if (mode === 'regular') {
-    processedHtml = addLinkSpacing(processedHtml);
-
     // Apply features when enabled (same as blogs mode)
     // Heading strong tags
     processedHtml = applyHeadingStrong(processedHtml, features);
@@ -79,13 +77,13 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
     }
 
+    // Link spacing (must run before removeSourcesLinks to preserve whitespace)
+    processedHtml = addLinkSpacing(processedHtml);
+
     // Remove links in Sources section
     if (features.removeSourcesLinks !== false) {
       processedHtml = removeSourcesLinks(processedHtml);
     }
-
-    // Link spacing (after all other processing)
-    processedHtml = addLinkSpacing(processedHtml);
 
     // Final list normalization pass
     processedHtml = normalizeLists(processedHtml);
@@ -133,13 +131,13 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
     }
 
-    // Remove links in Sources section (must run after normalizeSources)
+    // Link spacing (must run before removeSourcesLinks to preserve whitespace)
+    processedHtml = addLinkSpacing(processedHtml);
+
+    // Remove links in Sources section
     if (features.removeSourcesLinks !== false) {
       processedHtml = removeSourcesLinks(processedHtml);
     }
-    
-    // Link spacing (at the end, after all other processing)
-    processedHtml = addLinkSpacing(processedHtml);
     
     // Final list normalization pass (after all processing that might modify list items)
     // This ensures spacing is normalized even if other functions reintroduced multiple spaces
@@ -187,13 +185,13 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
     }
 
-    // Remove links in Sources section (must run after normalizeSources)
+    // Link spacing (must run before removeSourcesLinks to preserve whitespace)
+    processedHtml = addLinkSpacing(processedHtml);
+
+    // Remove links in Sources section
     if (features.removeSourcesLinks !== false) {
       processedHtml = removeSourcesLinks(processedHtml);
     }
-    
-    // Link spacing (at the end, after all other processing)
-    processedHtml = addLinkSpacing(processedHtml);
     
     // Final list normalization pass (after all processing that might modify list items)
     // This ensures spacing is normalized even if other functions reintroduced multiple spaces
