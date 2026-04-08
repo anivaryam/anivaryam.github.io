@@ -30,6 +30,7 @@ const CsvToJson = lazy(() => import("./pages/tools/CsvToJson"));
 const ImageTool = lazy(() => import("./pages/tools/ImageTool"));
 const RandomUniverseCipher = lazy(() => import("./pages/tools/RandomUniverseCipher"));
 const ListicleTemplate = lazy(() => import("./pages/tools/ListicleTemplate"));
+const ImageResizer = lazy(() => import("./pages/tools/ImageResizer"));
 const Downloads = lazy(() => import("./pages/Downloads"));
 const Blogs = lazy(() => import("./pages/Blogs"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
@@ -128,6 +129,7 @@ const App = () => (
               <Route path="/tools/image-tool" element={<ImageTool />} />
               <Route path="/tools/random-universe-cipher" element={<RandomUniverseCipher />} />
               <Route path="/tools/listicle-template" element={<ListicleTemplate />} />
+              <Route path="/tools/image-resizer" element={<ImageResizer />} />
               <Route path="/downloads" element={<Downloads />} />
               <Route path="/blogs" element={<Blogs />} />
               <Route path="/blogs/:id" element={<BlogPost />} />
