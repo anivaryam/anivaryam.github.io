@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import Lenis from "lenis";
-import { Copy, Check, FileText, Code, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash, Link, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
+import { Copy, Check, FileText, Code, Braces, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash, Link, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -283,6 +283,7 @@ export function WordToHtmlConverter() {
     let isResizing = false;
     let startY = 0;
     let startHeight = 0;
+    const maxHeight = window.innerHeight * 0.5;
 
     const handleMouseDown = (e: MouseEvent) => {
       isResizing = true;
@@ -296,7 +297,7 @@ export function WordToHtmlConverter() {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
       const delta = e.clientY - startY;
-      const newHeight = Math.max(80, startHeight + delta); // Min height: 80px
+      const newHeight = Math.max(80, Math.min(startHeight + delta, maxHeight));
       setCssInputHeight(newHeight);
     };
 
@@ -306,14 +307,41 @@ export function WordToHtmlConverter() {
       document.body.style.cursor = '';
     };
 
+    const handleTouchStart = (e: TouchEvent) => {
+      isResizing = true;
+      startY = e.touches[0].clientY;
+      startHeight = textareaRef.offsetHeight;
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isResizing) return;
+      const delta = e.touches[0].clientY - startY;
+      const newHeight = Math.max(80, Math.min(startHeight + delta, maxHeight));
+      setCssInputHeight(newHeight);
+      e.preventDefault();
+    };
+
+    const handleTouchEnd = () => {
+      isResizing = false;
+      document.body.style.userSelect = '';
+    };
+
     handleRef.addEventListener('mousedown', handleMouseDown);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    handleRef.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
 
     return () => {
       handleRef.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      handleRef.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [showCSSInput]);
 
@@ -1675,12 +1703,12 @@ export function WordToHtmlConverter() {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowCSSInput(!showCSSInput)}
-                className={`h-7 w-7 p-0 ml-1 ${
+                className={`h-8 w-8 p-0 ml-1 ${
                   showCSSInput ? 'bg-primary text-primary-foreground' : customCSS.trim() ? 'bg-green-500/20 text-green-500 border-green-500/30' : 'text-muted-foreground hover:bg-muted/30'
                 }`}
                 title={showCSSInput ? 'Hide CSS Input' : 'Add Custom CSS'}
               >
-                <Code className="h-3.5 w-3.5" />
+                <Braces className="h-4 w-4" />
               </Button>
               {/* Maximize Button */}
               <Button
