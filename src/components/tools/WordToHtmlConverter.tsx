@@ -148,6 +148,9 @@ export function WordToHtmlConverter() {
   const [customCSS, setCustomCSS] = useState("");
   const [wrapWithStyleTags, setWrapWithStyleTags] = useState(true);
   const [cssInputHeight, setCssInputHeight] = useState(100);
+  const [outputView, setOutputView] = useState<'code' | 'preview' | 'blocks'>('code');
+  const [copiedBlockId, setCopiedBlockId] = useState<string | null>(null);
+  const [showHeadingsInPreview, setShowHeadingsInPreview] = useState(true);
 
   // Feature flags - initial state for Regular mode (will be updated by useEffect when mode changes)
   const [features, setFeatures] = useState<FeatureFlags>({
@@ -431,6 +434,341 @@ export function WordToHtmlConverter() {
       return `${customCSS}\n${html}`;
     }
   };
+
+  // Function to parse HTML into content blocks
+  interface ContentBlock {
+    type: 'heading' | 'content' | 'image' | 'disclaimer' | 'sources' | 'readmore';
+    html: string;
+    preview: string;
+    id: string;
+  }
+
+  const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const blocks: ContentBlock[] = [];
+    let blockId = 0;
+
+    const container = doc.body;
+    const children = Array.from(container.childNodes);
+
+    let currentContentHtml = '';
+    let contentStarted = false;
+    let skipIndices = new Set<number>();
+
+    children.forEach((node, index) => {
+      // Skip already processed indices
+      if (skipIndices.has(index)) {
+        return;
+      }
+
+      const element = node as HTMLElement;
+
+      // Skip text nodes that are just whitespace
+      if (node.nodeType === 3 && !(node.textContent?.trim())) {
+        return;
+      }
+
+      const tagName = element.tagName?.toLowerCase();
+
+      // Check if it's a disclaimer paragraph
+      if (tagName === 'p' && element.textContent?.includes('Disclaimer:')) {
+        // Save accumulated content if any
+        if (currentContentHtml.trim()) {
+          blocks.push({
+            type: 'content',
+            html: currentContentHtml,
+            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+            id: `block-${blockId++}`,
+          });
+          currentContentHtml = '';
+        }
+
+        blocks.push({
+          type: 'disclaimer',
+          html: element.outerHTML,
+          preview: element.textContent?.substring(0, 60) || 'Disclaimer',
+          id: `block-${blockId++}`,
+        });
+      }
+      // Check if it's a "Read more" paragraph
+      else if (tagName === 'p' && element.textContent?.includes('Read more:')) {
+        // Save accumulated content if any
+        if (currentContentHtml.trim()) {
+          blocks.push({
+            type: 'content',
+            html: currentContentHtml,
+            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+            id: `block-${blockId++}`,
+          });
+          currentContentHtml = '';
+        }
+
+        blocks.push({
+          type: 'readmore',
+          html: element.outerHTML,
+          preview: element.textContent?.substring(0, 60) || 'Read more',
+          id: `block-${blockId++}`,
+        });
+      }
+      // Check if it's a Sources paragraph + list
+      else if (tagName === 'p' && element.textContent?.includes('Sources:')) {
+        // Save accumulated content if any
+        if (currentContentHtml.trim()) {
+          blocks.push({
+            type: 'content',
+            html: currentContentHtml,
+            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+            id: `block-${blockId++}`,
+          });
+          currentContentHtml = '';
+        }
+
+        // Collect sources paragraph + following list
+        let sourcesHtml = element.outerHTML;
+        let nextIndex = index + 1;
+
+        // Skip whitespace nodes and collect the list
+        while (nextIndex < children.length) {
+          const nextNode = children[nextIndex];
+
+          // Skip text nodes (whitespace/newlines)
+          if (nextNode.nodeType === 3) {
+            if (!nextNode.textContent?.trim()) {
+              skipIndices.add(nextIndex);
+              nextIndex++;
+              continue;
+            } else {
+              break;
+            }
+          }
+
+          const nextElement = nextNode as HTMLElement;
+          const nextTagName = nextElement.tagName?.toLowerCase();
+
+          // Collect ol or ul that follows sources paragraph
+          if (nextTagName === 'ol' || nextTagName === 'ul') {
+            sourcesHtml += nextElement.outerHTML;
+            skipIndices.add(nextIndex);
+            nextIndex++;
+            break;
+          } else {
+            break;
+          }
+        }
+
+        blocks.push({
+          type: 'sources',
+          html: sourcesHtml,
+          preview: 'Sources',
+          id: `block-${blockId++}`,
+        });
+      }
+      // Check if it's a Sources heading + list
+      else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName) && element.textContent?.includes('Sources')) {
+        // Save accumulated content if any
+        if (currentContentHtml.trim()) {
+          blocks.push({
+            type: 'content',
+            html: currentContentHtml,
+            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+            id: `block-${blockId++}`,
+          });
+          currentContentHtml = '';
+        }
+
+        // Collect sources heading + following list
+        let sourcesHtml = element.outerHTML;
+        let nextIndex = index + 1;
+
+        // Skip whitespace nodes and collect the list
+        while (nextIndex < children.length) {
+          const nextNode = children[nextIndex];
+
+          // Skip text nodes (whitespace/newlines)
+          if (nextNode.nodeType === 3) {
+            if (!nextNode.textContent?.trim()) {
+              skipIndices.add(nextIndex);
+              nextIndex++;
+              continue;
+            } else {
+              break;
+            }
+          }
+
+          const nextElement = nextNode as HTMLElement;
+          const nextTagName = nextElement.tagName?.toLowerCase();
+
+          // Collect ol or ul that follows sources heading
+          if (nextTagName === 'ol' || nextTagName === 'ul') {
+            sourcesHtml += nextElement.outerHTML;
+            skipIndices.add(nextIndex);
+            nextIndex++;
+            break;
+          } else {
+            break;
+          }
+        }
+
+        blocks.push({
+          type: 'sources',
+          html: sourcesHtml,
+          preview: 'Sources',
+          id: `block-${blockId++}`,
+        });
+      }
+      // Check if it's a heading (h1-h6)
+      else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
+        // Save accumulated content if any
+        if (currentContentHtml.trim()) {
+          blocks.push({
+            type: 'content',
+            html: currentContentHtml,
+            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+            id: `block-${blockId++}`,
+          });
+          currentContentHtml = '';
+        }
+
+        // Add heading block
+        blocks.push({
+          type: 'heading',
+          html: element.outerHTML,
+          preview: element.textContent?.substring(0, 60) || 'Heading',
+          id: `block-${blockId++}`,
+        });
+        contentStarted = true;
+      }
+      // Check if it's an image
+      else if (tagName === 'img') {
+        // Save accumulated content if any
+        if (currentContentHtml.trim()) {
+          blocks.push({
+            type: 'content',
+            html: currentContentHtml,
+            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+            id: `block-${blockId++}`,
+          });
+          currentContentHtml = '';
+        }
+
+        // Extract image metadata ONLY
+        const imgElement = element as HTMLImageElement;
+        const altText = imgElement.getAttribute('alt') || 'No alt text';
+
+        // Find parent link if image is wrapped in <a> tag
+        let linkHref = '';
+        let parentLink: HTMLElement | null = null;
+
+        // Check if image's parent is a link
+        const parent = (element as HTMLImageElement).parentElement;
+        if (parent && parent.tagName?.toLowerCase() === 'a') {
+          linkHref = parent.getAttribute('href') || '';
+          parentLink = parent;
+        }
+
+        // Create metadata HTML for image ONLY (no surrounding content)
+        const imageMetaHtml = `<div style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; background: #f9f9f9;">
+          <p style="margin: 0 0 8px 0; font-size: 0.9em;"><strong>Alt image text:</strong> ${altText}</p>
+          ${linkHref ? `<p style="margin: 0; font-size: 0.9em;"><strong>Link:</strong> <a href="${linkHref}" target="_blank">${linkHref}</a></p>` : ''}
+        </div>`;
+
+        blocks.push({
+          type: 'image',
+          html: imageMetaHtml,
+          preview: `Alt: ${altText}${linkHref ? ` | Link: ${linkHref}` : ''}`,
+          id: `block-${blockId++}`,
+        });
+      }
+      // Check if this is an image metadata paragraph (Alt image text: or Link:)
+      else if (tagName === 'p' && (element.textContent?.includes('Alt image text:') || element.textContent?.includes('Link:'))) {
+        // Save accumulated content if any
+        if (currentContentHtml.trim()) {
+          blocks.push({
+            type: 'content',
+            html: currentContentHtml,
+            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+            id: `block-${blockId++}`,
+          });
+          currentContentHtml = '';
+        }
+
+        // Collect all image-related paragraphs (Alt text + Link)
+        let imageBlockHtml = element.outerHTML;
+        let nextIndex = index + 1;
+
+        // Collect following paragraphs that are part of image metadata
+        while (nextIndex < children.length) {
+          const nextNode = children[nextIndex];
+
+          // Skip text nodes (whitespace/newlines between elements)
+          if (nextNode.nodeType === 3) {
+            if (!nextNode.textContent?.trim()) {
+              skipIndices.add(nextIndex);
+              nextIndex++;
+              continue; // Continue to next sibling
+            } else {
+              break; // Non-empty text node means stop collecting
+            }
+          }
+
+          const nextElement = nextNode as HTMLElement;
+          const nextTagName = nextElement.tagName?.toLowerCase();
+
+          if (nextTagName === 'p') {
+            const text = nextElement.textContent?.trim() || '';
+            // Collect if empty paragraph or contains image metadata
+            if (text === '' || text.includes('Alt image text:') || text.includes('Link:')) {
+              imageBlockHtml += nextElement.outerHTML;
+              skipIndices.add(nextIndex);
+              nextIndex++;
+            } else {
+              break; // Stop at non-image content
+            }
+          } else {
+            break; // Stop at non-paragraph element
+          }
+        }
+
+        // Extract alt text from collected paragraphs
+        const altMatch = imageBlockHtml.match(/Alt image text:\s*(.+?)(?:<\/|$)/i);
+        const altText = altMatch ? altMatch[1].replace(/<[^>]*>/g, '').trim() : 'No alt text';
+
+        // Extract link from collected paragraphs
+        const linkMatch = imageBlockHtml.match(/href=["']([^"']+)["']/);
+        const linkHref = linkMatch ? linkMatch[1] : '';
+
+        blocks.push({
+          type: 'image',
+          html: imageBlockHtml,
+          preview: `Alt: ${altText}${linkHref ? ` | Link: ${linkHref}` : ''}`,
+          id: `block-${blockId++}`,
+        });
+      }
+      // Accumulate paragraphs and other content
+      else if (tagName === 'p' || tagName === 'ul' || tagName === 'ol' || tagName === 'blockquote') {
+        // Skip empty paragraphs (those with only whitespace or &nbsp;)
+        if (tagName === 'p' && !element.textContent?.trim()) {
+          return; // Skip empty paragraphs
+        }
+        currentContentHtml += element.outerHTML;
+      }
+    });
+
+    // Save any remaining content
+    if (currentContentHtml.trim()) {
+      blocks.push({
+        type: 'content',
+        html: currentContentHtml,
+        preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+        id: `block-${blockId++}`,
+      });
+    }
+
+    return blocks.length > 0 ? blocks : [];
+  };
+
+  const contentBlocks = useMemo(() => parseHtmlIntoBlocks(outputHtml), [outputHtml]);
 
   // Function to extract all links from HTML
   const extractLinks = (html: string): string[] => {
@@ -1258,14 +1596,17 @@ export function WordToHtmlConverter() {
             </div>
 
             <div className="flex items-center gap-1">
-              {/* View Toggle - matches original toggle-group */}
+              {/* View Toggle - Code/Preview/Blocks */}
               <div className="flex items-center bg-muted/50 rounded-md p-0.5 mr-1">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setShowPreview(false)}
+                  onClick={() => {
+                    setOutputView('code');
+                    setShowPreview(false);
+                  }}
                   className={`h-7 w-7 p-0 rounded ${
-                    !showPreview ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
+                    outputView === 'code' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
                   }`}
                   title="Code"
                 >
@@ -1274,17 +1615,35 @@ export function WordToHtmlConverter() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setShowPreview(true)}
+                  onClick={() => {
+                    setOutputView('preview');
+                    setShowPreview(true);
+                  }}
                   className={`h-7 w-7 p-0 rounded ${
-                    showPreview ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
+                    outputView === 'preview' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
                   }`}
                   title="Preview"
                 >
                   <Eye className="h-3.5 w-3.5" />
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setOutputView('blocks');
+                    setShowPreview(false);
+                  }}
+                  disabled={contentBlocks.length === 0}
+                  className={`h-7 w-7 p-0 rounded ${
+                    outputView === 'blocks' ? 'bg-primary text-primary-foreground' : contentBlocks.length === 0 ? 'text-muted-foreground/50 cursor-not-allowed' : 'text-muted-foreground hover:bg-muted/30'
+                  }`}
+                  title={contentBlocks.length === 0 ? "No blocks to display" : "Copy blocks"}
+                >
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                </Button>
               </div>
-              {/* Heading Visualizer Toggle */}
-              {showPreview && (
+              {/* Heading Visualizer Toggle - for Preview and Blocks */}
+              {(outputView === 'preview' || outputView === 'blocks') && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1401,10 +1760,10 @@ export function WordToHtmlConverter() {
           <div className="relative flex-1 min-h-[200px] max-h-[50vh] lg:max-h-[calc(100vh-380px)] w-full overflow-hidden">
             {/* Preview Area - matches .output-area from original */}
             {/* Using h-full instead of absolute to properly calculate scroll height */}
-            <div 
+            <div
               ref={outputPreviewRef}
               className={`h-full pl-8 pr-4 pt-4 pb-4 border border-border/50 rounded-lg overflow-y-auto overflow-x-auto bg-background/80 output-preview ${
-                showPreview ? 'block' : 'hidden'
+                outputView === 'preview' ? 'block' : 'hidden'
               }`}
               style={{
                 fontSize: '0.875rem',
@@ -1680,11 +2039,11 @@ export function WordToHtmlConverter() {
               }
             `}</style>
             {/* Code Area */}
-            <div 
+            <div
               ref={codeAreaRef}
               data-lenisignore
               className={`h-full border border-border/50 rounded-lg overflow-y-auto overflow-x-auto bg-background/80 p-4 ${
-                !showPreview ? 'block' : 'hidden'
+                outputView === 'code' ? 'block' : 'hidden'
               }`}
               style={{
                 fontSize: '0.875rem',
@@ -1716,6 +2075,236 @@ export function WordToHtmlConverter() {
                 {getHtmlWithCSS(outputHtml) || "// Output will appear here..."}
               </SyntaxHighlighter>
             </div>
+            {/* Blocks View - Detailed Preview */}
+            <div
+              className={`h-full border border-border/50 rounded-lg overflow-y-auto bg-background/80 ${
+                outputView === 'blocks' ? 'block' : 'hidden'
+              }`}
+              data-lenisignore
+            >
+              {contentBlocks.length > 0 ? (
+                <div className="divide-y divide-border/30 output-preview">
+                  {contentBlocks.filter(block => showHeadingsInPreview || block.type !== 'heading').map((block, index) => {
+                    const handleCopyFormatted = async () => {
+                      try {
+                        const blockHtml = block.html; // Formatted HTML without CSS wrapper
+                        // Try to copy as rich HTML first (for WordPress visual editor)
+                        try {
+                          const blob = new Blob([blockHtml], { type: 'text/html' });
+                          await navigator.clipboard.write([
+                            new ClipboardItem({ 'text/html': blob })
+                          ]);
+                        } catch (richHtmlError) {
+                          // Fallback to plain text if rich HTML copy fails
+                          await navigator.clipboard.writeText(blockHtml);
+                        }
+                        setCopiedBlockId(`${block.id}-formatted`);
+                        setTimeout(() => setCopiedBlockId(null), 2000);
+                        toast({
+                          title: "Copied!",
+                          description: `Block ${index + 1} (formatted) copied`,
+                        });
+                      } catch (error) {
+                        toast({
+                          title: "Error",
+                          description: "Failed to copy block",
+                          variant: "destructive",
+                        });
+                      }
+                    };
+
+                    const handleCopyHTML = async () => {
+                      try {
+                        const blockHtml = getHtmlWithCSS(block.html); // HTML with CSS
+                        await navigator.clipboard.writeText(blockHtml);
+                        setCopiedBlockId(`${block.id}-html`);
+                        setTimeout(() => setCopiedBlockId(null), 2000);
+                        toast({
+                          title: "Copied!",
+                          description: `Block ${index + 1} (HTML) copied`,
+                        });
+                      } catch (error) {
+                        toast({
+                          title: "Error",
+                          description: "Failed to copy block",
+                          variant: "destructive",
+                        });
+                      }
+                    };
+
+                    const typeLabel = {
+                      'heading': 'Heading',
+                      'content': 'Content',
+                      'image': 'Image',
+                      'disclaimer': 'Disclaimer',
+                      'sources': 'Sources',
+                      'readmore': 'Read More'
+                    }[block.type] || block.type;
+
+                    return (
+                      <div
+                        key={block.id}
+                        className="group hover:bg-muted/20 transition-colors"
+                      >
+                        <div className="flex gap-4 p-4 items-start">
+                          {/* Block Number - Left Side */}
+                          <div className="flex flex-col items-center pt-1 flex-shrink-0">
+                            <div className="w-8 h-8 rounded-full border border-border/50 flex items-center justify-center text-xs font-semibold text-muted-foreground">
+                              {index + 1}
+                            </div>
+                            {index < contentBlocks.length - 1 && (
+                              <div className="w-0.5 h-8 bg-border/20 my-2" />
+                            )}
+                          </div>
+
+                          {/* Preview Content */}
+                          <div className="flex-1 min-w-0">
+                            {/* Type Badge */}
+                            <span className="inline-block text-xs font-medium text-muted-foreground border border-border/50 px-2 py-1 rounded mb-3">
+                              {typeLabel}
+                            </span>
+
+                            {/* Actual HTML Preview - styled like output-preview */}
+                            <div
+                              className="text-sm leading-relaxed max-w-none"
+                              style={{
+                                color: 'hsl(var(--foreground) / 0.9)',
+                              }}
+                            >
+                              {block.type === 'heading' && (
+                                <div
+                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  style={{
+                                    fontSize: '1.5em',
+                                    fontWeight: 'bold',
+                                    margin: '1em 0 0.5em 0',
+                                    color: 'hsl(var(--foreground))',
+                                  }}
+                                />
+                              )}
+                              {block.type === 'content' && (
+                                <div
+                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  style={{
+                                    fontSize: '0.9375rem',
+                                    lineHeight: '1.6',
+                                    margin: '0.5em 0',
+                                  }}
+                                />
+                              )}
+                              {block.type === 'image' && (
+                                <div
+                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  style={{
+                                    fontSize: '0.9375rem',
+                                    lineHeight: '1.6',
+                                  }}
+                                />
+                              )}
+                              {block.type === 'disclaimer' && (
+                                <div
+                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  style={{
+                                    fontSize: '0.875rem',
+                                    lineHeight: '1.6',
+                                    margin: '0.5em 0',
+                                    fontStyle: 'italic',
+                                    color: 'hsl(var(--muted-foreground))',
+                                  }}
+                                />
+                              )}
+                              {block.type === 'sources' && (
+                                <div
+                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  style={{
+                                    fontSize: '0.9375rem',
+                                    lineHeight: '1.6',
+                                  }}
+                                />
+                              )}
+                              {block.type === 'readmore' && (
+                                <div
+                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  style={{
+                                    fontSize: '0.9375rem',
+                                    lineHeight: '1.6',
+                                    margin: '0.5em 0',
+                                  }}
+                                />
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Copy Buttons - Right Side */}
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleCopyFormatted}
+                              className="h-8 px-2 text-xs"
+                              title="Copy as formatted HTML"
+                            >
+                              {copiedBlockId === `${block.id}-formatted` ? (
+                                <Check className="h-3.5 w-3.5 text-green-500" />
+                              ) : (
+                                "Formatted"
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleCopyHTML}
+                              className="h-8 px-2 text-xs"
+                              title="Copy as HTML code with CSS"
+                            >
+                              {copiedBlockId === `${block.id}-html` ? (
+                                <Check className="h-3.5 w-3.5 text-green-500" />
+                              ) : (
+                                "HTML"
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-muted-foreground">No content blocks to display</p>
+                </div>
+              )}
+            </div>
+            <style>{`
+              .output-preview p {
+                margin: 0.5em 0;
+                color: hsl(var(--foreground) / 0.9);
+              }
+              .output-preview ul, .output-preview ol {
+                margin: 0.5em 0;
+                padding-left: 2em;
+                color: hsl(var(--foreground) / 0.9);
+              }
+              .output-preview li {
+                margin: 0.25em 0;
+                color: hsl(var(--foreground) / 0.9);
+              }
+              .output-preview a {
+                color: hsl(var(--primary)) !important;
+                text-decoration: underline;
+                text-decoration-color: hsl(var(--primary) / 0.5);
+              }
+              .output-preview a:hover {
+                color: hsl(var(--primary) / 0.8) !important;
+                text-decoration-color: hsl(var(--primary));
+              }
+              .output-preview strong, .output-preview b {
+                font-weight: bold;
+              }
+              .output-preview em, .output-preview i {
+                font-style: italic;
+              }
+            `}</style>
           </div>
         </div>
 
