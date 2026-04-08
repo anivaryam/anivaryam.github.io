@@ -405,7 +405,7 @@ export function WordToHtmlConverter() {
   const [showPreview, setShowPreview] = useState(false);
   const [showValidationDetails, setShowValidationDetails] = useState(false);
   const [showMaximizedOutput, setShowMaximizedOutput] = useState(false);
-  const [maximizedPreviewMode, setMaximizedPreviewMode] = useState(false);
+  const [maximizedOutputView, setMaximizedOutputView] = useState<'code' | 'preview' | 'blocks'>('code');
   const [showHeadingVisualizer, setShowHeadingVisualizer] = useState(false);
   const [showCSSInput, setShowCSSInput] = useState(false);
   const [customCSS, setCustomCSS] = useState("");
@@ -1637,7 +1637,7 @@ export function WordToHtmlConverter() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  setMaximizedPreviewMode(showPreview);
+                  setMaximizedOutputView(outputView);
                   setShowMaximizedOutput(true);
                 }}
                 disabled={!outputHtml}
@@ -2270,7 +2270,7 @@ export function WordToHtmlConverter() {
             <div className="flex items-center justify-between">
               <DialogTitle className="flex items-center gap-2">
                 <Code className="h-5 w-5 text-primary" />
-                Output - {maximizedPreviewMode ? 'Preview' : 'Code'}
+                Output - {maximizedOutputView === 'preview' ? 'Preview' : maximizedOutputView === 'blocks' ? 'Blocks' : 'Code'}
               </DialogTitle>
               <div className="flex items-center gap-2">
                 {/* View Toggle in Modal */}
@@ -2278,9 +2278,9 @@ export function WordToHtmlConverter() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setMaximizedPreviewMode(false)}
+                    onClick={() => setMaximizedOutputView('code')}
                     className={`h-7 w-7 p-0 rounded ${
-                      !maximizedPreviewMode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
+                      maximizedOutputView === 'code' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
                     }`}
                     title="Code"
                   >
@@ -2289,16 +2289,29 @@ export function WordToHtmlConverter() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setMaximizedPreviewMode(true)}
+                    onClick={() => setMaximizedOutputView('preview')}
                     className={`h-7 w-7 p-0 rounded ${
-                      maximizedPreviewMode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
+                      maximizedOutputView === 'preview' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
                     }`}
                     title="Preview"
                   >
                     <Eye className="h-3.5 w-3.5" />
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setMaximizedOutputView('blocks')}
+                    disabled={contentBlocks.length === 0}
+                    className={`h-7 w-7 p-0 rounded ${
+                      maximizedOutputView === 'blocks' ? 'bg-primary text-primary-foreground' : contentBlocks.length === 0 ? 'text-muted-foreground/50 cursor-not-allowed' : 'text-muted-foreground hover:bg-muted/30'
+                    }`}
+                    title="Blocks"
+                  >
+                    <ShoppingBag className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
-                {maximizedPreviewMode && (
+                {/* Heading Visualizer Toggle */}
+                {(maximizedOutputView === 'preview' || maximizedOutputView === 'blocks') && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -2311,14 +2324,27 @@ export function WordToHtmlConverter() {
                     <Hash className="h-3.5 w-3.5" />
                   </Button>
                 )}
+                {/* Validation Warnings Toggle */}
+                {maximizedOutputView === 'preview' && validationResults && validationResults.summary.failed > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowValidationWarnings(!showValidationWarnings)}
+                    className={`h-7 w-7 p-0 ml-1 ${
+                      showValidationWarnings ? 'bg-yellow-500 text-white' : 'text-muted-foreground hover:bg-muted/30'
+                    }`}
+                    title={showValidationWarnings ? 'Hide Validation Warnings' : 'Show Validation Warnings'}
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  </Button>
+                )}
                 {/* Copy Button in Modal */}
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={async () => {
                     if (outputHtml) {
-                      if (maximizedPreviewMode && previewHtml) {
-                        // Copy as rich text (HTML) for preview mode
+                      if (maximizedOutputView === 'preview' && previewHtml) {
                         const blob = new Blob([previewHtml], { type: 'text/html' });
                         await navigator.clipboard.write([
                           new ClipboardItem({ 'text/html': blob })
@@ -2328,7 +2354,6 @@ export function WordToHtmlConverter() {
                           description: "Formatted HTML copied to clipboard",
                         });
                       } else {
-                        // Copy as plain text for code mode (includes CSS if provided)
                         const htmlWithCSS = getHtmlWithCSS(outputHtml);
                         await navigator.clipboard.writeText(htmlWithCSS);
                         toast({
@@ -2342,7 +2367,7 @@ export function WordToHtmlConverter() {
                   }}
                   disabled={!outputHtml}
                   className="h-8 w-8 p-0"
-                  title={maximizedPreviewMode ? "Copy Formatted HTML" : customCSS.trim() ? "Copy HTML with CSS" : "Copy HTML"}
+                  title={maximizedOutputView === 'preview' ? "Copy Formatted HTML" : customCSS.trim() ? "Copy HTML with CSS" : "Copy HTML"}
                 >
                   {copied ? (
                     <Check className="h-4 w-4 text-green-500" />
@@ -2350,30 +2375,133 @@ export function WordToHtmlConverter() {
                     <Copy className="h-4 w-4" />
                   )}
                 </Button>
+                {/* Check Links Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={checkLinks}
+                  disabled={!previewHtml || checkingLinks}
+                  className="h-8 w-8 p-0"
+                  title="Check Links"
+                >
+                  {checkingLinks ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : linkCheckResult && linkCheckResult.broken > 0 ? (
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                  ) : linkCheckResult && linkCheckResult.broken === 0 ? (
+                    <Link className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Link className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
             </div>
           </DialogHeader>
-          <div 
-            data-lenisignore 
+          <div
+            data-lenisignore
             className="flex-1 overflow-y-auto overflow-x-auto"
             onWheel={(e) => {
               e.stopPropagation();
               e.nativeEvent.stopImmediatePropagation();
             }}
           >
-            {maximizedPreviewMode ? (
+            {maximizedOutputView === 'preview' ? (
               /* Preview in Modal */
-              <div 
+              <div
                 className="pl-8 pr-6 pt-6 pb-6 bg-background/80 output-preview"
                 style={{
                   fontSize: '1rem',
                   lineHeight: '1.75',
                   fontFamily: 'var(--font-sans)',
                 }}
-                dangerouslySetInnerHTML={{ 
-                  __html: previewHtmlWithWarnings || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
+                dangerouslySetInnerHTML={{
+                  __html: previewHtmlWithWarnings || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>'
                 }}
               />
+            ) : maximizedOutputView === 'blocks' ? (
+              /* Blocks in Modal */
+              <div className="bg-background/80 output-preview">
+                {contentBlocks.length > 0 ? (
+                  <div className="divide-y divide-border/30">
+                    {contentBlocks.map((block, index) => {
+                      const typeLabel = {
+                        'heading': 'Heading',
+                        'content': 'Content',
+                        'image': 'Image',
+                        'disclaimer': 'Disclaimer',
+                        'sources': 'Sources',
+                        'readmore': 'Read More'
+                      }[block.type] || block.type;
+
+                      return (
+                        <div key={block.id} className="group hover:bg-muted/20 transition-colors">
+                          <div className="flex gap-4 p-4 items-start">
+                            <div className="flex flex-col items-center pt-1 flex-shrink-0">
+                              <div className="w-8 h-8 rounded-full border border-border/50 flex items-center justify-center text-xs font-semibold text-muted-foreground">
+                                {index + 1}
+                              </div>
+                              {index < contentBlocks.length - 1 && (
+                                <div className="w-0.5 h-8 bg-border/20 my-2" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <span className="inline-block text-xs font-medium text-muted-foreground border border-border/50 px-2 py-1 rounded mb-3">
+                                {typeLabel}
+                              </span>
+                              <div className="text-sm leading-relaxed max-w-none" style={{ color: 'hsl(var(--foreground) / 0.9)' }}>
+                                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }} />
+                              </div>
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0 ml-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    const blob = new Blob([block.html], { type: 'text/html' });
+                                    await navigator.clipboard.write([new ClipboardItem({ 'text/html': blob })]);
+                                  } catch {
+                                    await navigator.clipboard.writeText(block.html);
+                                  }
+                                  setCopiedBlockId(`${block.id}-formatted`);
+                                  setTimeout(() => setCopiedBlockId(null), 2000);
+                                  toast({ title: "Copied!", description: `Block ${index + 1} (formatted) copied` });
+                                }}
+                                className="h-8 px-2 text-xs"
+                                title="Copy as formatted HTML"
+                              >
+                                {copiedBlockId === `${block.id}-formatted` ? <Check className="h-3.5 w-3.5 text-green-500" /> : "Copy"}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(getHtmlWithCSS(block.html));
+                                    setCopiedBlockId(`${block.id}-html`);
+                                    setTimeout(() => setCopiedBlockId(null), 2000);
+                                    toast({ title: "Copied!", description: `Block ${index + 1} (HTML) copied` });
+                                  } catch {
+                                    toast({ title: "Error", description: "Failed to copy block", variant: "destructive" });
+                                  }
+                                }}
+                                className="h-8 px-2 text-xs"
+                                title="Copy as HTML code with CSS"
+                              >
+                                {copiedBlockId === `${block.id}-html` ? <Check className="h-3.5 w-3.5 text-green-500" /> : "HTML"}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="h-full flex items-center justify-center p-8">
+                    <p className="text-muted-foreground">No content blocks to display</p>
+                  </div>
+                )}
+              </div>
             ) : (
               /* Code in Modal */
               <div ref={modalCodeAreaRef} className="w-full p-4">
