@@ -8,6 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { convertWordToHtml, getUnformattedHtml, convertToHtml, type OutputMode, type FeatureFlags } from "@/lib/word-to-html/converter";
+import DOMPurify from 'dompurify';
 import { cleanWordHtml } from "@/lib/word-to-html/word-html-cleaner";
 import { validateMode, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -127,6 +128,268 @@ const customTheme = {
     color: 'hsl(var(--syntax-orange))',
   },
 } as any;
+
+interface ContentBlock {
+  type: 'heading' | 'content' | 'image' | 'disclaimer' | 'sources' | 'readmore';
+  html: string;
+  preview: string;
+  id: string;
+}
+
+const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const blocks: ContentBlock[] = [];
+  let blockId = 0;
+
+  const container = doc.body;
+  const children = Array.from(container.childNodes);
+
+  let currentContentHtml = '';
+  let skipIndices = new Set<number>();
+
+  children.forEach((node, index) => {
+    if (skipIndices.has(index)) {
+      return;
+    }
+
+    const element = node as HTMLElement;
+
+    if (node.nodeType === 3 && !(node.textContent?.trim())) {
+      return;
+    }
+
+    const tagName = element.tagName?.toLowerCase();
+
+    if (tagName === 'p' && element.textContent?.includes('Disclaimer:')) {
+      if (currentContentHtml.trim()) {
+        blocks.push({
+          type: 'content',
+          html: currentContentHtml,
+          preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+          id: `block-${blockId++}`,
+        });
+        currentContentHtml = '';
+      }
+      blocks.push({
+        type: 'disclaimer',
+        html: element.outerHTML,
+        preview: element.textContent?.substring(0, 60) || 'Disclaimer',
+        id: `block-${blockId++}`,
+      });
+    }
+    else if (tagName === 'p' && element.textContent?.includes('Read more:')) {
+      if (currentContentHtml.trim()) {
+        blocks.push({
+          type: 'content',
+          html: currentContentHtml,
+          preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+          id: `block-${blockId++}`,
+        });
+        currentContentHtml = '';
+      }
+      blocks.push({
+        type: 'readmore',
+        html: element.outerHTML,
+        preview: element.textContent?.substring(0, 60) || 'Read more',
+        id: `block-${blockId++}`,
+      });
+    }
+    else if (tagName === 'p' && element.textContent?.includes('Sources:')) {
+      if (currentContentHtml.trim()) {
+        blocks.push({
+          type: 'content',
+          html: currentContentHtml,
+          preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+          id: `block-${blockId++}`,
+        });
+        currentContentHtml = '';
+      }
+      let sourcesHtml = element.outerHTML;
+      let nextIndex = index + 1;
+      while (nextIndex < children.length) {
+        const nextNode = children[nextIndex];
+        if (nextNode.nodeType === 3) {
+          if (!nextNode.textContent?.trim()) {
+            skipIndices.add(nextIndex);
+            nextIndex++;
+            continue;
+          } else {
+            break;
+          }
+        }
+        const nextElement = nextNode as HTMLElement;
+        const nextTagName = nextElement.tagName?.toLowerCase();
+        if (nextTagName === 'ol' || nextTagName === 'ul') {
+          sourcesHtml += nextElement.outerHTML;
+          skipIndices.add(nextIndex);
+          nextIndex++;
+          break;
+        } else {
+          break;
+        }
+      }
+      blocks.push({
+        type: 'sources',
+        html: sourcesHtml,
+        preview: 'Sources',
+        id: `block-${blockId++}`,
+      });
+    }
+    else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName) && element.textContent?.includes('Sources')) {
+      if (currentContentHtml.trim()) {
+        blocks.push({
+          type: 'content',
+          html: currentContentHtml,
+          preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+          id: `block-${blockId++}`,
+        });
+        currentContentHtml = '';
+      }
+      let sourcesHtml = element.outerHTML;
+      let nextIndex = index + 1;
+      while (nextIndex < children.length) {
+        const nextNode = children[nextIndex];
+        if (nextNode.nodeType === 3) {
+          if (!nextNode.textContent?.trim()) {
+            skipIndices.add(nextIndex);
+            nextIndex++;
+            continue;
+          } else {
+            break;
+          }
+        }
+        const nextElement = nextNode as HTMLElement;
+        const nextTagName = nextElement.tagName?.toLowerCase();
+        if (nextTagName === 'ol' || nextTagName === 'ul') {
+          sourcesHtml += nextElement.outerHTML;
+          skipIndices.add(nextIndex);
+          nextIndex++;
+          break;
+        } else {
+          break;
+        }
+      }
+      blocks.push({
+        type: 'sources',
+        html: sourcesHtml,
+        preview: 'Sources',
+        id: `block-${blockId++}`,
+      });
+    }
+    else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
+      if (currentContentHtml.trim()) {
+        blocks.push({
+          type: 'content',
+          html: currentContentHtml,
+          preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+          id: `block-${blockId++}`,
+        });
+        currentContentHtml = '';
+      }
+      blocks.push({
+        type: 'heading',
+        html: element.outerHTML,
+        preview: element.textContent?.substring(0, 60) || 'Heading',
+        id: `block-${blockId++}`,
+      });
+    }
+    else if (tagName === 'img') {
+      if (currentContentHtml.trim()) {
+        blocks.push({
+          type: 'content',
+          html: currentContentHtml,
+          preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+          id: `block-${blockId++}`,
+        });
+        currentContentHtml = '';
+      }
+      const imgElement = element as HTMLImageElement;
+      const altText = imgElement.getAttribute('alt') || 'No alt text';
+      let linkHref = '';
+      const parent = (element as HTMLImageElement).parentElement;
+      if (parent && parent.tagName?.toLowerCase() === 'a') {
+        linkHref = parent.getAttribute('href') || '';
+      }
+      const imageMetaHtml = `<div style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; background: #f9f9f9;">
+          <p style="margin: 0 0 8px 0; font-size: 0.9em;"><strong>Alt image text:</strong> ${altText}</p>
+          ${linkHref ? `<p style="margin: 0; font-size: 0.9em;"><strong>Link:</strong> <a href="${linkHref}" target="_blank">${linkHref}</a></p>` : ''}
+        </div>`;
+      blocks.push({
+        type: 'image',
+        html: imageMetaHtml,
+        preview: `Alt: ${altText}${linkHref ? ` | Link: ${linkHref}` : ''}`,
+        id: `block-${blockId++}`,
+      });
+    }
+    else if (tagName === 'p' && (element.textContent?.toLowerCase().includes('alt image text:') || element.textContent?.toLowerCase().includes('alt text:') || element.textContent?.toLowerCase().startsWith('link:') || element.textContent?.toLowerCase().startsWith('link to:'))) {
+      if (currentContentHtml.trim()) {
+        blocks.push({
+          type: 'content',
+          html: currentContentHtml,
+          preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+          id: `block-${blockId++}`,
+        });
+        currentContentHtml = '';
+      }
+      let imageBlockHtml = element.outerHTML;
+      let nextIndex = index + 1;
+      while (nextIndex < children.length) {
+        const nextNode = children[nextIndex];
+        if (nextNode.nodeType === 3) {
+          if (!nextNode.textContent?.trim()) {
+            skipIndices.add(nextIndex);
+            nextIndex++;
+            continue;
+          } else {
+            break;
+          }
+        }
+        const nextElement = nextNode as HTMLElement;
+        const nextTagName = nextElement.tagName?.toLowerCase();
+        if (nextTagName === 'p') {
+          const text = nextElement.textContent?.trim().toLowerCase() || '';
+          if (text === '' || text.includes('alt image text:') || text.includes('alt text:') || text.startsWith('link:') || text.startsWith('link to:')) {
+            imageBlockHtml += nextElement.outerHTML;
+            skipIndices.add(nextIndex);
+            nextIndex++;
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+      const altMatch = imageBlockHtml.match(/Alt (?:image )?text:\s*(.+?)(?:<\/|$)/i);
+      const altText = altMatch ? altMatch[1].replace(/<[^>]*>/g, '').trim() : 'No alt text';
+      const linkMatch = imageBlockHtml.match(/href=["']([^"']+)["']/);
+      const linkHref = linkMatch ? linkMatch[1] : '';
+      blocks.push({
+        type: 'image',
+        html: imageBlockHtml,
+        preview: `Alt: ${altText}${linkHref ? ` | Link: ${linkHref}` : ''}`,
+        id: `block-${blockId++}`,
+      });
+    }
+    else if (tagName === 'p' || tagName === 'ul' || tagName === 'ol' || tagName === 'blockquote') {
+      if (tagName === 'p' && !element.textContent?.trim()) {
+        return;
+      }
+      currentContentHtml += element.outerHTML;
+    }
+  });
+
+  if (currentContentHtml.trim()) {
+    blocks.push({
+      type: 'content',
+      html: currentContentHtml,
+      preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
+      id: `block-${blockId++}`,
+    });
+  }
+
+  return blocks;
+};
 
 export function WordToHtmlConverter() {
   const { theme } = useTheme();
@@ -428,26 +691,18 @@ export function WordToHtmlConverter() {
 
   // Convert HTML following the exact same flow as the original
   // This matches: handleInput/handlePaste -> cleanWordHtml -> convertToHtml
-  const getConversionResult = () => {
+  const conversionResult = useMemo(() => {
     if (!inputHtml || !inputHtml.trim()) {
       return { formatted: '', unformatted: '' };
     }
-
     try {
-      // Step 1: Clean Word HTML first (preserves formatting)
       const cleanedHtml = cleanWordHtml(inputHtml);
-      
-      // Step 2-4: Convert using the main conversion function
-      const result = convertToHtml(cleanedHtml, outputFormat, features);
-      
-      return result;
+      return convertToHtml(cleanedHtml, outputFormat, features);
     } catch (error) {
       console.error('Conversion error:', error);
       return { formatted: '', unformatted: '' };
     }
-  };
-
-  const conversionResult = getConversionResult();
+  }, [inputHtml, outputFormat, features]);
   const outputHtml = conversionResult.formatted;
   const previewHtml = conversionResult.unformatted;
 
@@ -463,338 +718,6 @@ export function WordToHtmlConverter() {
     }
   };
 
-  // Function to parse HTML into content blocks
-  interface ContentBlock {
-    type: 'heading' | 'content' | 'image' | 'disclaimer' | 'sources' | 'readmore';
-    html: string;
-    preview: string;
-    id: string;
-  }
-
-  const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const blocks: ContentBlock[] = [];
-    let blockId = 0;
-
-    const container = doc.body;
-    const children = Array.from(container.childNodes);
-
-    let currentContentHtml = '';
-    let contentStarted = false;
-    let skipIndices = new Set<number>();
-
-    children.forEach((node, index) => {
-      // Skip already processed indices
-      if (skipIndices.has(index)) {
-        return;
-      }
-
-      const element = node as HTMLElement;
-
-      // Skip text nodes that are just whitespace
-      if (node.nodeType === 3 && !(node.textContent?.trim())) {
-        return;
-      }
-
-      const tagName = element.tagName?.toLowerCase();
-
-      // Check if it's a disclaimer paragraph
-      if (tagName === 'p' && element.textContent?.includes('Disclaimer:')) {
-        // Save accumulated content if any
-        if (currentContentHtml.trim()) {
-          blocks.push({
-            type: 'content',
-            html: currentContentHtml,
-            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
-            id: `block-${blockId++}`,
-          });
-          currentContentHtml = '';
-        }
-
-        blocks.push({
-          type: 'disclaimer',
-          html: element.outerHTML,
-          preview: element.textContent?.substring(0, 60) || 'Disclaimer',
-          id: `block-${blockId++}`,
-        });
-      }
-      // Check if it's a "Read more" paragraph
-      else if (tagName === 'p' && element.textContent?.includes('Read more:')) {
-        // Save accumulated content if any
-        if (currentContentHtml.trim()) {
-          blocks.push({
-            type: 'content',
-            html: currentContentHtml,
-            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
-            id: `block-${blockId++}`,
-          });
-          currentContentHtml = '';
-        }
-
-        blocks.push({
-          type: 'readmore',
-          html: element.outerHTML,
-          preview: element.textContent?.substring(0, 60) || 'Read more',
-          id: `block-${blockId++}`,
-        });
-      }
-      // Check if it's a Sources paragraph + list
-      else if (tagName === 'p' && element.textContent?.includes('Sources:')) {
-        // Save accumulated content if any
-        if (currentContentHtml.trim()) {
-          blocks.push({
-            type: 'content',
-            html: currentContentHtml,
-            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
-            id: `block-${blockId++}`,
-          });
-          currentContentHtml = '';
-        }
-
-        // Collect sources paragraph + following list
-        let sourcesHtml = element.outerHTML;
-        let nextIndex = index + 1;
-
-        // Skip whitespace nodes and collect the list
-        while (nextIndex < children.length) {
-          const nextNode = children[nextIndex];
-
-          // Skip text nodes (whitespace/newlines)
-          if (nextNode.nodeType === 3) {
-            if (!nextNode.textContent?.trim()) {
-              skipIndices.add(nextIndex);
-              nextIndex++;
-              continue;
-            } else {
-              break;
-            }
-          }
-
-          const nextElement = nextNode as HTMLElement;
-          const nextTagName = nextElement.tagName?.toLowerCase();
-
-          // Collect ol or ul that follows sources paragraph
-          if (nextTagName === 'ol' || nextTagName === 'ul') {
-            sourcesHtml += nextElement.outerHTML;
-            skipIndices.add(nextIndex);
-            nextIndex++;
-            break;
-          } else {
-            break;
-          }
-        }
-
-        blocks.push({
-          type: 'sources',
-          html: sourcesHtml,
-          preview: 'Sources',
-          id: `block-${blockId++}`,
-        });
-      }
-      // Check if it's a Sources heading + list
-      else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName) && element.textContent?.includes('Sources')) {
-        // Save accumulated content if any
-        if (currentContentHtml.trim()) {
-          blocks.push({
-            type: 'content',
-            html: currentContentHtml,
-            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
-            id: `block-${blockId++}`,
-          });
-          currentContentHtml = '';
-        }
-
-        // Collect sources heading + following list
-        let sourcesHtml = element.outerHTML;
-        let nextIndex = index + 1;
-
-        // Skip whitespace nodes and collect the list
-        while (nextIndex < children.length) {
-          const nextNode = children[nextIndex];
-
-          // Skip text nodes (whitespace/newlines)
-          if (nextNode.nodeType === 3) {
-            if (!nextNode.textContent?.trim()) {
-              skipIndices.add(nextIndex);
-              nextIndex++;
-              continue;
-            } else {
-              break;
-            }
-          }
-
-          const nextElement = nextNode as HTMLElement;
-          const nextTagName = nextElement.tagName?.toLowerCase();
-
-          // Collect ol or ul that follows sources heading
-          if (nextTagName === 'ol' || nextTagName === 'ul') {
-            sourcesHtml += nextElement.outerHTML;
-            skipIndices.add(nextIndex);
-            nextIndex++;
-            break;
-          } else {
-            break;
-          }
-        }
-
-        blocks.push({
-          type: 'sources',
-          html: sourcesHtml,
-          preview: 'Sources',
-          id: `block-${blockId++}`,
-        });
-      }
-      // Check if it's a heading (h1-h6)
-      else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
-        // Save accumulated content if any
-        if (currentContentHtml.trim()) {
-          blocks.push({
-            type: 'content',
-            html: currentContentHtml,
-            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
-            id: `block-${blockId++}`,
-          });
-          currentContentHtml = '';
-        }
-
-        // Add heading block
-        blocks.push({
-          type: 'heading',
-          html: element.outerHTML,
-          preview: element.textContent?.substring(0, 60) || 'Heading',
-          id: `block-${blockId++}`,
-        });
-        contentStarted = true;
-      }
-      // Check if it's an image
-      else if (tagName === 'img') {
-        // Save accumulated content if any
-        if (currentContentHtml.trim()) {
-          blocks.push({
-            type: 'content',
-            html: currentContentHtml,
-            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
-            id: `block-${blockId++}`,
-          });
-          currentContentHtml = '';
-        }
-
-        // Extract image metadata ONLY
-        const imgElement = element as HTMLImageElement;
-        const altText = imgElement.getAttribute('alt') || 'No alt text';
-
-        // Find parent link if image is wrapped in <a> tag
-        let linkHref = '';
-        let parentLink: HTMLElement | null = null;
-
-        // Check if image's parent is a link
-        const parent = (element as HTMLImageElement).parentElement;
-        if (parent && parent.tagName?.toLowerCase() === 'a') {
-          linkHref = parent.getAttribute('href') || '';
-          parentLink = parent;
-        }
-
-        // Create metadata HTML for image ONLY (no surrounding content)
-        const imageMetaHtml = `<div style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; background: #f9f9f9;">
-          <p style="margin: 0 0 8px 0; font-size: 0.9em;"><strong>Alt image text:</strong> ${altText}</p>
-          ${linkHref ? `<p style="margin: 0; font-size: 0.9em;"><strong>Link:</strong> <a href="${linkHref}" target="_blank">${linkHref}</a></p>` : ''}
-        </div>`;
-
-        blocks.push({
-          type: 'image',
-          html: imageMetaHtml,
-          preview: `Alt: ${altText}${linkHref ? ` | Link: ${linkHref}` : ''}`,
-          id: `block-${blockId++}`,
-        });
-      }
-      // Check if this is an image metadata paragraph (Alt image text: or Alt text: or Link: or Link to:)
-      else if (tagName === 'p' && (element.textContent?.toLowerCase().includes('alt image text:') || element.textContent?.toLowerCase().includes('alt text:') || element.textContent?.toLowerCase().includes('link'))) {
-        // Save accumulated content if any
-        if (currentContentHtml.trim()) {
-          blocks.push({
-            type: 'content',
-            html: currentContentHtml,
-            preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
-            id: `block-${blockId++}`,
-          });
-          currentContentHtml = '';
-        }
-
-        // Collect all image-related paragraphs (Alt text + Link)
-        let imageBlockHtml = element.outerHTML;
-        let nextIndex = index + 1;
-
-        // Collect following paragraphs that are part of image metadata
-        while (nextIndex < children.length) {
-          const nextNode = children[nextIndex];
-
-          // Skip text nodes (whitespace/newlines between elements)
-          if (nextNode.nodeType === 3) {
-            if (!nextNode.textContent?.trim()) {
-              skipIndices.add(nextIndex);
-              nextIndex++;
-              continue; // Continue to next sibling
-            } else {
-              break; // Non-empty text node means stop collecting
-            }
-          }
-
-          const nextElement = nextNode as HTMLElement;
-          const nextTagName = nextElement.tagName?.toLowerCase();
-
-          if (nextTagName === 'p') {
-            const text = nextElement.textContent?.trim().toLowerCase() || '';
-            // Collect if empty paragraph or contains image metadata
-            if (text === '' || text.includes('alt image text:') || text.includes('alt text:') || text.includes('link')) {
-              imageBlockHtml += nextElement.outerHTML;
-              skipIndices.add(nextIndex);
-              nextIndex++;
-            } else {
-              break; // Stop at non-image content
-            }
-          } else {
-            break; // Stop at non-paragraph element
-          }
-        }
-
-        // Extract alt text from collected paragraphs (matches both "Alt image text:" and "Alt text:")
-        const altMatch = imageBlockHtml.match(/Alt (?:image )?text:\s*(.+?)(?:<\/|$)/i);
-        const altText = altMatch ? altMatch[1].replace(/<[^>]*>/g, '').trim() : 'No alt text';
-
-        // Extract link from collected paragraphs
-        const linkMatch = imageBlockHtml.match(/href=["']([^"']+)["']/);
-        const linkHref = linkMatch ? linkMatch[1] : '';
-
-        blocks.push({
-          type: 'image',
-          html: imageBlockHtml,
-          preview: `Alt: ${altText}${linkHref ? ` | Link: ${linkHref}` : ''}`,
-          id: `block-${blockId++}`,
-        });
-      }
-      // Accumulate paragraphs and other content
-      else if (tagName === 'p' || tagName === 'ul' || tagName === 'ol' || tagName === 'blockquote') {
-        // Skip empty paragraphs (those with only whitespace or &nbsp;)
-        if (tagName === 'p' && !element.textContent?.trim()) {
-          return; // Skip empty paragraphs
-        }
-        currentContentHtml += element.outerHTML;
-      }
-    });
-
-    // Save any remaining content
-    if (currentContentHtml.trim()) {
-      blocks.push({
-        type: 'content',
-        html: currentContentHtml,
-        preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
-        id: `block-${blockId++}`,
-      });
-    }
-
-    return blocks.length > 0 ? blocks : [];
-  };
 
   const contentBlocks = useMemo(() => parseHtmlIntoBlocks(outputHtml), [outputHtml]);
 
@@ -1675,11 +1598,14 @@ export function WordToHtmlConverter() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowHeadingVisualizer(!showHeadingVisualizer)}
+                  onClick={() => {
+                    if (outputView === 'blocks') setShowHeadingsInPreview(!showHeadingsInPreview);
+                    else setShowHeadingVisualizer(!showHeadingVisualizer);
+                  }}
                   className={`h-7 w-7 p-0 ml-1 ${
-                    showHeadingVisualizer ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
+                    (outputView === 'blocks' ? showHeadingsInPreview : showHeadingVisualizer) ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
                   }`}
-                  title={showHeadingVisualizer ? 'Hide Heading Labels' : 'Show Heading Labels'}
+                  title={(outputView === 'blocks' ? showHeadingsInPreview : showHeadingVisualizer) ? 'Hide Heading Labels' : 'Show Heading Labels'}
                 >
                   <Hash className="h-3.5 w-3.5" />
                 </Button>
@@ -2112,7 +2038,9 @@ export function WordToHtmlConverter() {
             >
               {contentBlocks.length > 0 ? (
                 <div className="divide-y divide-border/30 output-preview">
-                  {contentBlocks.filter(block => showHeadingsInPreview || block.type !== 'heading').map((block, index) => {
+                  {(() => {
+                    const visibleBlocks = contentBlocks.filter(block => showHeadingsInPreview || block.type !== 'heading');
+                    return visibleBlocks.map((block, index) => {
                     const handleCopyFormatted = async () => {
                       try {
                         const blockHtml = block.html; // Formatted HTML without CSS wrapper
@@ -2180,7 +2108,7 @@ export function WordToHtmlConverter() {
                             <div className="w-8 h-8 rounded-full border border-border/50 flex items-center justify-center text-xs font-semibold text-muted-foreground">
                               {index + 1}
                             </div>
-                            {index < contentBlocks.length - 1 && (
+                            {index < visibleBlocks.length - 1 && (
                               <div className="w-0.5 h-8 bg-border/20 my-2" />
                             )}
                           </div>
@@ -2201,7 +2129,7 @@ export function WordToHtmlConverter() {
                             >
                               {block.type === 'heading' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
                                   style={{
                                     fontSize: '1.5em',
                                     fontWeight: 'bold',
@@ -2212,7 +2140,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'content' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2222,7 +2150,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'image' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2231,7 +2159,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'disclaimer' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
                                   style={{
                                     fontSize: '0.875rem',
                                     lineHeight: '1.6',
@@ -2243,7 +2171,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'sources' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2252,7 +2180,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'readmore' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: block.html }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2264,7 +2192,7 @@ export function WordToHtmlConverter() {
                           </div>
 
                           {/* Copy Buttons - Right Side */}
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-2">
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0 ml-2">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -2295,7 +2223,8 @@ export function WordToHtmlConverter() {
                         </div>
                       </div>
                     );
-                  })}
+                    });
+                  })()}
                 </div>
               ) : (
                 <div className="h-full flex items-center justify-center">
