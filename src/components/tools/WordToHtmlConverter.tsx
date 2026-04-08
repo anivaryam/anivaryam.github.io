@@ -840,6 +840,38 @@ export function WordToHtmlConverter() {
                 </div>
               </div>
 
+              {/* Custom CSS Input Section - Positioned after output format */}
+              {showCSSInput && (
+                <div className="mt-3 p-3 bg-muted/20 border border-border/50 rounded-lg">
+                  <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Custom CSS</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCustomCSS("")}
+                      disabled={!customCSS.trim()}
+                      className="h-6 w-6 p-0"
+                      title="Clear CSS"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <textarea
+                    data-lenisignore
+                    value={customCSS}
+                    onChange={(e) => setCustomCSS(e.target.value)}
+                    placeholder="Paste your custom CSS here... (e.g., body { font-size: 16px; } h1 { color: blue; })"
+                    className="w-full min-h-[100px] max-h-[150px] p-2 text-xs bg-background/80 border border-border/50 rounded overflow-y-auto overflow-x-hidden resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono"
+                    style={{
+                      color: 'hsl(var(--foreground))',
+                      fontSize: '0.75rem',
+                      lineHeight: '1.5',
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  />
+                </div>
+              )}
+
               {/* Feature toggles for all modes - Regular shows disabled/unchecked by default */}
               {(outputFormat === 'regular' || outputFormat === 'blogs' || outputFormat === 'shoppables') && (
                 <Collapsible open={outputFormat === 'shoppables' ? showShoppablesFeatures : showBlogsFeatures} onOpenChange={outputFormat === 'shoppables' ? setShowShoppablesFeatures : setShowBlogsFeatures}>
@@ -1611,41 +1643,6 @@ export function WordToHtmlConverter() {
           </div>
         </div>
 
-        {/* CSS Input Section - Collapsible */}
-        {showCSSInput && (
-          <div className="flex flex-col bg-card/50 border border-border/50 rounded-xl p-3 md:p-4 backdrop-blur-sm min-w-0 max-w-full lg:max-h-[300px]">
-            <div className="flex items-center justify-between mb-3 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded bg-muted">
-                  <Code className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Custom CSS</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setCustomCSS("")}
-                disabled={!customCSS.trim()}
-                className="h-8 w-8 p-0"
-                title="Clear CSS"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <textarea
-              value={customCSS}
-              onChange={(e) => setCustomCSS(e.target.value)}
-              placeholder="Paste your custom CSS here... (e.g., body { font-size: 16px; } h1 { color: blue; })"
-              className="flex-1 min-h-[120px] max-h-[200px] p-4 text-sm bg-background/80 border border-border/50 rounded-lg overflow-y-auto overflow-x-hidden resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono"
-              style={{
-                color: 'hsl(var(--foreground))',
-                fontSize: '0.875rem',
-                lineHeight: '1.75',
-                fontFamily: 'var(--font-mono)',
-              }}
-            />
-          </div>
-        )}
       </div>
 
       {/* Maximized Output Modal */}
