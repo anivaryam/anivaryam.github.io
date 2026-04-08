@@ -144,7 +144,9 @@ export function WordToHtmlConverter() {
   const [showMaximizedOutput, setShowMaximizedOutput] = useState(false);
   const [maximizedPreviewMode, setMaximizedPreviewMode] = useState(false);
   const [showHeadingVisualizer, setShowHeadingVisualizer] = useState(false);
-  
+  const [showCSSInput, setShowCSSInput] = useState(false);
+  const [customCSS, setCustomCSS] = useState("");
+
   // Feature flags - initial state for Regular mode (will be updated by useEffect when mode changes)
   const [features, setFeatures] = useState<FeatureFlags>({
     headingStrong: false,
@@ -368,6 +370,14 @@ export function WordToHtmlConverter() {
   const conversionResult = getConversionResult();
   const outputHtml = conversionResult.formatted;
   const previewHtml = conversionResult.unformatted;
+
+  // Function to combine custom CSS with HTML output
+  const getHtmlWithCSS = (html: string): string => {
+    if (!customCSS.trim()) {
+      return html;
+    }
+    return `<style>\n${customCSS}\n</style>\n${html}`;
+  };
 
   // Function to extract all links from HTML
   const extractLinks = (html: string): string[] => {
@@ -1193,6 +1203,18 @@ export function WordToHtmlConverter() {
                   <AlertTriangle className="h-3.5 w-3.5" />
                 </Button>
               )}
+              {/* Custom CSS Toggle */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCSSInput(!showCSSInput)}
+                className={`h-7 w-7 p-0 ml-1 ${
+                  showCSSInput ? 'bg-primary text-primary-foreground' : customCSS.trim() ? 'bg-green-500/20 text-green-500 border-green-500/30' : 'text-muted-foreground hover:bg-muted/30'
+                }`}
+                title={showCSSInput ? 'Hide CSS Input' : 'Add Custom CSS'}
+              >
+                <Code className="h-3.5 w-3.5" />
+              </Button>
               {/* Maximize Button */}
               <Button
                 variant="outline"
@@ -1224,11 +1246,12 @@ export function WordToHtmlConverter() {
                         description: "Formatted HTML copied to clipboard",
                       });
                     } else {
-                      // Copy as plain text for code mode
-                      await navigator.clipboard.writeText(outputHtml);
+                      // Copy as plain text for code mode (includes CSS if provided)
+                      const htmlWithCSS = getHtmlWithCSS(outputHtml);
+                      await navigator.clipboard.writeText(htmlWithCSS);
                       toast({
                         title: "Copied!",
-                        description: "HTML copied to clipboard",
+                        description: customCSS.trim() ? "HTML with CSS copied to clipboard" : "HTML copied to clipboard",
                       });
                     }
                     setCopied(true);
@@ -1237,7 +1260,7 @@ export function WordToHtmlConverter() {
                 }}
                 disabled={!outputHtml}
                 className="h-8 w-8 p-0"
-                title={showPreview ? "Copy Formatted HTML" : "Copy HTML"}
+                title={showPreview ? "Copy Formatted HTML" : customCSS.trim() ? "Copy HTML with CSS" : "Copy HTML"}
               >
                 {copied ? (
                   <Check className="h-4 w-4 text-green-500" />
@@ -1587,6 +1610,42 @@ export function WordToHtmlConverter() {
             </div>
           </div>
         </div>
+
+        {/* CSS Input Section - Collapsible */}
+        {showCSSInput && (
+          <div className="flex flex-col bg-card/50 border border-border/50 rounded-xl p-3 md:p-4 backdrop-blur-sm min-w-0 max-w-full lg:max-h-[300px]">
+            <div className="flex items-center justify-between mb-3 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded bg-muted">
+                  <Code className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Custom CSS</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setCustomCSS("")}
+                disabled={!customCSS.trim()}
+                className="h-8 w-8 p-0"
+                title="Clear CSS"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <textarea
+              value={customCSS}
+              onChange={(e) => setCustomCSS(e.target.value)}
+              placeholder="Paste your custom CSS here... (e.g., body { font-size: 16px; } h1 { color: blue; })"
+              className="flex-1 min-h-[120px] max-h-[200px] p-4 text-sm bg-background/80 border border-border/50 rounded-lg overflow-y-auto overflow-x-hidden resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono"
+              style={{
+                color: 'hsl(var(--foreground))',
+                fontSize: '0.875rem',
+                lineHeight: '1.75',
+                fontFamily: 'var(--font-mono)',
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Maximized Output Modal */}
@@ -1654,11 +1713,12 @@ export function WordToHtmlConverter() {
                           description: "Formatted HTML copied to clipboard",
                         });
                       } else {
-                        // Copy as plain text for code mode
-                        await navigator.clipboard.writeText(outputHtml);
+                        // Copy as plain text for code mode (includes CSS if provided)
+                        const htmlWithCSS = getHtmlWithCSS(outputHtml);
+                        await navigator.clipboard.writeText(htmlWithCSS);
                         toast({
                           title: "Copied!",
-                          description: "HTML copied to clipboard",
+                          description: customCSS.trim() ? "HTML with CSS copied to clipboard" : "HTML copied to clipboard",
                         });
                       }
                       setCopied(true);
@@ -1667,7 +1727,7 @@ export function WordToHtmlConverter() {
                   }}
                   disabled={!outputHtml}
                   className="h-8 w-8 p-0"
-                  title={maximizedPreviewMode ? "Copy Formatted HTML" : "Copy HTML"}
+                  title={maximizedPreviewMode ? "Copy Formatted HTML" : customCSS.trim() ? "Copy HTML with CSS" : "Copy HTML"}
                 >
                   {copied ? (
                     <Check className="h-4 w-4 text-green-500" />
