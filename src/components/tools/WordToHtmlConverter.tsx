@@ -146,6 +146,8 @@ export function WordToHtmlConverter() {
   const [showHeadingVisualizer, setShowHeadingVisualizer] = useState(false);
   const [showCSSInput, setShowCSSInput] = useState(false);
   const [customCSS, setCustomCSS] = useState("");
+  const [wrapWithStyleTags, setWrapWithStyleTags] = useState(true);
+  const [cssInputHeight, setCssInputHeight] = useState(100);
 
   // Feature flags - initial state for Regular mode (will be updated by useEffect when mode changes)
   const [features, setFeatures] = useState<FeatureFlags>({
@@ -211,6 +213,8 @@ export function WordToHtmlConverter() {
   const outputPreviewRef = useRef<HTMLDivElement>(null);
   const codeAreaRef = useRef<HTMLDivElement>(null);
   const modalCodeAreaRef = useRef<HTMLDivElement>(null);
+  const cssTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const cssResizeHandleRef = useRef<HTMLDivElement>(null);
 
   // Initialize Lenis smooth scroll for input and output containers
   useEffect(() => {
@@ -264,6 +268,51 @@ export function WordToHtmlConverter() {
       lenisInstances.forEach((lenis) => lenis.destroy());
     };
   }, []);
+
+  // Handle CSS textarea resizing via drag handle
+  useEffect(() => {
+    if (!showCSSInput) return; // Only set up when CSS input is visible
+
+    const handleRef = cssResizeHandleRef.current;
+    const textareaRef = cssTextareaRef.current;
+    if (!handleRef || !textareaRef) return;
+
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = textareaRef.offsetHeight;
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ns-resize';
+      e.preventDefault();
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const delta = e.clientY - startY;
+      const newHeight = Math.max(80, startHeight + delta); // Min height: 80px
+      setCssInputHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      isResizing = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    handleRef.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      handleRef.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [showCSSInput]);
 
   // Auto-focus the input area when component mounts
   // The container is focused first to establish focus context, then the input gets focus
@@ -376,7 +425,11 @@ export function WordToHtmlConverter() {
     if (!customCSS.trim()) {
       return html;
     }
-    return `<style>\n${customCSS}\n</style>\n${html}`;
+    if (wrapWithStyleTags) {
+      return `<style>\n${customCSS}\n</style>\n${html}`;
+    } else {
+      return `${customCSS}\n${html}`;
+    }
   };
 
   // Function to extract all links from HTML
@@ -856,19 +909,42 @@ export function WordToHtmlConverter() {
                       <X className="h-3 w-3" />
                     </Button>
                   </div>
-                  <textarea
-                    data-lenisignore
-                    value={customCSS}
-                    onChange={(e) => setCustomCSS(e.target.value)}
-                    placeholder="Paste your custom CSS here... (e.g., body { font-size: 16px; } h1 { color: blue; })"
-                    className="w-full min-h-[100px] max-h-[150px] p-2 text-xs bg-background/80 border border-border/50 rounded overflow-y-auto overflow-x-hidden resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono"
-                    style={{
-                      color: 'hsl(var(--foreground))',
-                      fontSize: '0.75rem',
-                      lineHeight: '1.5',
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                  />
+                  <div className="flex items-center gap-2 mb-2">
+                    <Checkbox
+                      id="wrap-style-tags"
+                      checked={wrapWithStyleTags}
+                      onCheckedChange={(checked) => setWrapWithStyleTags(checked as boolean)}
+                      className="h-4 w-4"
+                    />
+                    <label htmlFor="wrap-style-tags" className="text-xs text-muted-foreground cursor-pointer">
+                      Wrap with &lt;style&gt;&lt;/style&gt;
+                    </label>
+                  </div>
+                  <div className="relative border border-border/50 rounded overflow-hidden bg-background/80">
+                    <textarea
+                      ref={cssTextareaRef}
+                      data-lenisignore
+                      value={customCSS}
+                      onChange={(e) => setCustomCSS(e.target.value)}
+                      placeholder="Paste your custom CSS here... (e.g., body { font-size: 16px; } h1 { color: blue; })"
+                      className="w-full p-2 text-xs bg-background/80 overflow-y-auto overflow-x-hidden resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono"
+                      style={{
+                        color: 'hsl(var(--foreground))',
+                        fontSize: '0.75rem',
+                        lineHeight: '1.5',
+                        fontFamily: 'var(--font-mono)',
+                        height: `${cssInputHeight}px`,
+                      }}
+                    />
+                    {/* Resize Handle */}
+                    <div
+                      ref={cssResizeHandleRef}
+                      className="h-1.5 bg-border/30 hover:bg-primary/50 cursor-ns-resize transition-colors w-full flex items-center justify-center"
+                      title="Drag to resize"
+                    >
+                      <div className="w-8 h-0.5 bg-muted-foreground/30 rounded-full" />
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1637,7 +1713,7 @@ export function WordToHtmlConverter() {
                   },
                 }}
               >
-                {outputHtml || "// Output will appear here..."}
+                {getHtmlWithCSS(outputHtml) || "// Output will appear here..."}
               </SyntaxHighlighter>
             </div>
           </div>
@@ -1781,7 +1857,7 @@ export function WordToHtmlConverter() {
                       },
                     }}
                   >
-                    {outputHtml || "// Output will appear here..."}
+                    {getHtmlWithCSS(outputHtml) || "// Output will appear here..."}
                   </SyntaxHighlighter>
               </div>
             )}
