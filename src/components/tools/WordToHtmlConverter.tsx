@@ -680,8 +680,8 @@ export function WordToHtmlConverter() {
           id: `block-${blockId++}`,
         });
       }
-      // Check if this is an image metadata paragraph (Alt image text: or Link:)
-      else if (tagName === 'p' && (element.textContent?.includes('Alt image text:') || element.textContent?.includes('Link:'))) {
+      // Check if this is an image metadata paragraph (Alt image text: or Alt text: or Link: or Link to:)
+      else if (tagName === 'p' && (element.textContent?.toLowerCase().includes('alt image text:') || element.textContent?.toLowerCase().includes('alt text:') || element.textContent?.toLowerCase().includes('link'))) {
         // Save accumulated content if any
         if (currentContentHtml.trim()) {
           blocks.push({
@@ -716,9 +716,9 @@ export function WordToHtmlConverter() {
           const nextTagName = nextElement.tagName?.toLowerCase();
 
           if (nextTagName === 'p') {
-            const text = nextElement.textContent?.trim() || '';
+            const text = nextElement.textContent?.trim().toLowerCase() || '';
             // Collect if empty paragraph or contains image metadata
-            if (text === '' || text.includes('Alt image text:') || text.includes('Link:')) {
+            if (text === '' || text.includes('alt image text:') || text.includes('alt text:') || text.includes('link')) {
               imageBlockHtml += nextElement.outerHTML;
               skipIndices.add(nextIndex);
               nextIndex++;
@@ -730,8 +730,8 @@ export function WordToHtmlConverter() {
           }
         }
 
-        // Extract alt text from collected paragraphs
-        const altMatch = imageBlockHtml.match(/Alt image text:\s*(.+?)(?:<\/|$)/i);
+        // Extract alt text from collected paragraphs (matches both "Alt image text:" and "Alt text:")
+        const altMatch = imageBlockHtml.match(/Alt (?:image )?text:\s*(.+?)(?:<\/|$)/i);
         const altText = altMatch ? altMatch[1].replace(/<[^>]*>/g, '').trim() : 'No alt text';
 
         // Extract link from collected paragraphs
