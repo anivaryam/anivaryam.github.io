@@ -413,7 +413,6 @@ export function WordToHtmlConverter() {
   const [cssInputHeight, setCssInputHeight] = useState(100);
   const [outputView, setOutputView] = useState<'code' | 'preview' | 'blocks'>('code');
   const [copiedBlockId, setCopiedBlockId] = useState<string | null>(null);
-  const [showHeadingsInPreview, setShowHeadingsInPreview] = useState(true);
 
   // Feature flags - initial state for Regular mode (will be updated by useEffect when mode changes)
   const [features, setFeatures] = useState<FeatureFlags>({
@@ -1598,14 +1597,11 @@ export function WordToHtmlConverter() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    if (outputView === 'blocks') setShowHeadingsInPreview(!showHeadingsInPreview);
-                    else setShowHeadingVisualizer(!showHeadingVisualizer);
-                  }}
+                  onClick={() => setShowHeadingVisualizer(!showHeadingVisualizer)}
                   className={`h-7 w-7 p-0 ml-1 ${
-                    (outputView === 'blocks' ? showHeadingsInPreview : showHeadingVisualizer) ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
+                    showHeadingVisualizer ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
                   }`}
-                  title={(outputView === 'blocks' ? showHeadingsInPreview : showHeadingVisualizer) ? 'Hide Heading Labels' : 'Show Heading Labels'}
+                  title={showHeadingVisualizer ? 'Hide Heading Labels' : 'Show Heading Labels'}
                 >
                   <Hash className="h-3.5 w-3.5" />
                 </Button>
@@ -2039,7 +2035,7 @@ export function WordToHtmlConverter() {
               {contentBlocks.length > 0 ? (
                 <div className="divide-y divide-border/30 output-preview">
                   {(() => {
-                    const visibleBlocks = contentBlocks.filter(block => showHeadingsInPreview || block.type !== 'heading');
+                    const visibleBlocks = contentBlocks;
                     return visibleBlocks.map((block, index) => {
                     const handleCopyFormatted = async () => {
                       try {
