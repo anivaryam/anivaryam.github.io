@@ -1,7 +1,7 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Code2, FileCode, ArrowRight, Braces, Binary, Link as LinkIcon, Palette, Fingerprint, Regex, Hash, KeyRound, Clock, Globe, Search, QrCode, GitCompare, FileText, Image, Lock, LayoutTemplate } from "lucide-react";
+import { Code2, FileCode, ArrowRight, Braces, Binary, Link as LinkIcon, Palette, Fingerprint, Regex, Hash, KeyRound, Clock, Globe, Search, QrCode, GitCompare, FileText, Image, Lock, LayoutTemplate, ImageDown } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const tools = [
@@ -164,6 +164,14 @@ const tools = [
     icon: LayoutTemplate,
     path: "/tools/listicle-template",
     color: "text-[hsl(var(--syntax-pink))]",
+  },
+  {
+    id: "image-resizer",
+    title: "Image Resizer for SEO Content",
+    description: "Resize images to exact client and placement specs — blog hero, thumbnail, inline image, vCTA. Check dimensions, resize with fill/fit/exact modes, and download. Presets saved per client.",
+    icon: ImageDown,
+    path: "/tools/image-resizer",
+    color: "text-[hsl(var(--syntax-cyan))]",
   },
 ];
 
