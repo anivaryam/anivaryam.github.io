@@ -29,6 +29,7 @@ export interface FeatureFlags {
   linkAttributes?: boolean;
   relativePaths?: boolean;
   spacing?: boolean;
+  paragraphSpacing?: boolean;
   olHeaderConversion?: boolean;
   sourcesNormalize?: boolean;
   sourcesItalic?: boolean;

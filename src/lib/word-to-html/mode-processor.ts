@@ -12,7 +12,7 @@ import { convertOlHeaders } from './mode-ol-header-conversion';
 import { convertToRelativePaths } from './mode-relative-paths';
 import { normalizeSources } from './mode-sources-normalize';
 import { removeSourcesLinks } from './mode-remove-sources-links';
-import { addSpacing } from './mode-spacing';
+import { addSpacing, addSpacingBetweenParagraphs } from './mode-spacing';
 import { addLinkSpacing } from './mode-link-spacing';
 import { addBrBeforeReadMore, addBrBeforeSources } from './mode-br-spacing';
 import type { OutputMode, FeatureFlags } from './converter';
@@ -67,6 +67,14 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = addSpacing(processedHtml);
     }
 
+    // Paragraph spacing between consecutive paragraphs
+    if (features.paragraphSpacing === true) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(processedHtml, 'text/html');
+      addSpacingBetweenParagraphs(doc);
+      processedHtml = doc.body.innerHTML;
+    }
+
     // Relative paths (disabled by default)
     if (features.relativePaths === true) {
       processedHtml = convertToRelativePaths(processedHtml);
@@ -119,6 +127,14 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
     // Spacing (after OL conversion so converted headings get spacing)
     if (features.spacing !== false) {
       processedHtml = addSpacing(processedHtml);
+    }
+
+    // Paragraph spacing between consecutive paragraphs (disabled by default)
+    if (features.paragraphSpacing === true) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(processedHtml, 'text/html');
+      addSpacingBetweenParagraphs(doc);
+      processedHtml = doc.body.innerHTML;
     }
 
     // Relative paths (disabled by default)

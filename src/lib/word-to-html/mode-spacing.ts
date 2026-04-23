@@ -78,6 +78,11 @@ function addSpacingBeforeHeadings(doc: Document): void {
     }
     
     const prevSibling = heading.previousElementSibling;
+    // Skip first heading in document (no previous sibling)
+    if (!prevSibling) {
+      return;
+    }
+
     const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);
     if (hasExistingSpacing) {
       return;
@@ -198,17 +203,17 @@ function addSpacingBeforeDisclaimer(doc: Document): void {
 
 function addSpacingBeforeAltImageText(doc: Document): void {
   const paragraphs = doc.querySelectorAll('p');
-  
+
   paragraphs.forEach(p => {
     const text = p.textContent?.trim().toLowerCase() || '';
     if (text.includes('alt image text:')) {
-      
+
       const prevSibling = p.previousElementSibling;
       const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);
       if (hasExistingSpacing) {
         return;
       }
-      
+
       let node = p.previousSibling;
       while (node && node.nodeType === Node.TEXT_NODE && !(node as Text).textContent?.trim()) {
         node = node.previousSibling;
@@ -216,7 +221,7 @@ function addSpacingBeforeAltImageText(doc: Document): void {
       if (node && node.nodeType === Node.ELEMENT_NODE && isSpacingElement(node as Element)) {
         return;
       }
-      
+
       const spacing = doc.createElement('p');
       spacing.innerHTML = '&nbsp;';
       const pParent = p.parentNode;
@@ -225,6 +230,59 @@ function addSpacingBeforeAltImageText(doc: Document): void {
       }
     }
   });
+}
+
+/**
+ * Adds spacing between consecutive paragraphs (p + p).
+ * Inserts <p>&nbsp;</p> between two paragraphs that are direct siblings.
+ */
+export function addSpacingBetweenParagraphs(doc: Document): void {
+  const paragraphs = doc.querySelectorAll('p');
+
+  // Process in reverse order to avoid index shifting issues when inserting
+  const pArray = Array.from(paragraphs);
+
+  for (let i = pArray.length - 1; i >= 0; i--) {
+    const p = pArray[i];
+
+    // Skip empty/spacing paragraphs
+    if (isSpacingElement(p)) {
+      continue;
+    }
+
+    const parent = p.parentNode;
+    if (!parent) continue;
+
+    const pIndex = Array.from(parent.children).indexOf(p);
+
+    // Check if next sibling is also a paragraph
+    if (pIndex < parent.children.length - 1) {
+      const nextSibling = parent.children[pIndex + 1];
+
+      if (nextSibling && (nextSibling as Element).tagName?.toLowerCase() === 'p') {
+        const nextP = nextSibling as Element;
+
+        // Skip if next paragraph is already a spacing element
+        if (isSpacingElement(nextP)) {
+          continue;
+        }
+
+        // Check if there's already a spacing element between these paragraphs
+        // (i.e., check if the element immediately before this paragraph is a spacing element)
+        if (pIndex > 0) {
+          const prevSibling = parent.children[pIndex - 1];
+          if (prevSibling && isSpacingElement(prevSibling as Element)) {
+            continue;
+          }
+        }
+
+        // Insert spacing paragraph before the next paragraph
+        const spacing = doc.createElement('p');
+        spacing.innerHTML = '&nbsp;';
+        parent.insertBefore(spacing, nextSibling);
+      }
+    }
+  }
 }
 
 export function addSpacing(html: string): string {
@@ -242,7 +300,7 @@ export function addSpacing(html: string): string {
     addSpacingBeforeReadSection(doc);
     addSpacingBeforeHeadings(doc);
     addSpacingAfterKeyTakeaways(doc);
-    
+
     return doc.body.innerHTML;
   } catch (e) {
     console.warn('Spacing addition failed:', e);

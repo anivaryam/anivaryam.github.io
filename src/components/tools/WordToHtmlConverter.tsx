@@ -1337,6 +1337,13 @@ export function WordToHtmlConverter() {
                         </label>
                         <label className="flex items-center space-x-2 cursor-pointer">
                           <Checkbox
+                            checked={features.paragraphSpacing === true}
+                            onCheckedChange={(checked) => setFeatures({ ...features, paragraphSpacing: checked as boolean })}
+                          />
+                          <span className="text-sm">Paragraph Spacing</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
                             checked={features.relativePaths === true}
                             onCheckedChange={(checked) => setFeatures({ ...features, relativePaths: checked as boolean })}
                           />
