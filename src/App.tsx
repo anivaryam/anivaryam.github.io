@@ -41,6 +41,7 @@ const SchoolProjects = lazy(() => import("./pages/SchoolProjects"));
 const About = lazy(() => import("./pages/About"));
 const FAQ = lazy(() => import("./pages/FAQ"));
 const Issues = lazy(() => import("./pages/Issues"));
+const Portfolio = lazy(() => import("./pages/Portfolio"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -139,6 +140,7 @@ const App = () => (
               <Route path="/news/:slug" element={<NewsArticle />} />
               <Route path="/school-projects" element={<SchoolProjects />} />
               <Route path="/about" element={<About />} />
+              <Route path="/portfolio" element={<Portfolio />} />
               <Route path="/faq" element={<FAQ />} />
               <Route path="/issues" element={<Issues />} />
               <Route path="*" element={<NotFound />} />

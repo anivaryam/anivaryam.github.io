@@ -1,7 +1,76 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="12" fill="#ef4444"/>
-  <rect x="8" y="22" width="16" height="20" rx="2" fill="white"/>
-  <rect x="24" y="22" width="16" height="20" rx="2" fill="white"/>
-  <rect x="40" y="22" width="16" height="20" rx="2" fill="white"/>
-  <circle cx="48" cy="12" r="4" fill="#fca5a5"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#0c1524"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="dots" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#334155" opacity="0.5"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#dots)"/>
+
+  <!-- Glow blob top-right -->
+  <ellipse cx="950" cy="200" rx="360" ry="260" fill="url(#glow)"/>
+
+  <!-- Left accent bar -->
+  <rect x="0" y="0" width="6" height="630" fill="#3b82f6"/>
+
+  <!-- Top decorative line -->
+  <line x1="6" y1="80" x2="1200" y2="80" stroke="#334155" stroke-width="1"/>
+
+  <!-- Terminal dots row (top-left) -->
+  <circle cx="34" cy="42" r="8" fill="#ef4444" opacity="0.8"/>
+  <circle cx="60" cy="42" r="8" fill="#f59e0b" opacity="0.8"/>
+  <circle cx="86" cy="42" r="8" fill="#22c55e" opacity="0.8"/>
+
+  <!-- Site label (top right) -->
+  <text x="1160" y="50" font-family="monospace" font-size="18" fill="#94a3b8" text-anchor="end">anivaryam.github.io</text>
+
+  <!-- Category badge -->
+  <rect x="60" y="130" width="116" height="36" rx="18" fill="#3b82f622" stroke="#3b82f655" stroke-width="1"/>
+  <text x="118" y="154" font-family="monospace" font-size="15" font-weight="600" fill="#3b82f6" text-anchor="middle">Security</text>
+
+  <!-- Tool name -->
+  <text x="60" y="230" font-family="system-ui,sans-serif" font-size="72" font-weight="bold" fill="#f1f5f9">JWT Encoder</text>
+
+  <!-- Tagline -->
+  <text x="60" y="360" font-family="system-ui,sans-serif" font-size="26" font-weight="normal" fill="#94a3b8">Build and sign JSON Web Tokens with header,</text>
+  <text x="60" y="396" font-family="system-ui,sans-serif" font-size="26" font-weight="normal" fill="#94a3b8">payload, and secret.</text>
+
+  <!-- Bottom border -->
+  <line x1="6" y1="550" x2="1200" y2="550" stroke="#334155" stroke-width="1"/>
+
+  <!-- Bottom label -->
+  <text x="60" y="588" font-family="monospace" font-size="16" fill="#94a3b8">Free · Browser-based · No signup</text>
+
+  <!-- Icon area (right side) -->
+  <g transform="translate(780, 140)">
+    <!-- JWT parts -->
+    <rect x="10" y="60" width="110" height="40" rx="8" fill="#ef4444" opacity="0.8"/>
+    <text x="65" y="86" font-family="monospace" font-size="13" fill="white" text-anchor="middle">Header</text>
+    <text x="135" y="86" font-family="monospace" font-size="18" fill="#334155">.</text>
+    <rect x="150" y="60" width="110" height="40" rx="8" fill="#8b5cf6" opacity="0.8"/>
+    <text x="205" y="86" font-family="monospace" font-size="13" fill="white" text-anchor="middle">Payload</text>
+    <text x="275" y="86" font-family="monospace" font-size="18" fill="#334155">.</text>
+    <rect x="290" y="60" width="90" height="40" rx="8" fill="#3b82f6" opacity="0.8"/>
+    <text x="335" y="86" font-family="monospace" font-size="12" fill="white" text-anchor="middle">Signature</text>
+    <!-- Arrow -->
+    <path d="M190 120 L190 155" stroke="#60a5fa" stroke-width="3" stroke-linecap="round"/>
+    <path d="M178 143 L190 157 L202 143" stroke="#60a5fa" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Token output -->
+    <rect x="10" y="162" width="360" height="80" rx="10" fill="#1e293b" stroke="#60a5fa" stroke-width="2"/>
+    <text x="26" y="192" font-family="monospace" font-size="11" fill="#ef4444">eyJhbGci</text>
+    <text x="96" y="192" font-family="monospace" font-size="11" fill="#334155">.</text>
+    <text x="104" y="192" font-family="monospace" font-size="11" fill="#a78bfa">eyJzdWIi</text>
+    <text x="174" y="192" font-family="monospace" font-size="11" fill="#334155">.</text>
+    <text x="182" y="192" font-family="monospace" font-size="11" fill="#60a5fa">SflKxwRJ</text>
+    <text x="26" y="212" font-family="monospace" font-size="11" fill="#60a5fa">...encoded...</text></g>
 </svg>

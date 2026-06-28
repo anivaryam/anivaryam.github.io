@@ -108,6 +108,13 @@ const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
   
   <!-- Main Pages -->
   <url>
+    <loc>${baseUrl}/portfolio</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
     <loc>${baseUrl}/about</loc>
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>

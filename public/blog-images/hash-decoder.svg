@@ -1,4 +1,66 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="12" fill="#8b5cf6"/>
-  <path d="M20 32 L28 40 L44 24" stroke="white" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#0c1524"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="dots" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#334155" opacity="0.5"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#dots)"/>
+
+  <!-- Glow blob top-right -->
+  <ellipse cx="950" cy="200" rx="360" ry="260" fill="url(#glow)"/>
+
+  <!-- Left accent bar -->
+  <rect x="0" y="0" width="6" height="630" fill="#ef4444"/>
+
+  <!-- Top decorative line -->
+  <line x1="6" y1="80" x2="1200" y2="80" stroke="#334155" stroke-width="1"/>
+
+  <!-- Terminal dots row (top-left) -->
+  <circle cx="34" cy="42" r="8" fill="#ef4444" opacity="0.8"/>
+  <circle cx="60" cy="42" r="8" fill="#f59e0b" opacity="0.8"/>
+  <circle cx="86" cy="42" r="8" fill="#22c55e" opacity="0.8"/>
+
+  <!-- Site label (top right) -->
+  <text x="1160" y="50" font-family="monospace" font-size="18" fill="#94a3b8" text-anchor="end">anivaryam.github.io</text>
+
+  <!-- Category badge -->
+  <rect x="60" y="130" width="116" height="36" rx="18" fill="#ef444422" stroke="#ef444455" stroke-width="1"/>
+  <text x="118" y="154" font-family="monospace" font-size="15" font-weight="600" fill="#ef4444" text-anchor="middle">Security</text>
+
+  <!-- Tool name -->
+  <text x="60" y="230" font-family="system-ui,sans-serif" font-size="72" font-weight="bold" fill="#f1f5f9">Hash Decoder /</text>
+  <text x="60" y="312" font-family="system-ui,sans-serif" font-size="72" font-weight="bold" fill="#f1f5f9">Lookup</text>
+
+  <!-- Tagline -->
+  <text x="60" y="360" font-family="system-ui,sans-serif" font-size="26" font-weight="normal" fill="#94a3b8">Reverse lookup common hash values using</text>
+  <text x="60" y="396" font-family="system-ui,sans-serif" font-size="26" font-weight="normal" fill="#94a3b8">dictionary databases.</text>
+
+  <!-- Bottom border -->
+  <line x1="6" y1="550" x2="1200" y2="550" stroke="#334155" stroke-width="1"/>
+
+  <!-- Bottom label -->
+  <text x="60" y="588" font-family="monospace" font-size="16" fill="#94a3b8">Free · Browser-based · No signup</text>
+
+  <!-- Icon area (right side) -->
+  <g transform="translate(780, 140)">
+    <!-- Lock with question mark -->
+    <rect x="80" y="160" width="200" height="180" rx="18" fill="#1e293b" stroke="#ef4444" stroke-width="3"/>
+    <path d="M110 160 L110 100 Q180 40 250 100 L250 160" stroke="#ef4444" stroke-width="7" fill="none" stroke-linecap="round"/>
+    <!-- Question inside -->
+    <text x="180" y="265" font-family="system-ui" font-size="52" font-weight="bold" fill="#ef4444" text-anchor="middle">?</text>
+    <!-- Hash examples around -->
+    <text x="10" y="60" font-family="monospace" font-size="11" fill="#ef4444" opacity="0.5">5f4dcc3b...</text>
+    <text x="220" y="80" font-family="monospace" font-size="11" fill="#ef4444" opacity="0.5">482c811d...</text>
+    <text x="10" y="350" font-family="monospace" font-size="11" fill="#ef4444" opacity="0.5">e10adc39...</text></g>
 </svg>

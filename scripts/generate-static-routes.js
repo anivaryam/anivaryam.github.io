@@ -91,6 +91,7 @@ const routes = [
   '/news',
   '/school-projects',
   '/about',
+  '/portfolio',
   '/faq',
 ];
 

@@ -1,6 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="12" fill="#f97316"/>
-  <ellipse cx="32" cy="24" rx="16" ry="8" fill="none" stroke="white" stroke-width="3"/>
-  <path d="M16 40 L32 52 L48 40" stroke="white" stroke-width="3" fill="none"/>
-  <circle cx="32" cy="32" r="3" fill="#fdba74"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#0c1524"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="dots" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#334155" opacity="0.5"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#dots)"/>
+
+  <!-- Glow blob top-right -->
+  <ellipse cx="950" cy="200" rx="360" ry="260" fill="url(#glow)"/>
+
+  <!-- Left accent bar -->
+  <rect x="0" y="0" width="6" height="630" fill="#3b82f6"/>
+
+  <!-- Top decorative line -->
+  <line x1="6" y1="80" x2="1200" y2="80" stroke="#334155" stroke-width="1"/>
+
+  <!-- Terminal dots row (top-left) -->
+  <circle cx="34" cy="42" r="8" fill="#ef4444" opacity="0.8"/>
+  <circle cx="60" cy="42" r="8" fill="#f59e0b" opacity="0.8"/>
+  <circle cx="86" cy="42" r="8" fill="#22c55e" opacity="0.8"/>
+
+  <!-- Site label (top right) -->
+  <text x="1160" y="50" font-family="monospace" font-size="18" fill="#94a3b8" text-anchor="end">anivaryam.github.io</text>
+
+  <!-- Category badge -->
+  <rect x="60" y="130" width="72" height="36" rx="18" fill="#3b82f622" stroke="#3b82f655" stroke-width="1"/>
+  <text x="96" y="154" font-family="monospace" font-size="15" font-weight="600" fill="#3b82f6" text-anchor="middle">Tool</text>
+
+  <!-- Tool name -->
+  <text x="60" y="230" font-family="system-ui,sans-serif" font-size="72" font-weight="bold" fill="#f1f5f9">URL Encoder &amp;</text>
+  <text x="60" y="312" font-family="system-ui,sans-serif" font-size="72" font-weight="bold" fill="#f1f5f9">Decoder</text>
+
+  <!-- Tagline -->
+  <text x="60" y="360" font-family="system-ui,sans-serif" font-size="26" font-weight="normal" fill="#94a3b8">Encode and decode URL components for safe</text>
+  <text x="60" y="396" font-family="system-ui,sans-serif" font-size="26" font-weight="normal" fill="#94a3b8">use in web addresses.</text>
+
+  <!-- Bottom border -->
+  <line x1="6" y1="550" x2="1200" y2="550" stroke="#334155" stroke-width="1"/>
+
+  <!-- Bottom label -->
+  <text x="60" y="588" font-family="monospace" font-size="16" fill="#94a3b8">Free · Browser-based · No signup</text>
+
+  <!-- Icon area (right side) -->
+  <g transform="translate(780, 140)">
+    <!-- URL bar -->
+    <rect x="10" y="80" width="370" height="56" rx="12" fill="#1e293b" stroke="#334155" stroke-width="2"/>
+    <text x="30" y="115" font-family="monospace" font-size="13" fill="#64748b">https://site.com/</text>
+    <text x="192" y="115" font-family="monospace" font-size="13" fill="#60a5fa">hello%20world</text>
+    <!-- Arrow down -->
+    <path d="M190 156 L190 196" stroke="#3b82f6" stroke-width="4" stroke-linecap="round"/>
+    <path d="M178 184 L190 198 L202 184" stroke="#3b82f6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Decoded -->
+    <rect x="10" y="204" width="370" height="56" rx="12" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+    <text x="30" y="239" font-family="monospace" font-size="13" fill="#64748b">https://site.com/</text>
+    <text x="192" y="239" font-family="monospace" font-size="14" fill="#4ade80">hello world</text>
+    <!-- Encode symbols -->
+    <text x="50" y="330" font-family="monospace" font-size="20" fill="#60a5fa" opacity="0.6">%20 %2F %3F</text>
+    <text x="50" y="358" font-family="monospace" font-size="20" fill="#60a5fa" opacity="0.6">%3D %26 %23</text></g>
 </svg>
