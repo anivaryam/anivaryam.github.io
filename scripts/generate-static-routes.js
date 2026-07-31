@@ -86,6 +86,7 @@ const routes = [
   '/tools/image-tool',
   '/tools/random-universe-cipher',
   '/tools/listicle-template',
+  '/tools/image-extractor',
   '/downloads',
   '/blogs',
   '/news',

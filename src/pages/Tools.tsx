@@ -1,7 +1,7 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Code2, FileCode, ArrowRight, Braces, Binary, Link as LinkIcon, Palette, Fingerprint, Regex, Hash, KeyRound, Clock, Globe, Search, QrCode, GitCompare, FileText, Image, Lock, LayoutTemplate, ImageDown, Combine } from "lucide-react";
+import { Code2, FileCode, ArrowRight, Braces, Binary, Link as LinkIcon, Palette, Fingerprint, Regex, Hash, KeyRound, Clock, Globe, Search, QrCode, GitCompare, FileText, Image, Lock, LayoutTemplate, ImageDown, Combine, Images } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const tools = [
@@ -180,6 +180,14 @@ const tools = [
     icon: Combine,
     path: "/tools/image-combiner",
     color: "text-primary",
+  },
+  {
+    id: "image-extractor",
+    title: "Image Extractor",
+    description: "Paste content from Google Docs or Word and extract all images grouped by their original layout. Apply compress, format, resize, or strip-EXIF transforms before downloading.",
+    icon: Images,
+    path: "/tools/image-extractor",
+    color: "text-[hsl(var(--syntax-green))]",
   },
 ];
 

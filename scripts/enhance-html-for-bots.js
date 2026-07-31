@@ -171,7 +171,10 @@ function getToolsMetadata() {
       'csv-to-json': 'CsvToJson.tsx',
       'image-tool': 'ImageTool.tsx',
       'random-universe-cipher': 'RandomUniverseCipher.tsx',
-      'listicle-template': 'ListicleTemplate.tsx'
+      'listicle-template': 'ListicleTemplate.tsx',
+      'image-resizer': 'ImageResizer.tsx',
+      'image-combiner': 'ImageCombiner.tsx',
+      'image-extractor': 'ImageExtractor.tsx'
     };
     
     // Read Tools.tsx to get paths
@@ -601,7 +604,10 @@ function extractToolIntroParagraphs(toolId) {
       'csv-to-json': 'CsvToJson.tsx',
       'image-tool': 'ImageTool.tsx',
       'random-universe-cipher': 'RandomUniverseCipher.tsx',
-      'listicle-template': 'ListicleTemplate.tsx'
+      'listicle-template': 'ListicleTemplate.tsx',
+      'image-resizer': 'ImageResizer.tsx',
+      'image-combiner': 'ImageCombiner.tsx',
+      'image-extractor': 'ImageExtractor.tsx'
     };
     
     const componentFile = toolFileMap[toolId];

@@ -8,6 +8,8 @@
     "build": "vite build && node scripts/generate-static-routes.js && node scripts/generate-sitemap.js && node scripts/generate-rss.js && node scripts/verify-seo.js",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "serve:dist": "npm run build && (python3 -m http.server 8080 --directory dist 2>/dev/null || python -m http.server 8080 --directory dist 2>/dev/null || npx serve dist -p 8080)",
     "test:seo": "node scripts/test-seo-local.js",
@@ -59,6 +61,7 @@
     "embla-carousel-react": "^8.6.0",
     "hash-wasm": "^4.12.0",
     "input-otp": "^1.4.2",
+    "jszip": "^3.10.1",
     "lenis": "^1.3.18",
     "lucide-react": "^0.462.0",
     "mammoth": "^1.11.0",
@@ -88,6 +91,8 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@tailwindcss/typography": "^0.5.19",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/dompurify": "^3.0.5",
     "@types/node": "^22.19.11",
     "@types/react": "^18.3.28",
@@ -103,6 +108,7 @@
     "tailwindcss": "^3.4.19",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.55.0",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^2.1.9"
   }
 }

@@ -42,17 +42,30 @@ export function getImageDimensions(
   file: File
 ): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    const fallback = () => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Failed to read image dimensions"));
+      };
+      img.src = url;
     };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("Failed to read image dimensions"));
-    };
-    img.src = url;
+    if (typeof createImageBitmap !== "function") {
+      fallback();
+      return;
+    }
+    createImageBitmap(file)
+      .then((bitmap) => {
+        const { width, height } = bitmap;
+        bitmap.close();
+        resolve({ width, height });
+      })
+      .catch(fallback);
   });
 }
 

@@ -160,20 +160,25 @@ function ScrollToTop() {
   );
 }
 
-export function ImageCombinerTool() {
+interface ImageCombinerToolProps {
+  /** Optional pre-population: File objects loaded into the combiner's images list on mount. */
+  initialFiles?: File[];
+}
+
+export function ImageCombinerTool({ initialFiles }: ImageCombinerToolProps = {}) {
   const [images, setImages] = useState<ImageEntry[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Settings
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>("grid-2");
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("horizontal");
   const [sizingMode, setSizingMode] = useState<SizingMode>("fit-to-row");
   const [maxWidth, setMaxWidth] = useState(800);
-  const [gap, setGap] = useState(8);
-  const [outerPadding, setOuterPadding] = useState(16);
+  const [gap, setGap] = useState(15);
+  const [outerPadding, setOuterPadding] = useState(0);
 
   // Output
-  const [bgMode, setBgMode] = useState<BgMode>("white");
+  const [bgMode, setBgMode] = useState<BgMode>("transparent");
   const [customBg, setCustomBg] = useState("#ffffff");
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("png");
   const [quality, setQuality] = useState(85);
@@ -356,15 +361,23 @@ export function ImageCombinerTool() {
           height: dims.height,
           name: f.name,
         });
-      } catch {
+      } catch (e) {
         URL.revokeObjectURL(url);
         imageUrlRefs.current.delete(id);
+        console.warn("Could not read image", f.name, e);
         toast({ title: "Could not read image", description: f.name, variant: "destructive" });
       }
     }
 
     setImages((prev) => [...prev, ...newEntries]);
   }, [images.length]);
+
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0) {
+      loadFiles(initialFiles);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Initial population only — run once on mount.
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
