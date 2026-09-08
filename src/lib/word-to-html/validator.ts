@@ -962,6 +962,95 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
   };
 }
 
+function findDisclaimerSection(doc: Document): { paragraph: Element } | null {
+  const paragraphs = doc.querySelectorAll('p');
+  for (const p of Array.from(paragraphs)) {
+    const text = (p.textContent || '').trim().toLowerCase();
+    if (text.startsWith('disclaimer')) {
+      return { paragraph: p };
+    }
+  }
+  return null;
+}
+
+function validateDisclaimerNormalize(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  const section = findDisclaimerSection(doc);
+
+  if (!section) {
+    return {
+      ruleId: 'disclaimer-normalization',
+      feature: 'Disclaimer Normalization',
+      mode,
+      passed: true,
+      message: 'No Disclaimer section present',
+      severity: 'info',
+    };
+  }
+
+  const isEnabled = isFeatureEnabled(features, 'disclaimerNormalize', true);
+
+  if (!isEnabled) {
+    const strongTag = section.paragraph.querySelector(':scope > strong');
+    if (strongTag) {
+      const emTag = strongTag.querySelector(':scope > em');
+      if (emTag && emTag.textContent?.trim().toLowerCase() === 'disclaimer:') {
+        return {
+          ruleId: 'disclaimer-normalization',
+          feature: 'Disclaimer Normalization',
+          mode,
+          passed: false,
+          message: 'Disclaimer paragraph is normalized (should not have <strong><em> structure)',
+          severity: 'error',
+        };
+      }
+    }
+    return {
+      ruleId: 'disclaimer-normalization',
+      feature: 'Disclaimer Normalization',
+      mode,
+      passed: true,
+      message: 'Disclaimer section correctly not normalized (feature disabled)',
+      severity: 'info',
+    };
+  }
+
+  const issues: string[] = [];
+
+  const strongTag = section.paragraph.querySelector(':scope > strong');
+  if (!strongTag) {
+    issues.push('Disclaimer paragraph missing <strong> tag');
+  } else {
+    const emTag = strongTag.querySelector(':scope > em');
+    if (!emTag) {
+      issues.push('Disclaimer paragraph missing <em> tag inside <strong>');
+    } else {
+      const emText = emTag.textContent?.trim().toLowerCase() || '';
+      if (emText !== 'disclaimer:') {
+        issues.push(
+          `Disclaimer <em> tag should contain "Disclaimer:" but found "${emTag.textContent?.trim()}"`
+        );
+      }
+    }
+  }
+
+  return {
+    ruleId: 'disclaimer-normalization',
+    feature: 'Disclaimer Normalization',
+    mode,
+    passed: issues.length === 0,
+    message:
+      issues.length === 0
+        ? 'Disclaimer label correctly formatted'
+        : `${issues.length} issue(s) found: ${issues.join('; ')}`,
+    severity: issues.length === 0 ? 'info' : 'error',
+    expected: 'Disclaimer label wrapped in <strong><em>Disclaimer:</em></strong>',
+    actual: issues.length === 0
+      ? 'Disclaimer label correctly formatted'
+      : `${issues.length} formatting issue(s) found`,
+    details: issues.length > 0 ? issues : null,
+  };
+}
+
 function validateRelativePaths(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
   const enabled = features?.relativePaths ?? true;
   if (!enabled) {
@@ -1294,6 +1383,7 @@ export function validateMode(html: string, mode: OutputMode, features: FeatureFl
     results.addResult(validateLinkSpacing(doc, mode, features));
     results.addResult(validateRemoveSourcesLinks(doc, mode, features));
     results.addResult(validateOlBoldLabels(doc, mode, features));
+    results.addResult(validateDisclaimerNormalize(doc, mode, features));
   }
 
   if (mode === 'shoppables') {
@@ -1307,6 +1397,7 @@ export function validateMode(html: string, mode: OutputMode, features: FeatureFl
     results.addResult(validateLinkSpacing(doc, mode, features));
     results.addResult(validateRemoveSourcesLinks(doc, mode, features));
     results.addResult(validateOlBoldLabels(doc, mode, features));
+    results.addResult(validateDisclaimerNormalize(doc, mode, features));
   }
 
   return results;

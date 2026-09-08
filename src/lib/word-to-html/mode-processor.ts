@@ -11,6 +11,7 @@ import { normalizeLists } from './mode-list-normalize';
 import { convertOlHeaders } from './mode-ol-header-conversion';
 import { convertToRelativePaths } from './mode-relative-paths';
 import { normalizeSources } from './mode-sources-normalize';
+import { normalizeDisclaimer } from './mode-disclaimer-normalize';
 import { removeSourcesLinks } from './mode-remove-sources-links';
 import { addSpacing, addSpacingBetweenParagraphs } from './mode-spacing';
 import { addLinkSpacing } from './mode-link-spacing';
@@ -85,6 +86,11 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
     }
 
+    // Disclaimer normalization
+    if (features.disclaimerNormalize !== false) {
+      processedHtml = normalizeDisclaimer(processedHtml);
+    }
+
     // Link spacing (must run before removeSourcesLinks to preserve whitespace)
     processedHtml = addLinkSpacing(processedHtml);
 
@@ -147,6 +153,11 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
     }
 
+    // Disclaimer normalization
+    if (features.disclaimerNormalize !== false) {
+      processedHtml = normalizeDisclaimer(processedHtml);
+    }
+
     // Link spacing (must run before removeSourcesLinks to preserve whitespace)
     processedHtml = addLinkSpacing(processedHtml);
 
@@ -199,6 +210,11 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
     // Sources normalization
     if (features.sourcesNormalize !== false) {
       processedHtml = normalizeSources(processedHtml, features.sourcesItalic !== false);
+    }
+
+    // Disclaimer normalization
+    if (features.disclaimerNormalize !== false) {
+      processedHtml = normalizeDisclaimer(processedHtml);
     }
 
     // Link spacing (must run before removeSourcesLinks to preserve whitespace)

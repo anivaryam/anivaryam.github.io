@@ -424,6 +424,7 @@ export function WordToHtmlConverter() {
     spacing: false,
     olHeaderConversion: false,
     sourcesNormalize: false,
+    disclaimerNormalize: false,
     removeSourcesLinks: false,
   });
   
@@ -443,6 +444,7 @@ export function WordToHtmlConverter() {
         spacing: false,
         olHeaderConversion: false,
         sourcesNormalize: false,
+        disclaimerNormalize: false,
         removeSourcesLinks: false,
       });
     } else if (outputFormat === 'blogs') {
@@ -455,6 +457,7 @@ export function WordToHtmlConverter() {
         spacing: true,
         olHeaderConversion: true,
         sourcesNormalize: true,
+        disclaimerNormalize: true,
         removeSourcesLinks: true,
       });
     } else if (outputFormat === 'shoppables') {
@@ -467,6 +470,7 @@ export function WordToHtmlConverter() {
         spacing: false,
         olHeaderConversion: true,
         sourcesNormalize: true,
+        disclaimerNormalize: true,
         removeSourcesLinks: true,
         brBeforeReadMore: false,
         brBeforeSources: false,
@@ -1362,6 +1366,13 @@ export function WordToHtmlConverter() {
                             onCheckedChange={(checked) => setFeatures({ ...features, sourcesNormalize: checked as boolean })}
                           />
                           <span className="text-sm">Normalize Sources</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.disclaimerNormalize !== false}
+                            onCheckedChange={(checked) => setFeatures({ ...features, disclaimerNormalize: checked as boolean })}
+                          />
+                          <span className="text-sm">Normalize Disclaimer</span>
                         </label>
                         <label className="flex items-center space-x-2 cursor-pointer">
                           <Checkbox

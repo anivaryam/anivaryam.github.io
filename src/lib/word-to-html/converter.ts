@@ -33,6 +33,7 @@ export interface FeatureFlags {
   olHeaderConversion?: boolean;
   sourcesNormalize?: boolean;
   sourcesItalic?: boolean;
+  disclaimerNormalize?: boolean;
   removeSourcesLinks?: boolean;
   brBeforeReadMore?: boolean;
   brBeforeSources?: boolean;
