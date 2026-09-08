@@ -3,23 +3,18 @@
  * Wraps the Disclaimer label in <strong><em>Disclaimer:</em></strong>,
  * mirroring the Sources normalization format.
  *
- * Handles three input shapes:
- *   1. <p>Disclaimer: body...</p>
- *   2. <p><em>Disclaimer: body...</em></p>
- *   3. <p><em>Disclaimer:</em> body...</p>
- *
- * In all cases the output is:
- *   <p><strong><em>Disclaimer:</em></strong>[body]</p>
+ * Preserves surrounding child structure (e.g. <em> wrapping the body)
+ * and ensures a single space between the label and the body.
  */
 
-const LABEL_PATTERN = /^\s*Disclaimer\s*:\s*/i;
+const LABEL_PATTERN = /^\s*Disclaimer\s*:/i;
 const LABEL_TEXT = 'Disclaimer:';
 
 function findDisclaimerParagraphs(doc: Document): Element[] {
   const paragraphs = Array.from(doc.querySelectorAll('p'));
   return paragraphs.filter((p) => {
-    const text = p.textContent?.trim() || '';
-    return text.toLowerCase().startsWith('disclaimer');
+    const text = (p.textContent || '').trim().toLowerCase();
+    return text.startsWith('disclaimer');
   });
 }
 
@@ -31,13 +26,166 @@ function isAlreadyNormalized(paragraph: Element): boolean {
   return em.textContent?.trim().toLowerCase() === 'disclaimer:';
 }
 
+function bodyStartsWithWhitespace(node: Node | undefined): boolean {
+  if (!node) return false;
+  const text = node.textContent || '';
+  return text.length > 0 && /^\s/.test(text);
+}
+
+/**
+ * Walk `el`'s children and return a clone of `el` containing only
+ * the content that comes after `labelEndInEl` chars of text.
+ * If the resulting clone is empty, returns null.
+ */
+function splitElementAfterLabel(
+  el: Element,
+  labelEndInEl: number,
+  doc: Document
+): Element | null {
+  const newContainer = doc.createElement(el.tagName);
+  for (const attr of Array.from(el.attributes)) {
+    newContainer.setAttribute(attr.name, attr.value);
+  }
+
+  let charsSeen = 0;
+  let splitDone = false;
+  let hasContent = false;
+
+  for (const child of Array.from(el.childNodes)) {
+    if (splitDone) {
+      newContainer.appendChild(child.cloneNode(true));
+      if ((child.textContent || '').trim()) hasContent = true;
+      continue;
+    }
+
+    if (child.nodeType === Node.TEXT_NODE) {
+      const text = child.textContent || '';
+      const childLen = text.length;
+
+      if (charsSeen + childLen <= labelEndInEl) {
+        charsSeen += childLen;
+        continue;
+      }
+
+      if (charsSeen >= labelEndInEl) {
+        newContainer.appendChild(doc.createTextNode(text));
+        if (text.trim()) hasContent = true;
+        splitDone = true;
+        continue;
+      }
+
+      const splitOffset = labelEndInEl - charsSeen;
+      const afterLabel = text.slice(splitOffset);
+      if (afterLabel) {
+        newContainer.appendChild(doc.createTextNode(afterLabel));
+        if (afterLabel.trim()) hasContent = true;
+      }
+      charsSeen += childLen;
+      splitDone = true;
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const childEl = child as Element;
+      const childText = childEl.textContent || '';
+      const childLen = childText.length;
+
+      if (!childText.trim()) {
+        charsSeen += childLen;
+        continue;
+      }
+
+      if (charsSeen + childLen <= labelEndInEl) {
+        charsSeen += childLen;
+        continue;
+      }
+
+      if (charsSeen >= labelEndInEl) {
+        newContainer.appendChild(childEl.cloneNode(true));
+        hasContent = true;
+        splitDone = true;
+        continue;
+      }
+
+      const after = splitElementAfterLabel(childEl, labelEndInEl - charsSeen, doc);
+      if (after) {
+        newContainer.appendChild(after);
+        hasContent = true;
+      }
+      charsSeen += childLen;
+      splitDone = true;
+    }
+  }
+
+  return hasContent ? newContainer : null;
+}
+
 function normalizeDisclaimerParagraph(paragraph: Element, doc: Document): void {
   if (isAlreadyNormalized(paragraph)) return;
 
   const fullText = paragraph.textContent || '';
-  if (!LABEL_PATTERN.test(fullText)) return;
+  const match = fullText.match(LABEL_PATTERN);
+  if (!match) return;
+  const labelEndIdx = match[0].length;
 
-  const bodyText = fullText.replace(LABEL_PATTERN, '');
+  const remainingNodes: Node[] = [];
+  let charsSeen = 0;
+  let splitDone = false;
+
+  for (const child of Array.from(paragraph.childNodes)) {
+    if (splitDone) {
+      remainingNodes.push(child.cloneNode(true));
+      continue;
+    }
+
+    if (child.nodeType === Node.TEXT_NODE) {
+      const text = child.textContent || '';
+      const childLen = text.length;
+
+      if (charsSeen + childLen <= labelEndIdx) {
+        charsSeen += childLen;
+        continue;
+      }
+
+      if (charsSeen >= labelEndIdx) {
+        remainingNodes.push(doc.createTextNode(text));
+        splitDone = true;
+        continue;
+      }
+
+      const splitOffset = labelEndIdx - charsSeen;
+      const afterLabel = text.slice(splitOffset);
+      if (afterLabel) {
+        remainingNodes.push(doc.createTextNode(afterLabel));
+      }
+      charsSeen += childLen;
+      splitDone = true;
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const el = child as Element;
+      const elText = el.textContent || '';
+      const elLen = elText.length;
+
+      if (!elText.trim()) {
+        charsSeen += elLen;
+        continue;
+      }
+
+      if (charsSeen + elLen <= labelEndIdx) {
+        charsSeen += elLen;
+        continue;
+      }
+
+      if (charsSeen >= labelEndIdx) {
+        remainingNodes.push(el.cloneNode(true));
+        splitDone = true;
+        continue;
+      }
+
+      const after = splitElementAfterLabel(el, labelEndIdx - charsSeen, doc);
+      if (after) {
+        remainingNodes.push(after);
+      }
+      charsSeen += elLen;
+      splitDone = true;
+    }
+  }
 
   paragraph.innerHTML = '';
 
@@ -47,8 +195,12 @@ function normalizeDisclaimerParagraph(paragraph: Element, doc: Document): void {
   strong.appendChild(em);
   paragraph.appendChild(strong);
 
-  if (bodyText) {
-    paragraph.appendChild(doc.createTextNode(bodyText));
+  if (remainingNodes.length > 0 && !bodyStartsWithWhitespace(remainingNodes[0])) {
+    paragraph.appendChild(doc.createTextNode(' '));
+  }
+
+  for (const node of remainingNodes) {
+    paragraph.appendChild(node);
   }
 }
 
