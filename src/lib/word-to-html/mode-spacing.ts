@@ -175,7 +175,7 @@ function addSpacingBeforeDisclaimer(doc: Document): void {
   
   paragraphs.forEach(p => {
     const text = p.textContent?.trim().toLowerCase() || '';
-    if (text === 'disclaimer' || text === 'disclaimer:') {
+    if (text.startsWith('disclaimer')) {
       
       const prevSibling = p.previousElementSibling;
       const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);
