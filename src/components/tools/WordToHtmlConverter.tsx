@@ -146,7 +146,7 @@ const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
   const children = Array.from(container.childNodes);
 
   let currentContentHtml = '';
-  let skipIndices = new Set<number>();
+  const skipIndices = new Set<number>();
 
   children.forEach((node, index) => {
     if (skipIndices.has(index)) {
@@ -1119,6 +1119,124 @@ export function WordToHtmlConverter() {
             // Only flag if href itself is absolute (not the link text)
             if (href && (href.includes('://') || href.startsWith('//'))) {
               a.setAttribute('data-warning', 'Link should use relative path');
+            }
+          });
+        }
+
+        // Sanitized structure - flag elements with disallowed tags or banned attrs
+        if (result.ruleId === 'sanitized-structure') {
+          const details = result.details || [];
+          details.forEach((detail) => {
+            // Disallowed element: 'Disallowed element <span> present'
+            const tagMatch = detail.match(/Disallowed element <(\w+)>/);
+            if (tagMatch) {
+              const tagName = tagMatch[1];
+              doc.querySelectorAll(tagName).forEach((el) => {
+                el.setAttribute('data-warning', detail);
+              });
+              return;
+            }
+            // Banned attribute: 'Banned attribute "style" on <p>'
+            const attrMatch = detail.match(/Banned attribute "([^"]+)" on <(\w+)>/);
+            if (attrMatch) {
+              const attrName = attrMatch[1];
+              const tagName = attrMatch[2];
+              doc.querySelectorAll(tagName).forEach((el) => {
+                if (el.hasAttribute(attrName)) {
+                  el.setAttribute('data-warning', detail);
+                }
+              });
+            }
+          });
+        }
+
+        // Link safety - flag individual links with unsafe protocols/rel or missing noopener
+        if (result.ruleId === 'link-safety') {
+          const details = result.details || [];
+          const links = Array.from(doc.querySelectorAll('a[href]'));
+          details.forEach((detail) => {
+            // 'Link 1 uses unsafe protocol "javascript:": ...'
+            const protoMatch = detail.match(/Link (\d+) uses unsafe protocol/);
+            // 'Link 1 opens in new window but is missing noopener: ...'
+            const noopenerMatch = detail.match(/Link (\d+) opens in new window but is missing noopener/);
+            // 'Link 1 has unsafe rel value(s): sponsored'
+            const relMatch = detail.match(/Link (\d+) has unsafe rel value/);
+            const numberMatch = protoMatch || noopenerMatch || relMatch;
+            if (!numberMatch) return;
+            const idx = parseInt(numberMatch[1], 10) - 1;
+            const link = links[idx];
+            if (link) link.setAttribute('data-warning', detail);
+          });
+        }
+
+        // Disclaimer normalization - flag the disclaimer paragraph
+        if (result.ruleId === 'disclaimer-normalization' && !result.passed) {
+          doc.querySelectorAll('p').forEach((p) => {
+            const text = (p.textContent || '').trim().toLowerCase();
+            if (text.startsWith('disclaimer')) {
+              p.setAttribute('data-warning', result.message);
+            }
+          });
+        }
+
+        // Paragraph spacing - flag the second paragraph in each pair missing a spacer
+        if (result.ruleId === 'paragraph-spacing' && !result.passed) {
+          const details = result.details || [];
+          const re = /Missing paragraph spacing between "([^"]+)\.\.\." and "([^"]+)\.\.\."/;
+          const secondTexts = new Set<string>();
+          details.forEach((d) => {
+            const m = d.match(re);
+            if (m) secondTexts.add(m[2]);
+          });
+          doc.querySelectorAll('p').forEach((p) => {
+            const text = (p.textContent || '').trim();
+            if (secondTexts.has(text.substring(0, 30))) {
+              p.setAttribute('data-warning', result.message);
+            }
+          });
+        }
+
+        // Sources italic - flag sources <li> not italicized
+        if (result.ruleId === 'sources-italic' && !result.passed) {
+          const paragraphs = doc.querySelectorAll('p');
+          for (const p of Array.from(paragraphs)) {
+            const text = (p.textContent || '').trim().toLowerCase();
+            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
+              let next = p.nextElementSibling;
+              while (next && next.tagName.toLowerCase() !== 'ol') {
+                next = next.nextElementSibling;
+              }
+              if (next) {
+                next.querySelectorAll('li').forEach((li) => {
+                  if (!(li.getAttribute('style') || '').toLowerCase().includes('font-style: italic')) {
+                    li.setAttribute('data-warning', result.message);
+                  }
+                });
+              }
+              break;
+            }
+          }
+        }
+
+        // BR before read more - flag read-more paragraphs missing BR spacer
+        if (result.ruleId === 'br-before-read-more' && !result.passed) {
+          doc.querySelectorAll('p').forEach((p) => {
+            const text = (p.textContent || '').trim().toLowerCase();
+            if (text.includes('read also:') || text.includes('read more:') || text.includes('see more:')) {
+              const prev = p.previousElementSibling;
+              if (!prev || prev.innerHTML.trim() !== '<br>') {
+                p.setAttribute('data-warning', result.message);
+              }
+            }
+          });
+        }
+
+        // BR before sources - flag the Sources paragraph
+        if (result.ruleId === 'br-before-sources' && !result.passed) {
+          doc.querySelectorAll('p').forEach((p) => {
+            const text = (p.textContent || '').trim().toLowerCase();
+            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
+              p.setAttribute('data-warning', result.message);
             }
           });
         }
