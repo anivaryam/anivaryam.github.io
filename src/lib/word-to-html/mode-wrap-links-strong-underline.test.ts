@@ -24,6 +24,8 @@ describe('wrapLinksStrongUnderline', () => {
     const out = wrapLinksStrongUnderline(html);
     expect(out).toContain('<strong><u>our site</u></strong>');
     expect(out).toContain('<a href="https://x.com">');
+    // The original text must NOT remain outside the wrap (regression: text-node copy bug).
+    expect(out).not.toMatch(/<a[^>]*>\s*our site\s*<strong>/);
   });
 
   it('wraps multiple links in the same paragraph', () => {

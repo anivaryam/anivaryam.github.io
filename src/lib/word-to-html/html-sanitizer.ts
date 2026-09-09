@@ -19,6 +19,7 @@ const ALLOWED_ELEMENTS = [
   'p', 'br', 'hr',
   'ul', 'ol', 'li',
   'em', 'strong',
+  'u',
   'sup', 'sub',
   'a',
   'img',

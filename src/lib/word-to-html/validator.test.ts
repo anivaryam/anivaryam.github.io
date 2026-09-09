@@ -86,6 +86,20 @@ describe('validateSanitizedStructure', () => {
     expect(r.details?.some((d) => d.includes('"onclick"'))).toBe(true);
   });
 
+  it('allows <u> element (wrap-links feature contract)', () => {
+    const html = '<p><a href="https://x.com"><strong><u>x</u></strong></a></p>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    expectPass(results, 'sanitized-structure');
+  });
+
+  it('flags disallowed elements that share prefix (<unknown>)', () => {
+    const html = '<p><unknown>x</unknown></p>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    const r = getResult(results, 'sanitized-structure');
+    expect(r.passed).toBe(false);
+    expect(r.details?.some((d) => d.includes('<unknown>'))).toBe(true);
+  });
+
   it('allows style="font-style: italic" on Sources <li> (blogs)', () => {
     const html = '<p><strong><em>Sources:</em></strong></p><ol><li style="font-style: italic">src</li></ol>';
     const results = validateMode(html, 'blogs', defaultFeatures);
@@ -948,6 +962,35 @@ describe('validateWrapLinksStrongUnderline', () => {
 /* ------------------------------------------------------------------ */
 /* Mode routing sanity checks                                          */
 /* ------------------------------------------------------------------ */
+
+describe('validator/sanitizer allowlist parity', () => {
+  it('validator ALLOWED_ELEMENTS mirrors html-sanitizer ALLOWED_ELEMENTS', async () => {
+    /* Read the sanitizer source and compare against the validator's runtime
+     * set. Keeps the two allowlists in sync without a build-time dep. */
+    const { readFile } = await import('fs/promises');
+    const { resolve } = await import('path');
+    const sanitizerPath = resolve(process.cwd(), 'src/lib/word-to-html/html-sanitizer.ts');
+    const src = await readFile(sanitizerPath, 'utf8');
+    const match = src.match(/const ALLOWED_ELEMENTS = \[([^\]]*)\]/);
+    expect(match).not.toBeNull();
+    const sanitizerList = (match![1]
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean));
+    /* Reproduce the validator's runtime set in a single-file comparison. */
+    const expected = [
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'p', 'br', 'hr',
+      'ul', 'ol', 'li',
+      'em', 'strong', 'u',
+      'sup', 'sub',
+      'a', 'img',
+      'blockquote', 'pre', 'code',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    ];
+    expect([...sanitizerList].sort()).toEqual([...expected].sort());
+  });
+});
 
 describe('validateMode — feature gating', () => {
   const cases: Array<{ mode: OutputMode; ruleId: string }> = [

@@ -27,6 +27,7 @@ const ALLOWED_ELEMENTS = new Set([
   'p', 'br', 'hr',
   'ul', 'ol', 'li',
   'em', 'strong',
+  'u',
   'sup', 'sub',
   'a',
   'img',
@@ -296,7 +297,7 @@ function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult
         ? 'No disallowed elements or banned attributes'
         : `${issues.length} sanitizer issue(s) found`,
     severity: issues.length === 0 ? 'info' : 'error',
-    expected: 'Only allowed elements (h1-h6, p, br, ul/ol/li, em, strong, sup, sub, a, img, blockquote, pre, code, table*) and no banned attributes (style/class/id/dir/role/aria-level/data-*/on*), except style="font-style: italic" on Sources <li>',
+    expected: 'Only allowed elements (h1-h6, p, br, ul/ol/li, em, strong, u, sup, sub, a, img, blockquote, pre, code, table*) and no banned attributes (style/class/id/dir/role/aria-level/data-*/on*), except style="font-style: italic" on Sources <li>',
     actual: issues.length === 0
       ? 'Document structure matches sanitizer allowlist'
       : `${issues.length} issue(s) found`,

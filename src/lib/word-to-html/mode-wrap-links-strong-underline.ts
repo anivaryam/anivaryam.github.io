@@ -68,12 +68,12 @@ function wrapAnchorContents(anchor: Element, doc: Document): void {
   const strong = doc.createElement('strong');
   const u = doc.createElement('u');
 
+  /* appendChild MOVES nodes (works for both Text and Element). Do not clone
+   * text nodes here — earlier versions created new text nodes via
+   * createTextNode, which left the originals in the anchor and produced
+   * duplicated / partially-wrapped link text. */
   children.forEach((node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      u.appendChild(doc.createTextNode(node.textContent || ''));
-    } else {
-      u.appendChild(node);
-    }
+    u.appendChild(node);
   });
 
   strong.appendChild(u);
