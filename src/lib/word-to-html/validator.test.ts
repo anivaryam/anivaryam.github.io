@@ -85,6 +85,42 @@ describe('validateSanitizedStructure', () => {
     expect(r.passed).toBe(false);
     expect(r.details?.some((d) => d.includes('"onclick"'))).toBe(true);
   });
+
+  it('allows style="font-style: italic" on Sources <li> (blogs)', () => {
+    const html = '<p><strong><em>Sources:</em></strong></p><ol><li style="font-style: italic">src</li></ol>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    expectPass(results, 'sanitized-structure');
+  });
+
+  it('allows style="font-style: italic" on Sources <li> (shoppables)', () => {
+    const html = '<p><strong><em>Sources:</em></strong></p><ol><li style="font-style: italic">src</li></ol>';
+    const results = validateMode(html, 'shoppables', defaultFeatures);
+    expectPass(results, 'sanitized-structure');
+  });
+
+  it('flags mixed style declarations on Sources <li>', () => {
+    const html = '<p><strong><em>Sources:</em></strong></p><ol><li style="font-style: italic; color: red">src</li></ol>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    const r = getResult(results, 'sanitized-structure');
+    expect(r.passed).toBe(false);
+    expect(r.details?.some((d) => d.includes('"style"'))).toBe(true);
+  });
+
+  it('flags style="font-style: italic" on non-Sources <li>', () => {
+    const html = '<ol><li style="font-style: italic">not sources</li></ol>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    const r = getResult(results, 'sanitized-structure');
+    expect(r.passed).toBe(false);
+    expect(r.details?.some((d) => d.includes('"style"'))).toBe(true);
+  });
+
+  it('flags non-italic style on Sources <li> (e.g. font-style: oblique)', () => {
+    const html = '<p><strong><em>Sources:</em></strong></p><ol><li style="font-style: oblique">src</li></ol>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    const r = getResult(results, 'sanitized-structure');
+    expect(r.passed).toBe(false);
+    expect(r.details?.some((d) => d.includes('"style"'))).toBe(true);
+  });
 });
 
 /* ------------------------------------------------------------------ */

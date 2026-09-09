@@ -262,6 +262,8 @@ class ValidationResultsImpl implements ValidationResults {
 function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult {
   const issues: string[] = [];
 
+  const sourcesList = findSourcesSection(doc)?.list ?? null;
+
   const allElements = doc.body ? doc.body.querySelectorAll('*') : [];
   allElements.forEach((el) => {
     const tagName = el.tagName.toLowerCase();
@@ -272,6 +274,9 @@ function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult
     for (const attr of Array.from(el.attributes)) {
       const name = attr.name.toLowerCase();
       if (ALWAYS_BANNED_ATTRIBUTES.has(name)) {
+        if (isAllowedSourcesItalicStyle(el, attr, sourcesList)) {
+          continue;
+        }
         issues.push(`Banned attribute "${name}" on <${tagName}>`);
         continue;
       }
@@ -291,12 +296,26 @@ function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult
         ? 'No disallowed elements or banned attributes'
         : `${issues.length} sanitizer issue(s) found`,
     severity: issues.length === 0 ? 'info' : 'error',
-    expected: 'Only allowed elements (h1-h6, p, br, ul/ol/li, em, strong, sup, sub, a, img, blockquote, pre, code, table*) and no banned attributes (style/class/id/dir/role/aria-level/data-*/on*)',
+    expected: 'Only allowed elements (h1-h6, p, br, ul/ol/li, em, strong, sup, sub, a, img, blockquote, pre, code, table*) and no banned attributes (style/class/id/dir/role/aria-level/data-*/on*), except style="font-style: italic" on Sources <li>',
     actual: issues.length === 0
       ? 'Document structure matches sanitizer allowlist'
       : `${issues.length} issue(s) found`,
     details: issues.length > 0 ? issues : null,
   };
+}
+
+/**
+ * Strict allowlist exception for the converter-produced Sources <li> italic
+ * style. Accepts only `font-style: italic` (trimmed, lowercased) on an <li>
+ * whose ancestor <ol> is the Sources section. Any other value or mixed
+ * declarations still fail.
+ */
+function isAllowedSourcesItalicStyle(el: Element, attr: Attr, sourcesList: Element | null): boolean {
+  if (!sourcesList) return false;
+  if (el.tagName.toLowerCase() !== 'li') return false;
+  if (!sourcesList.contains(el)) return false;
+  if (attr.name.toLowerCase() !== 'style') return false;
+  return attr.value.trim().toLowerCase() === 'font-style: italic';
 }
 
 function validateLinkSafety(doc: Document, mode: OutputMode): TestResult {

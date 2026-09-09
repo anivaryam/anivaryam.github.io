@@ -444,6 +444,7 @@ export function WordToHtmlConverter() {
         spacing: false,
         olHeaderConversion: false,
         sourcesNormalize: false,
+        sourcesItalic: false,
         disclaimerNormalize: false,
         removeSourcesLinks: false,
       });
@@ -457,6 +458,7 @@ export function WordToHtmlConverter() {
         spacing: true,
         olHeaderConversion: true,
         sourcesNormalize: true,
+        sourcesItalic: true,
         disclaimerNormalize: true,
         removeSourcesLinks: true,
       });
@@ -470,6 +472,7 @@ export function WordToHtmlConverter() {
         spacing: false,
         olHeaderConversion: true,
         sourcesNormalize: true,
+        sourcesItalic: true,
         disclaimerNormalize: true,
         removeSourcesLinks: true,
         brBeforeReadMore: false,
@@ -1125,6 +1128,26 @@ export function WordToHtmlConverter() {
 
         // Sanitized structure - flag elements with disallowed tags or banned attrs
         if (result.ruleId === 'sanitized-structure') {
+          // Locate Sources <ol> so we never flag the legitimate italic style on its <li>.
+          let sourcesOl: Element | null = null;
+          const paragraphs = doc.querySelectorAll('p');
+          for (const p of Array.from(paragraphs)) {
+            const text = p.textContent?.trim().toLowerCase() || '';
+            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
+              let nextSibling = p.nextElementSibling;
+              while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
+                nextSibling = nextSibling.nextElementSibling;
+              }
+              if (nextSibling) {
+                sourcesOl = nextSibling;
+              }
+              break;
+            }
+          }
+
+          const isInSourcesLi = (el: Element): boolean =>
+            !!sourcesOl && sourcesOl.contains(el);
+
           const details = result.details || [];
           details.forEach((detail) => {
             // Disallowed element: 'Disallowed element <span> present'
@@ -1132,6 +1155,7 @@ export function WordToHtmlConverter() {
             if (tagMatch) {
               const tagName = tagMatch[1];
               doc.querySelectorAll(tagName).forEach((el) => {
+                if (tagName === 'li' && isInSourcesLi(el)) return;
                 el.setAttribute('data-warning', detail);
               });
               return;
@@ -1142,6 +1166,7 @@ export function WordToHtmlConverter() {
               const attrName = attrMatch[1];
               const tagName = attrMatch[2];
               doc.querySelectorAll(tagName).forEach((el) => {
+                if (tagName === 'li' && isInSourcesLi(el)) return;
                 if (el.hasAttribute(attrName)) {
                   el.setAttribute('data-warning', detail);
                 }
@@ -1485,6 +1510,15 @@ export function WordToHtmlConverter() {
                           />
                           <span className="text-sm">Normalize Sources</span>
                         </label>
+                        {features.sourcesNormalize !== false && (
+                          <label className="flex items-center space-x-2 cursor-pointer pl-6">
+                            <Checkbox
+                              checked={features.sourcesItalic !== false}
+                              onCheckedChange={(checked) => setFeatures({ ...features, sourcesItalic: checked as boolean })}
+                            />
+                            <span className="text-sm">Sources Italic</span>
+                          </label>
+                        )}
                         <label className="flex items-center space-x-2 cursor-pointer">
                           <Checkbox
                             checked={features.disclaimerNormalize !== false}
