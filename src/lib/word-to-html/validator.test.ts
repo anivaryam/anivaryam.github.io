@@ -341,10 +341,10 @@ describe('validateLinkAttributes', () => {
     expectPass(results, 'link-attributes');
   });
 
-  it('regular: fails when target/rel present', () => {
+  it('regular: skipped (target/rel is a blogs/shoppables concern)', () => {
     const html = '<a href="https://x.com" target="_blank">link</a>';
     const results = validateMode(html, 'regular', defaultFeatures);
-    expectFail(results, 'link-attributes');
+    expectSkipped(results, 'link-attributes');
   });
 
   it('blogs default: passes with full attributes', () => {
@@ -802,32 +802,56 @@ describe('validateOlHeaderConversion (D6 / D13)', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* validateMode — regular mode covers blogs/shoppables features (§B)   */
+/* validateMode — regular mode skips blogs/shoppables validators       */
 /* ------------------------------------------------------------------ */
 
-describe('validateMode — regular mode (§B fix)', () => {
-  it('regular + keyTakeaways feature: heading normalization IS validated', () => {
+describe('validateMode — regular mode skips blogs/shoppables validators', () => {
+  it('regular + keyTakeaways feature: validation is skipped', () => {
     const html = '<h2><strong>Key Takeaways</strong></h2><ul><li>plain</li></ul><p>rest</p>';
     const results = validateMode(html, 'regular', { keyTakeaways: true });
-    expectFail(results, 'key-takeaways');
+    expectSkipped(results, 'key-takeaways');
   });
 
-  it('regular + sourcesNormalize: Sources label is validated', () => {
+  it('regular + sourcesNormalize: validation is skipped', () => {
     const html = '<p>Sources:</p><ol><li>plain</li></ol>';
     const results = validateMode(html, 'regular', { sourcesNormalize: true });
-    expectFail(results, 'sources-normalization');
+    expectSkipped(results, 'sources-normalization');
   });
 
-  it('regular + disclaimerNormalize: disclaimer label is validated', () => {
+  it('regular + disclaimerNormalize: validation is skipped', () => {
     const html = '<p>Disclaimer: body</p>';
     const results = validateMode(html, 'regular', { disclaimerNormalize: true });
-    expectFail(results, 'disclaimer-normalization');
+    expectSkipped(results, 'disclaimer-normalization');
   });
 
-  it('regular + removeSourcesLinks: anchors are validated', () => {
+  it('regular + removeSourcesLinks: validation is skipped', () => {
     const html = '<p><strong><em>Sources:</em></strong></p><ol><li><em><a href="https://x.com">l</a></em></li></ol>';
     const results = validateMode(html, 'regular', { removeSourcesLinks: true });
-    expectFail(results, 'remove-sources-links');
+    expectSkipped(results, 'remove-sources-links');
+  });
+
+  it('regular + h1Removal: validation is skipped', () => {
+    const html = '<h2><strong>Key Takeaways</strong></h2><ul><li>plain</li></ul><h1>Title</h1>';
+    const results = validateMode(html, 'regular', { h1Removal: true });
+    expectSkipped(results, 'h1-after-key-takeaways');
+  });
+
+  it('regular + olHeaderConversion: validation is skipped', () => {
+    const html = '<ol><li><strong><h3>Title</h3></strong></li></ol>';
+    const results = validateMode(html, 'regular', { olHeaderConversion: true });
+    expectSkipped(results, 'ol-header-conversion');
+  });
+
+  it('regular + olBoldLabels: validation is skipped', () => {
+    const html = '<ol><li>Item: thing</li></ol>';
+    const results = validateMode(html, 'regular', defaultFeatures);
+    expectSkipped(results, 'ol-bold-labels');
+  });
+
+  it('regular + linkAttributes: validation is skipped', () => {
+    const html = '<a href="https://x.com" target="_blank" rel="noopener noreferrer">x</a>';
+    const results = validateMode(html, 'regular', { linkAttributes: true });
+    expectSkipped(results, 'link-attributes');
   });
 
   it('regular + paragraphSpacing: spacing is validated', () => {

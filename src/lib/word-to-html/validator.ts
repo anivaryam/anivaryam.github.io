@@ -481,6 +481,16 @@ function validateHeadingStrong(doc: Document, mode: OutputMode, features?: Featu
 }
 
 function validateKeyTakeaways(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  if (mode === 'regular') {
+    return {
+      ruleId: 'key-takeaways',
+      feature: 'Key Takeaways Formatting',
+      mode,
+      passed: true,
+      message: 'Key Takeaways formatting is a blogs/shoppables feature (skipped)',
+      severity: 'info',
+    };
+  }
   if (mode === 'shoppables') {
     return {
       ruleId: 'key-takeaways',
@@ -565,6 +575,16 @@ function validateKeyTakeaways(doc: Document, mode: OutputMode, features?: Featur
 }
 
 function validateH1AfterKeyTakeaways(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  if (mode === 'regular') {
+    return {
+      ruleId: 'h1-after-key-takeaways',
+      feature: 'H1 Removal',
+      mode,
+      passed: true,
+      message: 'H1 removal is a blogs/shoppables feature (skipped)',
+      severity: 'info',
+    };
+  }
   if (mode === 'shoppables') {
     return {
       ruleId: 'h1-after-key-takeaways',
@@ -630,6 +650,17 @@ function validateH1AfterKeyTakeaways(doc: Document, mode: OutputMode, features?:
 /* ------------------------------------------------------------------ */
 
 function validateLinkAttributes(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  if (mode === 'regular') {
+    return {
+      ruleId: 'link-attributes',
+      feature: 'Link Attributes',
+      mode,
+      passed: true,
+      message: 'Link attributes is a blogs/shoppables feature (skipped)',
+      severity: 'info',
+    };
+  }
+
   const links = doc.querySelectorAll('a[href]');
 
   if (links.length === 0) {
@@ -918,6 +949,17 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
 }
 
 function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  if (mode === 'regular') {
+    return {
+      ruleId: 'ol-bold-labels',
+      feature: 'OL Bold Labels',
+      mode,
+      passed: true,
+      message: 'OL bold labels is a blogs/shoppables feature (skipped)',
+      severity: 'info',
+    };
+  }
+
   const sourcesOlSet = new Set<Element>();
   const sourcesSection = findSourcesSection(doc);
   if (sourcesSection) {
@@ -987,6 +1029,17 @@ function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: Featur
  * the body content. We anchor checks against that location.
  */
 function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  if (mode === 'regular') {
+    return {
+      ruleId: 'sources-normalization',
+      feature: 'Sources Normalization',
+      mode,
+      passed: true,
+      message: 'Sources normalization is a blogs/shoppables feature (skipped)',
+      severity: 'info',
+    };
+  }
+
   const section = findSourcesSection(doc);
 
   if (!section) {
@@ -1113,6 +1166,17 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
  * disabled, validate they remain present (strict).
  */
 function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  if (mode === 'regular') {
+    return {
+      ruleId: 'remove-sources-links',
+      feature: 'Remove Sources Links',
+      mode,
+      passed: true,
+      message: 'Remove Sources Links is a blogs/shoppables feature (skipped)',
+      severity: 'info',
+    };
+  }
+
   const enabled = features?.removeSourcesLinks ?? true;
   const section = findSourcesSection(doc);
 
@@ -1171,6 +1235,17 @@ function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features?: 
  * on the paragraph's first child; otherwise reports the leftover normalization.
  */
 function validateDisclaimerNormalize(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  if (mode === 'regular') {
+    return {
+      ruleId: 'disclaimer-normalization',
+      feature: 'Disclaimer Normalization',
+      mode,
+      passed: true,
+      message: 'Disclaimer normalization is a blogs/shoppables feature (skipped)',
+      severity: 'info',
+    };
+  }
+
   const section = findDisclaimerSection(doc);
 
   if (!section) {
@@ -1682,6 +1757,17 @@ function isHeaderList(ol: Element): boolean {
 }
 
 function validateOlHeaderConversion(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  if (mode === 'regular') {
+    return {
+      ruleId: 'ol-header-conversion',
+      feature: 'OL Header Conversion',
+      mode,
+      passed: true,
+      message: 'OL header conversion is a blogs/shoppables feature (skipped)',
+      severity: 'info',
+    };
+  }
+
   const olElements = doc.querySelectorAll('ol');
   const headerLists = Array.from(olElements).filter(isHeaderList);
   const isEnabled = isFeatureEnabled(features, 'olHeaderConversion', true);
