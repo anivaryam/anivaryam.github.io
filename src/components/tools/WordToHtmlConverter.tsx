@@ -447,6 +447,7 @@ export function WordToHtmlConverter() {
         sourcesItalic: false,
         disclaimerNormalize: false,
         removeSourcesLinks: false,
+        wrapLinksStrongUnderline: false,
       });
     } else if (outputFormat === 'blogs') {
       setFeatures({
@@ -461,6 +462,7 @@ export function WordToHtmlConverter() {
         sourcesItalic: true,
         disclaimerNormalize: true,
         removeSourcesLinks: true,
+        wrapLinksStrongUnderline: false,
       });
     } else if (outputFormat === 'shoppables') {
       setFeatures({
@@ -477,6 +479,7 @@ export function WordToHtmlConverter() {
         removeSourcesLinks: true,
         brBeforeReadMore: false,
         brBeforeSources: false,
+        wrapLinksStrongUnderline: false,
       });
     }
   }, [outputFormat]);
@@ -1194,6 +1197,29 @@ export function WordToHtmlConverter() {
           });
         }
 
+        // Wrap links strong & underline - flag <a> missing direct <strong><u> wrap
+        if (result.ruleId === 'wrap-links-strong-underline' && !result.passed) {
+          doc.querySelectorAll('a[href]').forEach((a) => {
+            // Skip alt-context links (image link or inside Alt image text: paragraph)
+            if (a.querySelector('img')) return;
+            let parent = a.parentElement;
+            let inAlt = false;
+            while (parent) {
+              if (parent.tagName.toLowerCase() === 'p') {
+                const text = (parent.textContent || '').trim().toLowerCase();
+                if (text.startsWith('alt image text:')) {
+                  inAlt = true;
+                }
+                break;
+              }
+              parent = parent.parentElement;
+            }
+            if (inAlt) return;
+            if (a.querySelector(':scope > strong > u')) return;
+            a.setAttribute('data-warning', result.message);
+          });
+        }
+
         // Disclaimer normalization - flag the disclaimer paragraph
         if (result.ruleId === 'disclaimer-normalization' && !result.passed) {
           doc.querySelectorAll('p').forEach((p) => {
@@ -1532,6 +1558,13 @@ export function WordToHtmlConverter() {
                             onCheckedChange={(checked) => setFeatures({ ...features, removeSourcesLinks: checked as boolean })}
                           />
                           <span className="text-sm">Remove Links in Sources</span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <Checkbox
+                            checked={features.wrapLinksStrongUnderline === true}
+                            onCheckedChange={(checked) => setFeatures({ ...features, wrapLinksStrongUnderline: checked as boolean })}
+                          />
+                          <span className="text-sm">Wrap Links Strong &amp; Underline</span>
                         </label>
                       </>
                     )}

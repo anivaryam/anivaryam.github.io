@@ -1911,6 +1911,77 @@ export function validateMode(html: string, mode: OutputMode, features: FeatureFl
   results.addResult(validateSourcesItalic(doc, mode, features));
   results.addResult(validateBrBeforeReadMore(doc, mode, features));
   results.addResult(validateBrBeforeSources(doc, mode, features));
+  results.addResult(validateWrapLinksStrongUnderline(doc, mode, features));
 
   return results;
+}
+
+/**
+ * Mirrors the skip conditions used by mode-wrap-links-strong-underline.ts so
+ * the validator agrees with the converter about which links are in scope.
+ */
+function isAltContextLink(anchor: Element): boolean {
+  if (anchor.querySelector(':scope > img') || anchor.querySelector('img')) return true;
+  let parent = anchor.parentElement;
+  while (parent) {
+    if (parent.tagName.toLowerCase() === 'p') {
+      const text = (parent.textContent || '').trim().toLowerCase();
+      return text.startsWith('alt image text:');
+    }
+    parent = parent.parentElement;
+  }
+  return false;
+}
+
+function validateWrapLinksStrongUnderline(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  if (mode === 'regular') {
+    return {
+      ruleId: 'wrap-links-strong-underline',
+      feature: 'Wrap Links Strong & Underline',
+      mode,
+      passed: true,
+      message: 'Wrap Links Strong & Underline is a blogs/shoppables feature (skipped)',
+      severity: 'info',
+    };
+  }
+
+  const enabled = features?.wrapLinksStrongUnderline === true;
+  const anchors = Array.from(doc.querySelectorAll('a[href]'));
+
+  if (!enabled) {
+    const wrapped = anchors.filter((a) => a.querySelector(':scope > strong > u') !== null);
+    return {
+      ruleId: 'wrap-links-strong-underline',
+      feature: 'Wrap Links Strong & Underline',
+      mode,
+      passed: wrapped.length === 0,
+      message:
+        wrapped.length === 0
+          ? 'No links wrapped in <strong><u> (feature disabled)'
+          : `${wrapped.length} link(s) wrapped in <strong><u> (should not be when disabled)`,
+      severity: wrapped.length === 0 ? 'info' : 'error',
+      details: wrapped.length > 0 ? [`${wrapped.length} wrapped link(s) found`] : null,
+    };
+  }
+
+  const unwrapped = anchors.filter(
+    (a) => !isAltContextLink(a) && a.querySelector(':scope > strong > u') === null
+  );
+
+  return {
+    ruleId: 'wrap-links-strong-underline',
+    feature: 'Wrap Links Strong & Underline',
+    mode,
+    passed: unwrapped.length === 0,
+    message:
+      unwrapped.length === 0
+        ? `All non-alt-text links wrapped in <strong><u> (${anchors.length} link(s) checked)`
+        : `${unwrapped.length} of ${anchors.length} non-alt-text link(s) missing <strong><u> wrap`,
+    severity: unwrapped.length === 0 ? 'info' : 'error',
+    expected: 'Every non-alt-text <a> has direct <strong><u> wrapping',
+    actual: unwrapped.length === 0
+      ? `All ${anchors.length} link(s) wrapped correctly`
+      : `${unwrapped.length} of ${anchors.length} link(s) missing wrap`,
+    details: unwrapped.length > 0 ? [`${unwrapped.length} link(s) missing wrap`] : null,
+  };
 }

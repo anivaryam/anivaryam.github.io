@@ -874,6 +874,78 @@ describe('validateMode — regular mode skips blogs/shoppables validators', () =
 });
 
 /* ------------------------------------------------------------------ */
+/* validateWrapLinksStrongUnderline                                    */
+/* ------------------------------------------------------------------ */
+
+describe('validateWrapLinksStrongUnderline', () => {
+  it('regular: skipped', () => {
+    const html = '<p><a href="https://x.com">x</a></p>';
+    const results = validateMode(html, 'regular', { wrapLinksStrongUnderline: true });
+    expectSkipped(results, 'wrap-links-strong-underline');
+  });
+
+  it('no links: skipped (enabled)', () => {
+    const results = validateMode('<p>plain</p>', 'blogs', { wrapLinksStrongUnderline: true });
+    expectSkipped(results, 'wrap-links-strong-underline');
+  });
+
+  it('no links: skipped (disabled)', () => {
+    const results = validateMode('<p>plain</p>', 'blogs', { wrapLinksStrongUnderline: false });
+    expectSkipped(results, 'wrap-links-strong-underline');
+  });
+
+  it('enabled: passes when all non-alt-text links are wrapped', () => {
+    const html = '<p>See <a href="https://x.com"><strong><u>x</u></strong></a>.</p>';
+    const results = validateMode(html, 'blogs', { wrapLinksStrongUnderline: true });
+    expectPass(results, 'wrap-links-strong-underline');
+  });
+
+  it('enabled: fails when a plain link is unwrapped', () => {
+    const html = '<p>See <a href="https://x.com">x</a>.</p>';
+    const results = validateMode(html, 'blogs', { wrapLinksStrongUnderline: true });
+    expectFail(results, 'wrap-links-strong-underline');
+  });
+
+  it('enabled: skips image links (<a><img></a>)', () => {
+    const html = '<p><a href="https://x.com"><img src="/i.png" alt="x"></a></p>';
+    const results = validateMode(html, 'blogs', { wrapLinksStrongUnderline: true });
+    expectPass(results, 'wrap-links-strong-underline');
+  });
+
+  it('enabled: skips links in "Alt image text:" paragraph', () => {
+    const html = '<p>alt image text: see <a href="https://x.com">x</a></p>';
+    const results = validateMode(html, 'blogs', { wrapLinksStrongUnderline: true });
+    expectPass(results, 'wrap-links-strong-underline');
+  });
+
+  it('enabled: wraps body links but skips alt-text links', () => {
+    const html =
+      '<p>alt image text: see <a href="https://src.com">src</a></p>' +
+      '<p>See <a href="https://x.com">x</a> for more.</p>';
+    const results = validateMode(html, 'blogs', { wrapLinksStrongUnderline: true });
+    expectFail(results, 'wrap-links-strong-underline');
+  });
+
+  it('disabled: passes when no wrap', () => {
+    const html = '<p>See <a href="https://x.com">x</a>.</p>';
+    const results = validateMode(html, 'blogs', { wrapLinksStrongUnderline: false });
+    expectPass(results, 'wrap-links-strong-underline');
+  });
+
+  it('disabled: fails when wrap still present', () => {
+    const html = '<p><a href="https://x.com"><strong><u>x</u></strong></a></p>';
+    const results = validateMode(html, 'blogs', { wrapLinksStrongUnderline: false });
+    expectFail(results, 'wrap-links-strong-underline');
+  });
+
+  it('shoppables: same gating as blogs', () => {
+    const html = '<p>See <a href="https://x.com">x</a>.</p>';
+    const results = validateMode(html, 'shoppables', { wrapLinksStrongUnderline: true });
+    expectFail(results, 'wrap-links-strong-underline');
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* Mode routing sanity checks                                          */
 /* ------------------------------------------------------------------ */
 

@@ -37,6 +37,7 @@ export interface FeatureFlags {
   removeSourcesLinks?: boolean;
   brBeforeReadMore?: boolean;
   brBeforeSources?: boolean;
+  wrapLinksStrongUnderline?: boolean;
 }
 
 /**

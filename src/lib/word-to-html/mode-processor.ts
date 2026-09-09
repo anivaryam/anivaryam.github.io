@@ -16,6 +16,7 @@ import { removeSourcesLinks } from './mode-remove-sources-links';
 import { addSpacing, addSpacingBetweenParagraphs } from './mode-spacing';
 import { addLinkSpacing } from './mode-link-spacing';
 import { addBrBeforeReadMore, addBrBeforeSources } from './mode-br-spacing';
+import { wrapLinksStrongUnderline } from './mode-wrap-links-strong-underline';
 import type { OutputMode, FeatureFlags } from './converter';
 
 /**
@@ -161,11 +162,16 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
     // Link spacing (must run before removeSourcesLinks to preserve whitespace)
     processedHtml = addLinkSpacing(processedHtml);
 
+    // Wrap non-alt-text links in <strong><u> (disabled by default)
+    if (features.wrapLinksStrongUnderline === true) {
+      processedHtml = wrapLinksStrongUnderline(processedHtml);
+    }
+
     // Remove links in Sources section
     if (features.removeSourcesLinks !== false) {
       processedHtml = removeSourcesLinks(processedHtml);
     }
-    
+
     // Final list normalization pass (after all processing that might modify list items)
     // This ensures spacing is normalized even if other functions reintroduced multiple spaces
     processedHtml = normalizeLists(processedHtml);
@@ -220,11 +226,16 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
     // Link spacing (must run before removeSourcesLinks to preserve whitespace)
     processedHtml = addLinkSpacing(processedHtml);
 
+    // Wrap non-alt-text links in <strong><u> (disabled by default)
+    if (features.wrapLinksStrongUnderline === true) {
+      processedHtml = wrapLinksStrongUnderline(processedHtml);
+    }
+
     // Remove links in Sources section
     if (features.removeSourcesLinks !== false) {
       processedHtml = removeSourcesLinks(processedHtml);
     }
-    
+
     // Final list normalization pass (after all processing that might modify list items)
     // This ensures spacing is normalized even if other functions reintroduced multiple spaces
     processedHtml = normalizeLists(processedHtml);
