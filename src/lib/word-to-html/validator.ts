@@ -5,6 +5,10 @@
 
 import type { OutputMode, FeatureFlags } from './converter';
 import { resolveFeatures } from './mode-processor';
+import { ALLOWED_ELEMENTS as SANITIZED_ELEMENTS, getStructuralIssues, isSafeUrl } from './html-sanitizer';
+import { isSpacingParagraph as isAnySpacingElement, isBrSpacingParagraph as isBrSpacingElement } from './html-spacing';
+import { getHeadingSpacingIssues } from './mode-spacing';
+import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
 
 /**
  * Centralized feature flag check with explicit defaults
@@ -19,22 +23,7 @@ function isFeatureEnabled(
   return value === undefined ? defaultValue : value;
 }
 
-/**
- * Mirrors the sanitizer allowlist. Kept here (and tests assert parity with
- * html-sanitizer.ts) so validator regressions on disallowed elements get caught.
- */
-const ALLOWED_ELEMENTS = new Set([
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'p', 'br', 'hr',
-  'ul', 'ol', 'li',
-  'em', 'strong',
-  'u',
-  'sup', 'sub',
-  'a',
-  'img',
-  'blockquote', 'pre', 'code',
-  'table', 'thead', 'tbody', 'tr', 'th', 'td',
-]);
+const ALLOWED_ELEMENTS = new Set(SANITIZED_ELEMENTS);
 
 /**
  * Attributes the sanitizer always strips, regardless of element.
@@ -47,11 +36,6 @@ const ALWAYS_BANNED_ATTRIBUTES = new Set([
  * Attribute prefixes the sanitizer always strips.
  */
 const BANNED_ATTRIBUTE_PREFIXES = ['data-', 'on'];
-
-/**
- * URL protocols the sanitizer permits on href/src.
- */
-const SAFE_PROTOCOLS = ['http:', 'https:', 'mailto:'];
 
 /**
  * Allowed `rel` values on anchor tags after sanitization.
@@ -145,32 +129,10 @@ function findDisclaimerSection(doc: Document): { paragraph: Element } | null {
 }
 
 /**
- * Helper: Check if an element is a spacing element (<p>&nbsp;</p>).
- * Matches single or multiple &nbsp; / \u00A0 (more forgiving for real-world content).
+ * Blank non-BR paragraphs include ordinary whitespace and wrapped Word spaces.
  */
 function isNbspSpacingElement(element: Element | null): boolean {
-  if (!element || element.tagName.toLowerCase() !== 'p') return false;
-  const html = element.innerHTML.trim();
-  return /^(&nbsp;|\u00A0)+$/.test(html);
-}
-
-/**
- * Helper: Check if an element is a <p><br></p> spacing element (used by
- * brBeforeReadMore / brBeforeSources in shoppables mode).
- */
-function isBrSpacingElement(element: Element | null): boolean {
-  if (!element || element.tagName.toLowerCase() !== 'p') return false;
-  const html = element.innerHTML.trim();
-  return html === '<br>' || html === '<br/>' || html === '<br />';
-}
-
-/**
- * Helper: any spacing element — either &nbsp;-based or <br>-based.
- * Used by validators that should accept either kind depending on which feature
- * flags the processor applied.
- */
-function isAnySpacingElement(element: Element | null): boolean {
-  return isNbspSpacingElement(element) || isBrSpacingElement(element);
+  return isAnySpacingElement(element) && !isBrSpacingElement(element);
 }
 
 /**
@@ -262,7 +224,7 @@ class ValidationResultsImpl implements ValidationResults {
 /* ------------------------------------------------------------------ */
 
 function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult {
-  const issues: string[] = [];
+  const issues = getStructuralIssues(doc.body).map(issue => issue.message);
 
   const sourcesList = findSourcesSection(doc)?.list ?? null;
 
@@ -328,15 +290,8 @@ function validateLinkSafety(doc: Document, mode: OutputMode): TestResult {
     const href = link.getAttribute('href') || '';
     const label = href.length > 40 ? `${href.substring(0, 40)}...` : href || '(empty)';
 
-    /* Mirror html-sanitizer SAFE_PROTOCOLS exactly: any href that declares
-     * a protocol must be in the safe set. Anchor (`#`) and root-relative
-     * paths declare no protocol and are not flagged here. */
-    const protocolMatch = href.match(/^([a-z][a-z0-9+.-]*:)/i);
-    if (protocolMatch) {
-      const proto = protocolMatch[1].toLowerCase();
-      if (!SAFE_PROTOCOLS.includes(proto)) {
-        issues.push(`Link ${index + 1} uses unsafe protocol "${proto}": ${label}`);
-      }
+    if (!isSafeUrl(href)) {
+      issues.push(`Link ${index + 1} uses unsafe protocol or invalid URL: ${label}`);
     }
 
     const target = link.getAttribute('target');
@@ -1309,44 +1264,7 @@ function validateKeyTakeawaySpacing(doc: Document, issues: string[]): void {
 }
 
 function validateHeadingSpacing(doc: Document, issues: string[]): void {
-  const allHeadings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
-  let foundFaqSection = false;
-  let isFirstFaqQuestion = false;
-
-  allHeadings.forEach((heading) => {
-    const text = heading.textContent?.trim().toLowerCase() || '';
-    const tagName = heading.tagName.toLowerCase();
-
-    if (text.includes('key takeaways')) {
-      return;
-    }
-
-    /* Reset FAQ state on any new top-level (h1/h2) section. h3 FAQ
-     * questions are exempted from the spacing check on the first one only. */
-    if (tagName === 'h1' || tagName === 'h2') {
-      foundFaqSection = false;
-      isFirstFaqQuestion = false;
-    }
-
-    if (/faq|frequently asked/i.test(text)) {
-      foundFaqSection = true;
-      isFirstFaqQuestion = true;
-    }
-
-    if (foundFaqSection && isFirstFaqQuestion && tagName === 'h3') {
-      isFirstFaqQuestion = false;
-      return;
-    }
-
-    const prevSibling = heading.previousElementSibling;
-    if (!prevSibling) {
-      return;
-    }
-
-    if (!isAnySpacingElement(prevSibling)) {
-      issues.push(`Missing spacing before heading: "${heading.textContent?.trim().substring(0, 30)}..."`);
-    }
-  });
+  issues.push(...getHeadingSpacingIssues(doc).map(issue => issue.message));
 }
 
 function validateSpecialParagraphSpacing(doc: Document, issues: string[]): void {
@@ -1388,6 +1306,26 @@ function validateSpecialParagraphSpacing(doc: Document, issues: string[]): void 
   });
 }
 
+/** Shared element-level diagnostics for disabled spacing and preview highlights. */
+export function getUnexpectedSpacingIssues(doc: Document, features?: FeatureFlags): { element: Element; message: string }[] {
+  const issues = getHeadingSpacingIssues(doc).filter(issue => issue.kind === 'unexpected');
+  const result: { element: Element; message: string }[] = [...issues];
+  doc.querySelectorAll('p').forEach(p => {
+    if (!isAnySpacingElement(p)) return;
+    const previous = p.previousElementSibling;
+    const next = p.nextElementSibling;
+    if (issues.some(issue => issue.element === next)) return;
+    if (isBrSpacingElement(p) && (
+      (features?.brBeforeReadMore && isReadMoreParagraph(next)) ||
+      (features?.brBeforeSources && isSourcesParagraph(next))
+    )) return;
+    if (features?.paragraphSpacing && previous?.tagName === 'P' && next?.tagName === 'P' &&
+        previous.textContent?.trim() && next.textContent?.trim()) return;
+    result.push({ element: p, message: 'Found blank spacing paragraph that should not be present' });
+  });
+  return result;
+}
+
 function validateSpacing(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
   if (mode !== 'blogs' && mode !== 'shoppables') {
     return {
@@ -1406,21 +1344,7 @@ function validateSpacing(doc: Document, mode: OutputMode, features?: FeatureFlag
     : isFeatureEnabled(features, 'spacing', false);
 
   if (!isSpacingEnabled) {
-    const allParagraphs = doc.querySelectorAll('p');
-    const spacingElements: string[] = [];
-
-    allParagraphs.forEach((p) => {
-      if (isNbspSpacingElement(p)) {
-        const previous = p.previousElementSibling;
-        const next = p.nextElementSibling;
-        // Paragraph Spacing is independent of the general spacing feature.
-        if (features?.paragraphSpacing && previous?.tagName === 'P' && next?.tagName === 'P' &&
-            previous.textContent?.trim() && next.textContent?.trim()) {
-          return;
-        }
-        spacingElements.push('Found <p>&nbsp;</p> spacing element that should not be present');
-      }
-    });
+    const spacingElements = getUnexpectedSpacingIssues(doc, features).map(issue => issue.message);
 
     return {
       ruleId: 'spacing-rules',
@@ -1629,8 +1553,7 @@ function validateBrBeforeReadMore(doc: Document, mode: OutputMode, features?: Fe
   const paragraphs = doc.querySelectorAll('p');
   const targets: Element[] = [];
   paragraphs.forEach((p) => {
-    const text = (p.textContent || '').trim().toLowerCase();
-    if (text.includes('read also:') || text.includes('read more:') || text.includes('see more:')) {
+    if (isReadMoreParagraph(p)) {
       targets.push(p);
     }
   });

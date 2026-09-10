@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { convertToHtml, convertWordToHtml, getUnformattedHtml, type OutputMode } from './converter';
 import { cleanHtml } from './html-cleaner';
 import { formatCompact } from './html-formatter';
@@ -6,6 +6,137 @@ import { sanitizeHtml } from './html-sanitizer';
 import { cleanWordHtml } from './word-html-cleaner';
 import { normalizeSources } from './mode-sources-normalize';
 import { validateMode } from './validator';
+import { normalizeLists } from './mode-list-normalize';
+
+describe('accepted spacing formats with Word clipboard markup', () => {
+  const faqHeading = 'Frequently Asked Questions About How Often Do Newborns Eat?';
+  const question = 'How many times a day should a newborn eat?';
+  const blankParagraphs = [
+    '<p>&nbsp;</p>',
+    '<p><span>&nbsp;</span></p>',
+    '<p><span style="font-size:11pt">&nbsp;</span></p>',
+    '<p><strong><em><span> </span></em></strong></p>',
+    '<p><span>&nbsp;&nbsp;</span></p><p><br></p>',
+  ];
+
+  it.each(blankParagraphs)('keeps the first FAQ question adjacent with inherited spacing: %s', (gap) => {
+    const input = `<p>Introduction.</p><h2>${faqHeading}</h2>${gap}<h3>${question}</h3><p>First answer.</p><h3>Second question?</h3><p>Second answer.</p>`;
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      for (const features of [{}, { spacing: true, paragraphSpacing: true }]) {
+        const output = convertToHtml(cleanWordHtml(input), mode, features);
+        for (const html of [output.formatted, output.unformatted]) {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const questions = doc.querySelectorAll('h3');
+          expect(doc.querySelector('h2')?.nextElementSibling).toBe(questions[0]);
+          expect(questions[0].textContent).toBe(question);
+          if (features.spacing || mode === 'blogs') {
+            expect(questions[1].previousElementSibling?.innerHTML).toBe('&nbsp;');
+          }
+          expect(validateMode(html, mode, features).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+        }
+      }
+    }
+  });
+
+  it.each(blankParagraphs)('removes inherited spacing in default Shoppables output: %s', (gap) => {
+    const input = `<p>Hello<span> </span>world.</p>${gap}<h2>Product details</h2>${gap}<p>Description.</p>`;
+    const output = convertToHtml(cleanWordHtml(input), 'shoppables');
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(Array.from(doc.querySelectorAll('p')).map(p => p.textContent)).toEqual(['Hello world.', 'Description.']);
+      expect(doc.querySelector('br')).toBeNull();
+    }
+  });
+
+  it('preserves explicitly requested Shoppables BR spacing after cleaning inherited gaps', () => {
+    const input = '<p>Body.</p><p><span>&nbsp;</span></p><p>Read more: Details.</p><p><span>&nbsp;</span></p><p>Sources:</p><ol><li>Citation.</li></ol>';
+    const features = { brBeforeReadMore: true, brBeforeSources: true };
+    const output = getUnformattedHtml(input, 'shoppables', features);
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    for (const p of Array.from(doc.querySelectorAll('p')).filter(p => /^(Read more:|Sources:)/.test(p.textContent || ''))) {
+      expect(p.previousElementSibling?.innerHTML).toBe('<br>');
+    }
+    expect(validateMode(output, 'shoppables', features).summary.failed).toBe(0);
+  });
+});
+
+describe('structural and formatting regressions', () => {
+  it.each(['font-weight:bold', 'font-style:italic'])('preserves all adjacent list items with %s', (style) => {
+    const input = `<ul><li>First item</li></ul><ul style="${style}"><li>Second item</li><li><span style="font-weight:bold">Label:</span> Third item</li></ul>`;
+    const output = getUnformattedHtml(input, 'shoppables');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(Array.from(doc.querySelectorAll('ul > li')).map(li => li.textContent)).toEqual(['First item', 'Second item', 'Label: Third item']);
+    expect(doc.querySelector('ul > strong, ul > em')).toBeNull();
+    expect(doc.querySelector('li strong')?.textContent).toBe('Label:');
+  });
+
+  it('does not discard content when merging a pre-existing malformed list', () => {
+    const output = normalizeLists('<ul><li>First</li></ul><ul><strong><li>Second</li></strong></ul>');
+    expect(new DOMParser().parseFromString(output, 'text/html').body.textContent).toBe('FirstSecond');
+  });
+
+  it('converts styled heading lists to numbered headings', () => {
+    const output = getUnformattedHtml('<ol style="font-weight:bold"><li><h3>First</h3></li><li><h3>Second</h3></li></ol>', 'blogs');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('ol')).toBeNull();
+    expect(Array.from(doc.querySelectorAll('h3')).map(h => h.textContent)).toEqual(['1. First', '2. Second']);
+  });
+
+  it('preserves table structure and cell emphasis without orphan formatting wrappers', () => {
+    const output = getUnformattedHtml('<table style="font-weight:bold"><tbody><tr style="font-style:italic"><td><em>Cell A</em></td><td>Cell B</td></tr></tbody></table>', 'shoppables');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.body.children).toHaveLength(1);
+    expect(doc.querySelectorAll('table > tbody > tr > td')).toHaveLength(2);
+    expect(doc.querySelector('td > em')?.textContent).toBe('Cell A');
+    expect(doc.querySelector('table > strong, tbody > em, tr > em')).toBeNull();
+  });
+
+  it.each(['b', 'i', 'span'])('preserves superscript/subscript on <%s>', (tag) => {
+    for (const [alignment, expected] of [['super', 'sup'], ['35%', 'sup'], ['sub', 'sub'], ['-0.6em', 'sub']]) {
+      const output = getUnformattedHtml(`<p>x<${tag} style="vertical-align:${alignment}">2</${tag}></p>`, 'shoppables');
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector(expected)?.textContent).toBe('2');
+      if (tag === 'b') expect(doc.querySelector('strong')?.textContent).toBe('2');
+      if (tag === 'i') expect(doc.querySelector('em')?.textContent).toBe('2');
+    }
+  });
+
+  it('continues structural cleanup after encountering an empty Word link', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const output = getUnformattedHtml('<p><a href="https://example.com"><span> </span></a></p><ul><li><p>Item</p></li></ul>', 'shoppables');
+      expect(new DOMParser().parseFromString(output, 'text/html').querySelector('li')?.innerHTML).toBe('Item');
+      expect(warning).not.toHaveBeenCalled();
+      expect(cleanHtml('<a href="https://example.com"> </a><ul><li><p>Item</p></li></ul>')).toContain('<li>Item</li>');
+      expect(warning).not.toHaveBeenCalled();
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it('preserves inline text spacing in formatted and preview output', () => {
+    const output = convertToHtml('Hello <strong>world</strong> today.', 'shoppables');
+    for (const html of [output.formatted, output.unformatted]) {
+      expect(new DOMParser().parseFromString(html, 'text/html').body.textContent).toBe('Hello world today.');
+    }
+  });
+});
+
+describe('URL preservation', () => {
+  it.each([
+    'https://example.com/docs--v2?key=a--b#part--two',
+    'https://xn--bcher-kva.example/path',
+    '/products--new?query=some%20text&value=a--b',
+    '../next--page',
+    'mailto:editor@example.com?subject=Follow--up',
+    'https://example.com/a—b?query=x+y',
+  ])('preserves the exact destination: %s', (href) => {
+    for (const style of ['', ' style="font-weight:bold"']) {
+      const output = getUnformattedHtml(`<p${style}><a href="${href}">Link</a></p>`, 'shoppables');
+      expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')?.getAttribute('href')).toBe(href);
+    }
+  });
+});
 
 describe('Word-to-HTML pipeline regressions', () => {
   it.each<OutputMode>(['regular', 'blogs', 'shoppables'])('preserves literal markup as text in %s output', (mode) => {
@@ -126,10 +257,20 @@ describe('Sources content preservation', () => {
     const output = normalizeSources('<p>Sources:</p><ol><li><em>Study</em> by Author</li></ol>');
     const doc = new DOMParser().parseFromString(output, 'text/html');
     expect(doc.querySelector('li > em')?.textContent).toBe('Study by Author');
+    expect(doc.querySelector('em em')).toBeNull();
     expect(doc.querySelector('li')?.getAttribute('style')).toBe('font-style: italic');
     const results = validateMode(output, 'blogs', {});
     expect(results.results.find(result => result.ruleId === 'sources-normalization')?.passed).toBe(true);
     expect(results.results.find(result => result.ruleId === 'sources-italic')?.passed).toBe(true);
     expect(normalizeSources(output, false)).not.toContain('style=');
+  });
+
+  it('keeps nested source lists outside inline emphasis wrappers', () => {
+    const input = '<p>Sources:</p><ol><li>Main source<ul><li>Nested citation</li></ul></li></ol>';
+    const output = normalizeSources(input);
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('em ul, em ol')).toBeNull();
+    expect(doc.querySelector('ol > li > ul > li')?.textContent).toBe('Nested citation');
+    expect(normalizeSources(output)).toBe(output);
   });
 });

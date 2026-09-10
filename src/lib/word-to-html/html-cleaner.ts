@@ -16,10 +16,12 @@
  * not security or semantic normalization.
  */
 
+import { removeSpacingParagraphs } from './html-spacing';
+
 // Block-level elements (including HTML5 semantic elements treated as layout blocks)
 // Note: Semantic HTML5 elements (section, article, etc.) are treated as layout blocks
 // for <br> removal purposes - this is an opinionated choice for Word-exported HTML
-const BLOCK_ELEMENTS = [
+export const BLOCK_ELEMENTS = [
   'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li',
   'blockquote', 'pre', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
   'dl', 'dt', 'dd', 'section', 'article', 'aside', 'header', 'footer',
@@ -27,7 +29,7 @@ const BLOCK_ELEMENTS = [
 ];
 
 // Set for O(1) lookups in hot loops
-const BLOCK_ELEMENT_SET = new Set(BLOCK_ELEMENTS);
+export const BLOCK_ELEMENT_SET = new Set(BLOCK_ELEMENTS);
 
 /**
  * IMPORTANT: This cleaner is order-dependent.
@@ -52,7 +54,9 @@ export function cleanHtml(html: string): string {
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
-    
+
+    // Also covers direct convertToHtml callers and wrappers unwrapped by sanitization.
+    removeSpacingParagraphs(doc.body);
     cleanElement(doc.body, false);
     removeBrAtStartOfBlockElements(doc.body);
     removeBrAfterBlockElements(doc.body);
@@ -335,6 +339,13 @@ function trimAnchorWhitespace(element: Element): void {
   if (firstTextNode === null && lastTextNode === null) {
     return;
   }
+
+  // A single text node is both boundaries; trim and remove it only once.
+  if (firstTextNode && firstTextNode === lastTextNode) {
+    firstTextNode.textContent = (firstTextNode.textContent || '').trim();
+    if (!firstTextNode.textContent) firstTextNode.remove();
+    return;
+  }
   
   if (firstTextNode) {
     const originalText = firstTextNode.textContent || '';
@@ -355,15 +366,6 @@ function trimAnchorWhitespace(element: Element): void {
       element.removeChild(lastTextNode);
     } else {
       lastTextNode.textContent = trimmedText;
-    }
-  } else if (lastTextNode && lastTextNode === firstTextNode && firstTextNode) {
-    const originalText = firstTextNode.textContent || '';
-    const trimmedText = originalText.trim();
-    
-    if (trimmedText.length === 0) {
-      element.removeChild(firstTextNode);
-    } else {
-      firstTextNode.textContent = trimmedText;
     }
   }
 }

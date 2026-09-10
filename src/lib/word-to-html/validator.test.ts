@@ -48,6 +48,15 @@ describe('validateMode — empty input', () => {
 /* ------------------------------------------------------------------ */
 
 describe('validateSanitizedStructure', () => {
+  it.each([
+    '<ol><strong><li>Item</li></strong></ol>',
+    '<ul><em><li>Item</li></em></ul>',
+    '<ul><li><p>Uncleaned item</p></li></ul>',
+    '<li>Orphan item</li>',
+    '<constructor>Unknown element</constructor>',
+  ])('rejects invalid or uncleaned list structure: %s', (html) => {
+    expectFail(validateMode(html, 'blogs', defaultFeatures), 'sanitized-structure');
+  });
   it('passes for allowed elements only', () => {
     const html = '<h2>Title</h2><p>Body with <strong>bold</strong> and <em>italic</em>.</p>';
     const results = validateMode(html, 'blogs', defaultFeatures);
@@ -627,6 +636,25 @@ describe('validateDisclaimerNormalize (D5)', () => {
 /* ------------------------------------------------------------------ */
 
 describe('validateSpacing (D9 / D11)', () => {
+  it.each(['<p>&nbsp;</p>', '<p><span> </span></p>', '<p><br></p>', '<br>'])('rejects spacing before the first FAQ question: %s', (gap) => {
+    const html = `<h2><strong>Frequently Asked Questions About How Often Do Newborns Eat?</strong></h2>${gap}<h3><strong>First question?</strong></h3>`;
+    expectFail(validateMode(html, 'blogs', defaultFeatures), 'spacing-rules');
+  });
+
+  it('rejects a whitespace-only blank paragraph in default Shoppables mode', () => {
+    expectFail(validateMode('<p>A</p><p> </p><p>B</p>', 'shoppables', defaultFeatures), 'spacing-rules');
+  });
+
+  it('rejects unrequested BR spacing while allowing explicit Read More BR spacing', () => {
+    const html = '<p>Body.</p><p><br></p><p>Read more: Details.</p>';
+    expectFail(validateMode(html, 'shoppables', {}), 'spacing-rules');
+    expectPass(validateMode(html, 'shoppables', { brBeforeReadMore: true }), 'spacing-rules');
+  });
+
+  it('rejects FAQ spacing even with general spacing disabled and BR options enabled', () => {
+    const html = '<h2>FAQ</h2><p><br></p><h3>First question?</h3>';
+    expectFail(validateMode(html, 'shoppables', { brBeforeReadMore: true }), 'spacing-rules');
+  });
   it('regular mode: skipped', () => {
     const results = validateMode('<h2>Title</h2>', 'regular', defaultFeatures);
     expectSkipped(results, 'spacing-rules');

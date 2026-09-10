@@ -10,13 +10,14 @@
  * - Disallowed elements (span, div, etc.) are unwrapped; formatting styles replace the element
  * - Formatting is normalized: i→em, b→strong, style attributes→semantic tags
  * - Superscript/subscript wrap italic/bold (outer tags)
- * - URLs are normalized (not just validated) to handle Word-exported HTML encoding issues
+ * - URL destinations are preserved; only surrounding whitespace is trimmed
  */
 
 import DOMPurify from 'dompurify';
+import { BLOCK_ELEMENT_SET } from './html-cleaner';
 
 // Note: 'i' and 'b' are normalized to 'em' and 'strong' during processing
-const ALLOWED_ELEMENTS = [
+export const ALLOWED_ELEMENTS = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'p', 'br', 'hr',
   'ul', 'ol', 'li',
@@ -38,6 +39,39 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
 const SAFE_PROTOCOLS = ['http:', 'https:', 'mailto:'];
 const SAFE_REL_VALUES = ['nofollow', 'noopener', 'noreferrer', 'noopener,noreferrer'];
 const NOOPENER_REGEX = /\bnoopener\b/i;
+
+// These containers cannot accept an inline formatting wrapper around their children.
+const STRUCTURAL_CHILDREN = new Map<string, readonly string[]>([
+  ['ol', ['li']],
+  ['ul', ['li']],
+  ['table', ['thead', 'tbody', 'tr']],
+  ['thead', ['tr']],
+  ['tbody', ['tr']],
+  ['tr', ['th', 'td']],
+]);
+
+/** Shared by validation and preview highlights to catch structural cleanup failures. */
+export function getStructuralIssues(root: Element): { element: Element; message: string }[] {
+  const issues: { element: Element; message: string }[] = [];
+  for (const element of [root, ...Array.from(root.querySelectorAll('*'))]) {
+    const tag = element.tagName.toLowerCase();
+    const allowedChildren = STRUCTURAL_CHILDREN.get(tag);
+    if (allowedChildren && Array.from(element.childNodes).some(node =>
+      node.nodeType === Node.ELEMENT_NODE
+        ? !allowedChildren.includes((node as Element).tagName.toLowerCase())
+        : node.nodeType === Node.TEXT_NODE && !!node.textContent?.trim()
+    )) {
+      issues.push({ element, message: `Invalid child structure in <${tag}>; expected ${allowedChildren.map(child => `<${child}>`).join(', ')}` });
+    }
+    if (tag === 'li' && !element.parentElement?.matches('ol, ul')) {
+      issues.push({ element, message: 'List item must be a direct child of <ol> or <ul>' });
+    }
+    if (tag === 'li' && element.querySelector('p')) {
+      issues.push({ element, message: 'Uncleaned paragraph wrapper inside <li>' });
+    }
+  }
+  return issues;
+}
 
 /**
  * Extracts formatting information from an element's style attribute
@@ -88,10 +122,10 @@ function extractFormatting(style: string): FormattingInfo | null {
  * Tag nesting order: sup/sub (outer) wraps em/strong (inner)
  * This is an opinionated choice - sup/sub are treated as structural modifiers.
  */
-function convertFormattingToSemanticTags(element: Element): Element | null {
-  const style = element.getAttribute('style') || '';
-  const formatting = extractFormatting(style);
-  
+function convertFormattingToSemanticTags(
+  element: Element,
+  formatting = extractFormatting(element.getAttribute('style') || '')
+): Element | null {
   if (!formatting) return null;
   
   const { isItalic, isBold, isSuperscript, isSubscript } = formatting;
@@ -149,35 +183,26 @@ function convertFormattingToSemanticTags(element: Element): Element | null {
 }
 
 /**
- * Wraps all text content of an element in the specified tag.
- * Used for LI "lift and scrub" to apply formatting from LI style to text content.
- * Preserves existing child elements (like nested lists).
+ * Wraps consecutive inline nodes without reordering text or enclosing structural
+ * blocks. Used by Sources formatting and block-copy paragraph grouping.
  */
-function wrapTextContentInElement(element: Element, tagName: string): void {
-  const childNodes = Array.from(element.childNodes);
-  const textNodes: Text[] = [];
-  const elementChildren: Element[] = [];
-  
-  childNodes.forEach(child => {
-    if (child.nodeType === Node.TEXT_NODE && child.textContent?.trim()) {
-      textNodes.push(child as Text);
-    } else if (child.nodeType === Node.ELEMENT_NODE) {
-      elementChildren.push(child as Element);
+export function wrapInlineContent(element: Element, tagName: string): void {
+  let wrapper: Element | null = null;
+  for (const child of Array.from(element.childNodes)) {
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      const childTag = (child as Element).tagName.toLowerCase();
+      if (BLOCK_ELEMENT_SET.has(childTag) || ['img', 'hr', 'br'].includes(childTag)) {
+        wrapper = null;
+        continue;
+      }
     }
-  });
-  
-  if (textNodes.length === 0) return;
-  
-  const wrapper = document.createElement(tagName);
-  textNodes.forEach(textNode => {
-    wrapper.appendChild(textNode);
-  });
-  
-  // Insert wrapper at the beginning, before any element children
-  if (elementChildren.length > 0) {
-    element.insertBefore(wrapper, elementChildren[0]);
-  } else {
-    element.appendChild(wrapper);
+    if (child.nodeType !== Node.TEXT_NODE && child.nodeType !== Node.ELEMENT_NODE) continue;
+    if (!wrapper) {
+      if (child.nodeType === Node.TEXT_NODE && !child.textContent?.trim()) continue;
+      wrapper = element.ownerDocument.createElement(tagName);
+      element.insertBefore(wrapper, child);
+    }
+    wrapper.appendChild(child);
   }
 }
 
@@ -225,29 +250,22 @@ function sanitizeElement(element: Element): void {
     const tagName = node.tagName.toLowerCase();
 
     // Normalize i/b tags to em/strong (these are not in ALLOWED_ELEMENTS)
-    if (tagName === 'i') {
-      // Sanitize children first, then replace element
+    if (tagName === 'i' || tagName === 'b') {
       sanitizeElement(node);
-      const em = document.createElement('em');
+      const semantic = document.createElement(tagName === 'b' ? 'strong' : 'em');
       while (node.firstChild) {
-        em.appendChild(node.firstChild);
+        semantic.appendChild(node.firstChild);
       }
-      if (node.parentNode) {
-        node.parentNode.replaceChild(em, node);
-        // No need to sanitize em - it's already an allowed element with sanitized children
+      node.appendChild(semantic);
+      // Preserve styles on b/i before discarding the original element. The
+      // semantic tag already supplies bold/italic, so avoid duplicate wrappers.
+      const formatting = extractFormatting(node.getAttribute('style') || '');
+      if (formatting) {
+        if (tagName === 'b') formatting.isBold = false;
+        else formatting.isItalic = false;
       }
-      continue;
-    } else if (tagName === 'b') {
-      // Sanitize children first, then replace element
-      sanitizeElement(node);
-      const strong = document.createElement('strong');
-      while (node.firstChild) {
-        strong.appendChild(node.firstChild);
-      }
-      if (node.parentNode) {
-        node.parentNode.replaceChild(strong, node);
-        // No need to sanitize strong - it's already an allowed element with sanitized children
-      }
+      const replacement = convertFormattingToSemanticTags(node, formatting);
+      node.replaceWith(replacement || semantic);
       continue;
     }
 
@@ -297,8 +315,8 @@ function sanitizeElement(element: Element): void {
       
       // Always clean descendants, including beneath styled semantic elements.
       sanitizeElement(node);
-      if (formatting) {
-        const wrapper = convertFormattingToSemanticTags(node);
+      if (formatting && !STRUCTURAL_CHILDREN.has(tagName) && tagName !== 'blockquote') {
+        const wrapper = convertFormattingToSemanticTags(node, formatting);
         if (wrapper) node.appendChild(wrapper);
       }
 
@@ -370,55 +388,14 @@ function sanitizeAttributes(element: Element, tagName: string): void {
 }
 
 /**
- * Normalizes URLs by cleaning up encoding issues and normalizing whitespace
- * Note: This function normalizes URLs (changes their form) before validation.
- * This is intentional for handling Word-exported HTML with encoding issues.
+ * Trim clipboard padding without rewriting destinations. Hyphens, Unicode,
+ * encoding, query values, and relative paths are part of the URL contract.
  */
-function cleanUrl(url: string, baseUrl: string = ''): string {
-  if (!url || typeof url !== 'string') {
-    return url;
-  }
-
-  try {
-    let cleaned = url;
-    // Normalize various dash types to standard hyphen
-    cleaned = cleaned.replace(/[\u2011\u2012\u2013\u2014\u2015]/g, '-');
-    // Normalize non-breaking spaces
-    cleaned = cleaned.replace(/\u00A0/g, ' ');
-    // Normalize whitespace sequences to single hyphens
-    cleaned = cleaned.replace(/\s+/g, '-');
-    // Collapse multiple hyphens
-    cleaned = cleaned.replace(/-+/g, '-');
-    // Remove hyphens adjacent to slashes
-    cleaned = cleaned.replace(/\/-+/g, '/').replace(/-+\//g, '/');
-    
-    if (cleaned !== url) {
-      try {
-        const urlObj = new URL(cleaned, baseUrl || window.location.href);
-        const cleanPath = urlObj.pathname
-          .split('/')
-          .map(segment => encodeURIComponent(decodeURIComponent(segment)))
-          .join('/');
-        return urlObj.origin + cleanPath + urlObj.search + urlObj.hash;
-      } catch (e) {
-        return cleaned;
-      }
-    }
-    
-    return url;
-  } catch (e) {
-    // Fallback: handle URL-encoded dash variants
-    let cleaned = url.replace(/%E2%80%91/g, '-')
-                    .replace(/%E2%80%93/g, '-')
-                    .replace(/%E2%80%94/g, '-')
-                    .replace(/%E2%80%95/g, '-')
-                    .replace(/%C2%A0/g, '-');
-    cleaned = cleaned.replace(/-+/g, '-');
-    return cleaned;
-  }
+function cleanUrl(url: string): string {
+  return url.trim();
 }
 
-function isSafeUrl(url: string, baseUrl: string = ''): boolean {
+export function isSafeUrl(url: string, baseUrl: string = ''): boolean {
   if (!url || typeof url !== 'string') {
     return false;
   }

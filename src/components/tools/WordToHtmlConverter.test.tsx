@@ -30,6 +30,78 @@ function enterHtml(html: string) {
 }
 
 describe('WordToHtmlConverter', () => {
+  it('copies a complete inline sentence as one paragraph', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      render(<WordToHtmlConverter />);
+      enterHtml('Hello <strong>world</strong> today.');
+      fireEvent.click(screen.getByTitle('Copy blocks'));
+      fireEvent.click(screen.getByTitle('Copy as HTML code with CSS'));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('<p>Hello <strong>world</strong> today.</p>'));
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
+  it('keeps the accepted FAQ and Shoppables spacing in the UI', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Body.</p><h2>Frequently Asked Questions About How Often Do Newborns Eat?</h2><p><span>&nbsp;</span></p><h3>How many times a day should a newborn eat?</h3><p>Answer.</p>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    const preview = document.querySelector('.output-preview')!;
+    expect(preview.querySelector('h2')?.nextElementSibling).toBe(preview.querySelector('h3'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
+    expect(Array.from(preview.querySelectorAll('p')).every(p => !!p.textContent?.trim())).toBe(true);
+    expect(screen.queryByText(/^Failed:/)).toBeNull();
+  });
+
+  it('highlights structural failures using the same detection as the validator', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<ol><strong><li>Item</li></strong></ol>');
+    const list = document.querySelector('.output-preview ol');
+    expect(list?.getAttribute('data-warning')).toContain('Invalid child structure');
+  });
+
+  it('shows the same warning in both toolbars and restores focus inside maximized output', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        total: 1, good: 0, broken: 0, serverErrors: 1, blocked: 0,
+        goodLinks: [], brokenLinks: [], blockedLinks: [],
+        serverErrorLinks: [{ url: 'https://example.com/unavailable', status: 503 }],
+      }),
+    }));
+    render(<WordToHtmlConverter />);
+    enterHtml('<p><a href="https://example.com/unavailable">Example</a></p>');
+    const mainCheckButton = screen.getByTitle('Check Links');
+    fireEvent.click(screen.getByTitle('Maximize Output'));
+    const outputDialog = screen.getByRole('dialog', { name: 'Output - Code' });
+    const modalCheckButton = within(outputDialog).getByTitle('Check Links');
+    fireEvent.click(modalCheckButton);
+    const resultsDialog = await screen.findByRole('dialog', { name: 'Link Check Results' });
+    fireEvent.keyDown(resultsDialog, { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(modalCheckButton));
+    expect(mainCheckButton.getAttribute('aria-label')).toBe('Check Links: issues found');
+    expect(modalCheckButton.getAttribute('aria-label')).toBe('Check Links: issues found');
+    expect(modalCheckButton.querySelector('.text-yellow-500')).toBeTruthy();
+  });
+
+  it('reports clipboard failures from the output copy button', async () => {
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error('Denied')) } });
+    try {
+      render(<WordToHtmlConverter />);
+      enterHtml('<p>Text</p>');
+      fireEvent.click(screen.getByTitle('Copy HTML'));
+      await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Error', variant: 'destructive' })));
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
   it('shows server-error links using the worker response contract', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,

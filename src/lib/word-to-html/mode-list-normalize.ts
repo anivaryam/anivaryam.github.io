@@ -37,11 +37,9 @@ function mergeAdjacentUl(doc: Document): void {
       }
 
       if (sibling === nextUl) {
-        const lis = Array.from(nextUl.children).filter(
-          el => el.tagName === 'LI'
-        );
-
-        lis.forEach(li => currentUl.appendChild(li));
+        // Preserve every node, even if malformed input contains a wrapper.
+        // Structural validation can flag it; merging must never delete content.
+        while (nextUl.firstChild) currentUl.appendChild(nextUl.firstChild);
         nextUl.remove();
         hasChanges = true;
       }
@@ -128,4 +126,3 @@ export function normalizeLists(html: string): string {
     return html;
   }
 }
-

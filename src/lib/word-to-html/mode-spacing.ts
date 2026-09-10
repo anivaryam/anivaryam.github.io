@@ -3,18 +3,7 @@
  * Adds <p>&nbsp;</p> spacing elements in specific locations
  */
 
-function isSpacingElement(element: Element): boolean {
-  if (!element || element.tagName.toLowerCase() !== 'p') {
-    return false;
-  }
-  const text = (element.textContent || '').trim();
-  const html = element.innerHTML.trim();
-  
-  const isOnlyNbsp = (html === '&nbsp;' || html === '\u00A0');
-  const isOnlySpaceChar = (text === '\u00A0' || text === '');
-  
-  return isOnlyNbsp && isOnlySpaceChar;
-}
+import { isSpacingParagraph as isSpacingElement } from './html-spacing';
 
 function addSpacingAfterKeyTakeaways(doc: Document): void {
   const headings = Array.from(doc.querySelectorAll('h2'));
@@ -55,54 +44,52 @@ function addSpacingAfterKeyTakeaways(doc: Document): void {
   }
 }
 
-function addSpacingBeforeHeadings(doc: Document): void {
-  const headings = Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, h6'));
-  let isFirstFaqQuestion = false;
-  let foundFaqSection = false;
-  
-  headings.forEach((heading) => {
-    const text = heading.textContent?.trim().toLowerCase() || '';
-    
-    if (text.includes('key takeaways')) {
-      return;
+/** One rule source for conversion, validation, and preview highlighting. */
+export function getHeadingSpacingIssues(doc: Document): {
+  element: Element;
+  kind: 'missing' | 'unexpected';
+  message: string;
+}[] {
+  const issues: ReturnType<typeof getHeadingSpacingIssues> = [];
+  let awaitingFirstFaqQuestion = false;
+  for (const heading of Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, h6'))) {
+    const text = heading.textContent?.trim() || '';
+    const lowerText = text.toLowerCase();
+    const tag = heading.tagName.toLowerCase();
+    if (tag === 'h1' || tag === 'h2') {
+      awaitingFirstFaqQuestion = lowerText.includes('faq') || lowerText.includes('frequently asked questions');
     }
-    
-    if (text.includes('frequently asked questions') || text.includes('faq')) {
-      foundFaqSection = true;
-      isFirstFaqQuestion = true;
+    const previous = heading.previousElementSibling;
+    if (awaitingFirstFaqQuestion && tag === 'h3') {
+      awaitingFirstFaqQuestion = false;
+      if (isSpacingElement(previous) || previous?.tagName === 'BR') {
+        issues.push({ element: heading, kind: 'unexpected', message: `Unexpected spacing before first FAQ question: "${text.substring(0, 30)}..."` });
+      }
+      continue;
     }
-    
-    if (foundFaqSection && isFirstFaqQuestion && heading.tagName.toLowerCase() === 'h3') {
-      isFirstFaqQuestion = false;
-      return;
+    if (lowerText.includes('key takeaways') || !previous) continue;
+    if (!isSpacingElement(previous)) {
+      issues.push({ element: heading, kind: 'missing', message: `Missing spacing before heading: "${text.substring(0, 30)}..."` });
     }
-    
-    const prevSibling = heading.previousElementSibling;
-    // Skip first heading in document (no previous sibling)
-    if (!prevSibling) {
-      return;
-    }
+  }
+  return issues;
+}
 
-    const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);
-    if (hasExistingSpacing) {
-      return;
+function addSpacingBeforeHeadings(doc: Document): void {
+  for (const issue of getHeadingSpacingIssues(doc)) {
+    if (issue.kind === 'unexpected') {
+      let previous = issue.element.previousElementSibling;
+      while (previous && (isSpacingElement(previous) || previous.tagName === 'BR')) {
+        const nextPrevious = previous.previousElementSibling;
+        previous.remove();
+        previous = nextPrevious;
+      }
+    } else {
+      const spacing = doc.createElement('p');
+      spacing.innerHTML = '&nbsp;';
+      issue.element.before(spacing);
     }
-    
-    let node = heading.previousSibling;
-    while (node && node.nodeType === Node.TEXT_NODE && !(node as Text).textContent?.trim()) {
-      node = node.previousSibling;
-    }
-    if (node && node.nodeType === Node.ELEMENT_NODE && isSpacingElement(node as Element)) {
-      return;
-    }
-    
-    const spacing = doc.createElement('p');
-    spacing.innerHTML = '&nbsp;';
-    const headingParent = heading.parentNode;
-    if (headingParent) {
-      headingParent.insertBefore(spacing, heading);
-    }
-  });
+  }
 }
 
 function addSpacingBeforeReadSection(doc: Document): void {

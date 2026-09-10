@@ -4,25 +4,21 @@
  * Replaces existing <p>&nbsp;</p> spacers if spacing rules already added them
  */
 
-function isSpacingElement(element: Element | null): boolean {
-  if (!element || element.tagName.toLowerCase() !== 'p') {
-    return false;
-  }
-  const text = (element.textContent || '').trim();
-  const html = element.innerHTML.trim();
-  
-  const isOnlyNbsp = (html === '&nbsp;' || html === '&#160;' || html === '\u00A0');
-  const isOnlySpaceChar = (text === '\u00A0' || text === '');
-  
-  return isOnlyNbsp && isOnlySpaceChar;
+import {
+  isSpacingParagraph as isSpacingElement,
+  isBrSpacingParagraph as isBrSpacingElement,
+} from './html-spacing';
+
+export function isReadMoreParagraph(element: Element | null): boolean {
+  if (element?.tagName.toLowerCase() !== 'p') return false;
+  const text = element.textContent?.trim().toLowerCase() || '';
+  return text.includes('read also:') || text.includes('read more:') || text.includes('see more:');
 }
 
-function isBrSpacingElement(element: Element | null): boolean {
-  if (!element || element.tagName.toLowerCase() !== 'p') {
-    return false;
-  }
-  const html = element.innerHTML.trim();
-  return html === '<br>' || html === '<br/>' || html === '<br />';
+export function isSourcesParagraph(element: Element | null): boolean {
+  if (element?.tagName.toLowerCase() !== 'p') return false;
+  const text = element.textContent?.trim().toLowerCase() || '';
+  return text === 'sources' || text.startsWith('sources:');
 }
 
 /**
@@ -41,10 +37,7 @@ export function addBrBeforeReadMore(html: string): string {
     const paragraphs = doc.querySelectorAll('p');
     
     paragraphs.forEach(p => {
-      const text = p.textContent?.trim().toLowerCase() || '';
-      if (text.includes('read also:') || 
-          text.includes('read more:') || 
-          text.includes('see more:')) {
+      if (isReadMoreParagraph(p)) {
         
         // Check if there's an existing spacing element before this paragraph
         const prevSibling = p.previousElementSibling;
@@ -109,8 +102,7 @@ export function addBrBeforeSources(html: string): string {
     const paragraphs = doc.querySelectorAll('p');
     
     paragraphs.forEach(p => {
-      const text = p.textContent?.trim().toLowerCase() || '';
-      if (text.startsWith('sources:')) {
+      if (isSourcesParagraph(p)) {
         
         // Check if there's an existing spacing element before this paragraph
         const prevSibling = p.previousElementSibling;
@@ -158,4 +150,3 @@ export function addBrBeforeSources(html: string): string {
     return html;
   }
 }
-

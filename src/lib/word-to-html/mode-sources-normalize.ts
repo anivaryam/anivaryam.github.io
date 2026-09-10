@@ -4,6 +4,7 @@
  */
 
 import { normalizeSectionLabel } from './mode-disclaimer-normalize';
+import { wrapInlineContent } from './html-sanitizer';
 
 export function normalizeSources(html: string, sourcesItalic: boolean = true): string {
   if (!html || typeof html !== 'string') {
@@ -47,15 +48,12 @@ function normalizeSourcesListItems(olElement: Element, doc: Document, sourcesIta
   const listItems = olElement.querySelectorAll('li');
   
   listItems.forEach(li => {
-    const alreadyWrapped = li.childNodes.length === 1 && li.firstElementChild?.tagName.toLowerCase() === 'em';
-    if (!alreadyWrapped) {
-      // Move every node in order, including bold text and nested formatting.
-      const em = doc.createElement('em');
-      while (li.firstChild) {
-        em.appendChild(li.firstChild);
-      }
-      li.appendChild(em);
+    // Flatten emphasis belonging to this item before adding one canonical
+    // wrapper per inline run. Nested lists retain their own item formatting.
+    for (const em of Array.from(li.querySelectorAll('em')).reverse()) {
+      if (em.closest('li') === li) em.replaceWith(...Array.from(em.childNodes));
     }
+    wrapInlineContent(li, 'em');
 
     // Add italic style to li when sourcesItalic is enabled
     if (sourcesItalic) {

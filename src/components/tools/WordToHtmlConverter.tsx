@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import Lenis from "lenis";
 import { Copy, Check, FileText, Code, Braces, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash, Link, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { toast } from "@/hooks/use-toast";
 import { convertToHtml, type OutputMode, type FeatureFlags } from "@/lib/word-to-html/converter";
 import { resolveFeatures } from "@/lib/word-to-html/mode-processor";
+import { getStructuralIssues, wrapInlineContent } from "@/lib/word-to-html/html-sanitizer";
+import { getHeadingSpacingIssues } from "@/lib/word-to-html/mode-spacing";
 import DOMPurify from 'dompurify';
 import { cleanWordHtml } from "@/lib/word-to-html/word-html-cleaner";
-import { validateMode, type ValidationResults } from "@/lib/word-to-html/validator";
+import { validateMode, getUnexpectedSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "next-themes";
@@ -144,6 +146,7 @@ const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
   let blockId = 0;
 
   const container = doc.body;
+  wrapInlineContent(container, 'p');
   const children = Array.from(container.childNodes);
 
   let currentContentHtml = '';
@@ -382,11 +385,6 @@ const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
       // Tables, code blocks, and other supported elements are copyable content.
       currentContentHtml += element.outerHTML;
     }
-    else if (node.nodeType === Node.TEXT_NODE) {
-      const paragraph = doc.createElement('p');
-      paragraph.textContent = node.textContent;
-      currentContentHtml += paragraph.outerHTML;
-    }
   });
 
   if (currentContentHtml.trim()) {
@@ -438,6 +436,7 @@ export function WordToHtmlConverter() {
   const cssTextareaRef = useRef<HTMLTextAreaElement>(null);
   const cssResizeHandleRef = useRef<HTMLDivElement>(null);
   const checkLinksButtonRef = useRef<HTMLButtonElement>(null);
+  const linkCheckTriggerRef = useRef<HTMLButtonElement | null>(null);
   const maximizeButtonRef = useRef<HTMLButtonElement>(null);
 
   // Initialize Lenis smooth scroll for input and output containers
@@ -680,7 +679,37 @@ export function WordToHtmlConverter() {
   };
 
 
-  const contentBlocks = useMemo(() => parseHtmlIntoBlocks(outputHtml), [outputHtml]);
+  const contentBlocks = useMemo(() => parseHtmlIntoBlocks(previewHtml), [previewHtml]);
+
+  // The main and maximized output use the same copy behavior and error handling.
+  // Rich HTML follows the existing block-copy fallback; the shared clipboard hook
+  // only supports plain text.
+  const copyOutput = async (rich: boolean) => {
+    if (!outputHtml) return;
+    const html = rich ? previewHtml : getHtmlWithCSS(outputHtml);
+    try {
+      let copiedRichHtml = false;
+      if (rich) {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }) })]);
+          copiedRichHtml = true;
+        } catch {
+          await navigator.clipboard.writeText(html);
+        }
+      } else {
+        await navigator.clipboard.writeText(html);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({
+        title: "Copied!",
+        description: copiedRichHtml ? "Formatted HTML copied to clipboard" :
+          !rich && customCSS.trim() ? "HTML with CSS copied to clipboard" : "HTML copied to clipboard",
+      });
+    } catch {
+      toast({ title: "Error", description: "Failed to copy HTML to clipboard", variant: "destructive" });
+    }
+  };
 
   // Function to extract all links from HTML
   const extractLinks = (html: string): string[] => {
@@ -703,8 +732,9 @@ export function WordToHtmlConverter() {
   };
 
   // Function to check links using Cloudflare Worker API
-  const checkLinks = async () => {
+  const checkLinks = async (event: ReactMouseEvent<HTMLButtonElement>) => {
     if (!previewHtml) return;
+    linkCheckTriggerRef.current = event.currentTarget;
     
     const links = extractLinks(previewHtml);
     if (links.length === 0) {
@@ -745,6 +775,13 @@ export function WordToHtmlConverter() {
       setCheckingLinks(false);
     }
   };
+
+  const linkCheckHasIssues = !!linkCheckResult && linkCheckResult.good !== linkCheckResult.total;
+  const linkCheckLabel = checkingLinks ? 'Checking Links' : linkCheckHasIssues ? 'Check Links: issues found' :
+    linkCheckResult ? 'Check Links: all valid' : 'Check Links';
+  const linkCheckIcon = checkingLinks ? <Loader2 className="h-4 w-4 animate-spin" /> :
+    linkCheckHasIssues ? <AlertTriangle className="h-4 w-4 text-yellow-500" /> :
+    <Link className={`h-4 w-4${linkCheckResult ? ' text-green-500' : ''}`} />;
 
   // Open all blocked links in new tabs
   const openAllBlockedLinks = () => {
@@ -960,6 +997,12 @@ export function WordToHtmlConverter() {
         // Spacing rules - parse details and highlight the target element (not spacing elements)
         if (result.ruleId === 'spacing-rules') {
           const details = result.details || [];
+          if (features.spacing === false) {
+            getUnexpectedSpacingIssues(doc, features).forEach(issue => issue.element.setAttribute('data-warning', issue.message));
+          }
+          getHeadingSpacingIssues(doc).forEach(issue => {
+            if (details.includes(issue.message)) issue.element.setAttribute('data-warning', issue.message);
+          });
           
           details.forEach((message: string) => {
             // Parse message formats:
@@ -968,19 +1011,6 @@ export function WordToHtmlConverter() {
             // - 'Missing spacing before Disclaimer: section'
             // - 'Missing spacing before Alt Image Text: paragraph'
             // - 'Missing spacing before "...'
-            
-            // Handle heading messages: 'Missing spacing before heading: "..."'
-            const headingMatch = message.match(/Missing spacing before heading: "([^"]+)"/);
-            if (headingMatch) {
-              const headingText = headingMatch[1];
-              const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
-              headings.forEach(h => {
-                if (h.textContent?.includes(headingText)) {
-                  h.setAttribute('data-warning', message);
-                }
-              });
-              return;
-            }
             
             // Handle section/paragraph messages: 'Missing spacing before "X:" section' or 'Missing spacing before "X:" paragraph'
             const sectionMatch = message.match(/Missing spacing before "([^"]+):?"?\s*(section|paragraph)?"?$/i);
@@ -1059,6 +1089,9 @@ export function WordToHtmlConverter() {
 
         // Sanitized structure - flag elements with disallowed tags or banned attrs
         if (result.ruleId === 'sanitized-structure') {
+          getStructuralIssues(doc.body).forEach(issue => {
+            issue.element.setAttribute('data-warning', issue.message);
+          });
           // Locate Sources <ol> so we never flag the legitimate italic style on its <li>.
           let sourcesOl: Element | null = null;
           const paragraphs = doc.querySelectorAll('p');
@@ -1226,7 +1259,7 @@ export function WordToHtmlConverter() {
       console.error('Error adding warning attributes:', error);
       return previewHtml;
     }
-  }, [previewHtml, validationResults, showValidationWarnings, features.headingStrong]);
+  }, [previewHtml, validationResults, showValidationWarnings, features]);
 
   return (
     <div className="flex flex-col gap-3 md:gap-4 w-full max-w-full">
@@ -1785,31 +1818,7 @@ export function WordToHtmlConverter() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={async () => {
-                  if (outputHtml) {
-                    if (showPreview && previewHtml) {
-                      // Copy as rich text (HTML) for preview mode
-                      const blob = new Blob([previewHtml], { type: 'text/html' });
-                      await navigator.clipboard.write([
-                        new ClipboardItem({ 'text/html': blob })
-                      ]);
-                      toast({
-                        title: "Copied!",
-                        description: "Formatted HTML copied to clipboard",
-                      });
-                    } else {
-                      // Copy as plain text for code mode (includes CSS if provided)
-                      const htmlWithCSS = getHtmlWithCSS(outputHtml);
-                      await navigator.clipboard.writeText(htmlWithCSS);
-                      toast({
-                        title: "Copied!",
-                        description: customCSS.trim() ? "HTML with CSS copied to clipboard" : "HTML copied to clipboard",
-                      });
-                    }
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  }
-                }}
+                onClick={() => copyOutput(showPreview)}
                 disabled={!outputHtml}
                 className="h-8 w-8 p-0"
                 title={showPreview ? "Copy Formatted HTML" : customCSS.trim() ? "Copy HTML with CSS" : "Copy HTML"}
@@ -1829,16 +1838,10 @@ export function WordToHtmlConverter() {
                 disabled={!previewHtml || checkingLinks}
                 className="h-8 w-8 p-0"
                 title="Check Links"
+                aria-label={linkCheckLabel}
+                aria-busy={checkingLinks}
               >
-                {checkingLinks ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : linkCheckResult && linkCheckResult.good !== linkCheckResult.total ? (
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                ) : linkCheckResult && linkCheckResult.good === linkCheckResult.total ? (
-                  <Link className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Link className="h-4 w-4" />
-                )}
+                {linkCheckIcon}
               </Button>
             </div>
           </div>
@@ -2485,29 +2488,7 @@ export function WordToHtmlConverter() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={async () => {
-                    if (outputHtml) {
-                      if (maximizedOutputView === 'preview' && previewHtml) {
-                        const blob = new Blob([previewHtml], { type: 'text/html' });
-                        await navigator.clipboard.write([
-                          new ClipboardItem({ 'text/html': blob })
-                        ]);
-                        toast({
-                          title: "Copied!",
-                          description: "Formatted HTML copied to clipboard",
-                        });
-                      } else {
-                        const htmlWithCSS = getHtmlWithCSS(outputHtml);
-                        await navigator.clipboard.writeText(htmlWithCSS);
-                        toast({
-                          title: "Copied!",
-                          description: customCSS.trim() ? "HTML with CSS copied to clipboard" : "HTML copied to clipboard",
-                        });
-                      }
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }
-                  }}
+                  onClick={() => copyOutput(maximizedOutputView === 'preview')}
                   disabled={!outputHtml}
                   className="h-8 w-8 p-0"
                   title={maximizedOutputView === 'preview' ? "Copy Formatted HTML" : customCSS.trim() ? "Copy HTML with CSS" : "Copy HTML"}
@@ -2526,16 +2507,10 @@ export function WordToHtmlConverter() {
                   disabled={!previewHtml || checkingLinks}
                   className="h-8 w-8 p-0"
                   title="Check Links"
+                  aria-label={linkCheckLabel}
+                  aria-busy={checkingLinks}
                 >
-                  {checkingLinks ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : linkCheckResult && linkCheckResult.broken > 0 ? (
-                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                  ) : linkCheckResult && linkCheckResult.broken === 0 ? (
-                    <Link className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <Link className="h-4 w-4" />
-                  )}
+                  {linkCheckIcon}
                 </Button>
               </div>
             </div>
@@ -2684,7 +2659,9 @@ export function WordToHtmlConverter() {
           className="max-w-2xl max-h-[80vh] overflow-y-auto"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            checkLinksButtonRef.current?.focus();
+            const trigger = linkCheckTriggerRef.current;
+            if (trigger?.isConnected) trigger.focus();
+            else checkLinksButtonRef.current?.focus();
           }}
         >
           <DialogHeader>

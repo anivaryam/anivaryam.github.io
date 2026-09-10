@@ -3,16 +3,11 @@
  * Formats HTML in a compact style with nested tags on the same line
  */
 
+import { BLOCK_ELEMENTS } from './html-cleaner';
+
 const INLINE_ELEMENTS = [
   'a', 'em', 'i', 'strong', 'b', 'span', 'code', 'sup', 'sub',
   'small', 'mark', 'del', 'ins', 'u', 'abbr', 'cite', 'q', 'samp', 'var'
-];
-
-const BLOCK_ELEMENTS = [
-  'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li',
-  'blockquote', 'pre', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-  'dl', 'dt', 'dd', 'section', 'article', 'aside', 'header', 'footer',
-  'nav', 'main', 'figure', 'figcaption'
 ];
 
 const SELF_CLOSING = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'];
@@ -182,10 +177,8 @@ export function formatCompact(html: string): string {
         const formatted = formatElement(node as Element, false, 0);
         result += formatted;
       } else if (node.nodeType === Node.TEXT_NODE) {
-        const text = node.textContent?.trim();
-        if (text) {
-          result += '\n' + escapeHtml(text);
-        }
+        // Keep separators between top-level inline nodes intact.
+        result += escapeHtml(node.textContent);
       }
     }
     

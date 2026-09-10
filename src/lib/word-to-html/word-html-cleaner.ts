@@ -4,6 +4,8 @@
  * This matches the cleanWordHtml function from converter.js
  */
 
+import { removeSpacingParagraphs } from './html-spacing';
+
 function escapeHtml(text: string): string {
   const map: Record<string, string> = {
     '&': '&amp;',
@@ -446,13 +448,7 @@ function cleanEmptyElements(element: Element): void {
     }
   });
   
-  const emptyParagraphs = element.querySelectorAll('p');
-  emptyParagraphs.forEach(p => {
-    if (!p.textContent?.trim() && p.children.length === 0 && p.parentNode) {
-      const br = document.createElement('br');
-      p.parentNode.replaceChild(br, p);
-    }
-  });
+  removeSpacingParagraphs(element);
 }
 
 function getLastTextNode(element: Element): Text | null {

@@ -3,6 +3,19 @@ import { addSpacing, addSpacingBetweenParagraphs } from "./mode-spacing";
 import { validateMode } from "./validator";
 
 describe("spacing pipeline parity", () => {
+  it.each(['<p>&nbsp;</p>', '<p><em>&nbsp;</em></p>', '<p><br></p>', '<br>'])('removes existing first-FAQ spacing: %s', (gap) => {
+    const output = addSpacing(`<h2>Frequently Asked Questions About How Often Do Newborns Eat?</h2>${gap}<h3>First question?</h3><p>Answer.</p><h3>Second question?</h3>`);
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('h2')?.nextElementSibling).toBe(doc.querySelector('h3'));
+    expect(doc.querySelectorAll('h3')[1].previousElementSibling?.innerHTML).toBe('&nbsp;');
+    expect(validateMode(output, 'blogs', {}).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+  });
+
+  it('does not carry the FAQ exception into a later section', () => {
+    const output = addSpacing('<h2>FAQ</h2><p>Introduction.</p><h2>Product details</h2><h3>First product</h3>');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('h3')?.previousElementSibling?.innerHTML).toBe('&nbsp;');
+  });
   it.each([
     '<ul><li>Content</li></ul><p>Sources:</p>',
     '<p>Sources: An inline citation.</p>',
