@@ -157,9 +157,8 @@ function cleanElement(element: Element, insideLi = false): void {
  * Note: This is asymmetric - only handles <strong><em> pattern, not <em><strong>.
  * This is intentional for Word/Google Docs output patterns, not general normalization.
  * 
- * IMPORTANT: Only the first direct <em> child is normalized per <strong> element.
- * For example, <strong>text <em>em</em> more <em>em2</em></strong> will only normalize
- * the first <em>, not subsequent ones. This is intentional for Word output patterns.
+ * Only swap wrappers when <em> is the sole child. Mixed inline content must
+ * remain in its original order and retain its original emphasis.
  * 
  * Moves nodes (not clones) to preserve references, consistent with sanitizer behavior.
  */
@@ -185,8 +184,8 @@ function normalizeStrongEmNesting(element: Element): void {
                   node.parentNode === strongElement
         ) as Element | undefined;
         
-        if (directEm) {
-          // Restructure: <strong><em>content</em>other</strong> → <em><strong>content</strong></em>other
+        if (directEm && strongElement.childNodes.length === 1) {
+          // Restructure: <strong><em>content</em></strong> → <em><strong>content</strong></em>
           const newEm = document.createElement('em');
           const newStrong = document.createElement('strong');
           
@@ -198,28 +197,9 @@ function normalizeStrongEmNesting(element: Element): void {
           
           newEm.appendChild(newStrong);
           
-          // Collect content after em (to be moved after newEm)
-          const otherContent: Node[] = [];
-          let foundEm = false;
-          for (let j = 0; j < strongElement.childNodes.length; j++) {
-            const strongChild = strongElement.childNodes[j];
-            if (strongChild === directEm) {
-              foundEm = true;
-            } else if (foundEm) {
-              otherContent.push(strongChild);
-            }
-          }
-          
           if (strongElement.parentNode) {
-            const insertPosition = strongElement.nextSibling;
-            
             // Insert the new structure BEFORE the original strong element
             strongElement.parentNode.insertBefore(newEm, strongElement);
-            
-            // Move any content that was after the em
-            for (let j = 0; j < otherContent.length; j++) {
-              strongElement.parentNode.insertBefore(otherContent[j], insertPosition);
-            }
             
             // Remove original strong element (the empty em inside will be removed too)
             strongElement.parentNode.removeChild(strongElement);
@@ -541,4 +521,3 @@ function removeConsecutiveBr(element: Element): void {
     }
   }
 }
-

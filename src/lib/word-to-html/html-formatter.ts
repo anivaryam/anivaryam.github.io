@@ -17,7 +17,7 @@ const BLOCK_ELEMENTS = [
 
 const SELF_CLOSING = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'];
 
-function escapeHtmlAttr(str: unknown): string {
+function escapeHtml(str: unknown): string {
   if (str == null) return '';
   return String(str)
     .replace(/&/g, '&amp;')
@@ -56,7 +56,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
     if (element.attributes && element.attributes.length > 0) {
       for (let i = 0; i < element.attributes.length; i++) {
         const attr = element.attributes[i];
-        tag += ` ${attr.name}="${escapeHtmlAttr(attr.value)}"`;
+        tag += ` ${attr.name}="${escapeHtml(attr.value)}"`;
       }
     }
     tag += '>';
@@ -67,7 +67,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
   if (element.attributes && element.attributes.length > 0) {
     for (let i = 0; i < element.attributes.length; i++) {
       const attr = element.attributes[i];
-      openingTag += ` ${attr.name}="${escapeHtmlAttr(attr.value)}"`;
+      openingTag += ` ${attr.name}="${escapeHtml(attr.value)}"`;
     }
   }
   openingTag += '>';
@@ -119,7 +119,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
                                (nextSibling && nextSibling.nodeType === Node.ELEMENT_NODE);
       
       if (text.trim() || (isSpaceOnly && isBetweenElements)) {
-        content += text ?? '';
+        content += escapeHtml(text);
         hasContent = true;
       }
     }
@@ -184,7 +184,7 @@ export function formatCompact(html: string): string {
       } else if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent?.trim();
         if (text) {
-          result += '\n' + text;
+          result += '\n' + escapeHtml(text);
         }
       }
     }
@@ -210,4 +210,3 @@ export function formatCompact(html: string): string {
     return html;
   }
 }
-

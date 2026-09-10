@@ -19,6 +19,27 @@ import { addBrBeforeReadMore, addBrBeforeSources } from './mode-br-spacing';
 import { wrapLinksStrongUnderline } from './mode-wrap-links-strong-underline';
 import type { OutputMode, FeatureFlags } from './converter';
 
+/** Shared defaults for conversion, validation, and the feature controls. */
+export function resolveFeatures(mode: OutputMode, features: FeatureFlags = {}): Required<FeatureFlags> {
+  return {
+    headingStrong: features.headingStrong ?? mode !== 'regular',
+    keyTakeaways: features.keyTakeaways ?? mode === 'blogs',
+    h1Removal: features.h1Removal ?? mode === 'blogs',
+    linkAttributes: features.linkAttributes ?? mode !== 'regular',
+    relativePaths: features.relativePaths ?? false,
+    spacing: features.spacing ?? mode === 'blogs',
+    paragraphSpacing: features.paragraphSpacing ?? false,
+    olHeaderConversion: features.olHeaderConversion ?? mode !== 'regular',
+    sourcesNormalize: features.sourcesNormalize ?? mode !== 'regular',
+    sourcesItalic: features.sourcesItalic ?? mode !== 'regular',
+    disclaimerNormalize: features.disclaimerNormalize ?? mode !== 'regular',
+    removeSourcesLinks: features.removeSourcesLinks ?? mode !== 'regular',
+    brBeforeReadMore: features.brBeforeReadMore ?? false,
+    brBeforeSources: features.brBeforeSources ?? false,
+    wrapLinksStrongUnderline: features.wrapLinksStrongUnderline ?? false,
+  };
+}
+
 /**
  * Applies heading strong tag wrapping/unwrapping based on feature flag
  */
@@ -34,6 +55,7 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
   }
 
   let processedHtml = html;
+  features = resolveFeatures(mode, features);
 
   // List normalization - applies to all modes (regular, blogs, shoppables)
   processedHtml = normalizeLists(processedHtml);
@@ -203,6 +225,13 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = addSpacing(processedHtml);
     }
 
+    if (features.paragraphSpacing === true) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(processedHtml, 'text/html');
+      addSpacingBetweenParagraphs(doc);
+      processedHtml = doc.body.innerHTML;
+    }
+
     // BR spacing before read more (works independently, replaces &nbsp; if spacing rules added them)
     if (features.brBeforeReadMore === true) {
       processedHtml = addBrBeforeReadMore(processedHtml);
@@ -245,4 +274,3 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
   console.warn(`Unknown mode: ${mode}`);
   throw new Error(`Unknown mode: ${mode}`);
 }
-

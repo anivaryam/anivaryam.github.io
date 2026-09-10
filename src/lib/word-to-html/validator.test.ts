@@ -264,6 +264,16 @@ describe('validateHeadingStrong', () => {
     const results = validateMode(html, 'blogs', { headingStrong: false });
     expectFail(results, 'heading-strong');
   });
+
+  it('regular: honors an explicitly enabled heading wrapper', () => {
+    const results = validateMode('<h2><strong>Title</strong></h2>', 'regular', { headingStrong: true });
+    expectPass(results, 'heading-strong');
+  });
+
+  it('requires the strong wrapper to contain all heading text', () => {
+    const results = validateMode('<h2>Outside <strong>Inside</strong></h2>', 'blogs', defaultFeatures);
+    expectFail(results, 'heading-strong');
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -385,6 +395,9 @@ describe('validateLinkAttributes', () => {
 /* ------------------------------------------------------------------ */
 
 describe('validateRelativePaths', () => {
+  it('skips absolute URL checks when relative paths are not enabled', () => {
+    expectSkipped(validateMode('<a href="https://example.com">link</a>', 'blogs', defaultFeatures), 'relative-paths');
+  });
   it('passes when all paths are relative', () => {
     const html = '<a href="/path/to/page">link</a><a href="../other">x</a>';
     const results = validateMode(html, 'blogs', { relativePaths: true });
@@ -666,6 +679,13 @@ describe('validateSpacing (D9 / D11)', () => {
 /* ------------------------------------------------------------------ */
 
 describe('validateParagraphSpacing', () => {
+  it('allows paragraph spacers while general spacing rules are disabled', () => {
+    const html = '<p>A</p><p>&nbsp;</p><p>B</p>';
+    const results = validateMode(html, 'shoppables', { paragraphSpacing: true, spacing: false });
+    expectPass(results, 'paragraph-spacing');
+    expectPass(results, 'spacing-rules');
+  });
+
   it('regular mode: skipped', () => {
     const results = validateMode('<p>A</p><p>B</p>', 'regular', defaultFeatures);
     expectSkipped(results, 'paragraph-spacing');
@@ -695,6 +715,11 @@ describe('validateParagraphSpacing', () => {
 
 describe('validateSourcesItalic', () => {
   const sourcesItalicized = '<p><strong><em>Sources:</em></strong></p><ol><li style="font-style: italic">src</li></ol>';
+
+  it('skips the dependent feature when Sources normalization is disabled', () => {
+    const html = '<p>Sources:</p><ol><li>src</li></ol>';
+    expectSkipped(validateMode(html, 'blogs', { sourcesNormalize: false }), 'sources-italic');
+  });
 
   it('non-blogs/shoppables: skipped', () => {
     const results = validateMode('<p>x</p>', 'regular', defaultFeatures);

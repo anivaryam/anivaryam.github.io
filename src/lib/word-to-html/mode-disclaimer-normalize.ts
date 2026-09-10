@@ -18,12 +18,12 @@ function findDisclaimerParagraphs(doc: Document): Element[] {
   });
 }
 
-function isAlreadyNormalized(paragraph: Element): boolean {
+function isAlreadyNormalized(paragraph: Element, labelText: string): boolean {
   const strong = paragraph.querySelector(':scope > strong');
   if (!strong) return false;
   const em = strong.querySelector(':scope > em');
   if (!em) return false;
-  return em.textContent?.trim().toLowerCase() === 'disclaimer:';
+  return em.textContent?.trim().toLowerCase() === labelText.toLowerCase();
 }
 
 function bodyStartsWithWhitespace(node: Node | undefined): boolean {
@@ -117,11 +117,17 @@ function splitElementAfterLabel(
   return hasContent ? newContainer : null;
 }
 
-function normalizeDisclaimerParagraph(paragraph: Element, doc: Document): void {
-  if (isAlreadyNormalized(paragraph)) return;
+// Sources uses the same label/body splitting to preserve inline citations.
+export function normalizeSectionLabel(
+  paragraph: Element,
+  doc: Document,
+  labelText: string,
+  labelPattern: RegExp
+): void {
+  if (isAlreadyNormalized(paragraph, labelText)) return;
 
   const fullText = paragraph.textContent || '';
-  const match = fullText.match(LABEL_PATTERN);
+  const match = fullText.match(labelPattern);
   if (!match) return;
   const labelEndIdx = match[0].length;
 
@@ -191,7 +197,7 @@ function normalizeDisclaimerParagraph(paragraph: Element, doc: Document): void {
 
   const strong = doc.createElement('strong');
   const em = doc.createElement('em');
-  em.textContent = LABEL_TEXT;
+  em.textContent = labelText;
   strong.appendChild(em);
   paragraph.appendChild(strong);
 
@@ -214,7 +220,7 @@ export function normalizeDisclaimer(html: string): string {
     const doc = parser.parseFromString(html, 'text/html');
 
     const paragraphs = findDisclaimerParagraphs(doc);
-    paragraphs.forEach((p) => normalizeDisclaimerParagraph(p, doc));
+    paragraphs.forEach((p) => normalizeSectionLabel(p, doc, LABEL_TEXT, LABEL_PATTERN));
 
     return doc.body.innerHTML;
   } catch (e) {

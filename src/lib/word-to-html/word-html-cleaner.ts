@@ -146,41 +146,8 @@ function preserveFormattingElements(element: Element): void {
     }
   }
   
-  const elementsWithVA = element.querySelectorAll('[style*="vertical-align"]');
-  const vaElements = Array.from(elementsWithVA);
-  
-  vaElements.forEach(el => {
-    const style = el.getAttribute('style') || '';
-    const styleObj = parseStyle(style);
-    const va = styleObj['vertical-align'];
-    
-    if (va) {
-      const vaLower = va.toLowerCase().trim();
-      if (vaLower === 'super' || vaLower.includes('super') || vaLower.includes('35%') || vaLower.includes('0.6')) {
-        const sup = document.createElement('sup');
-        const otherStyles = Object.keys(styleObj)
-          .filter(k => k !== 'vertical-align')
-          .map(k => `${k}: ${styleObj[k]}`)
-          .join('; ');
-        if (otherStyles) sup.setAttribute('style', otherStyles);
-        sup.innerHTML = el.innerHTML;
-        if (el.parentNode) {
-          el.parentNode.replaceChild(sup, el);
-        }
-      } else if (vaLower === 'sub' || vaLower.includes('sub') || vaLower.includes('-35%') || vaLower.includes('-0.6')) {
-        const sub = document.createElement('sub');
-        const otherStyles = Object.keys(styleObj)
-          .filter(k => k !== 'vertical-align')
-          .map(k => `${k}: ${styleObj[k]}`)
-          .join('; ');
-        if (otherStyles) sub.setAttribute('style', otherStyles);
-        sub.innerHTML = el.innerHTML;
-        if (el.parentNode) {
-          el.parentNode.replaceChild(sub, el);
-        }
-      }
-    }
-  });
+  // Superscript/subscript conversion belongs to html-sanitizer's shared
+  // formatting extraction, which also preserves the original block structure.
 }
 
 function removeWordSpecificAttributes(element: Element): void {
@@ -417,16 +384,15 @@ function flattenNestedSpans(element: Element): void {
         const nextStyle = (nextSibling as Element).getAttribute('style') || '';
         
         if (spanStyle === nextStyle) {
-          while ((nextSibling as Element).firstChild) {
-            span.appendChild((nextSibling as Element).firstChild);
-          }
+          // Move the separator along with the spans; dropping it joins words.
           let betweenNode = span.nextSibling;
           while (betweenNode && betweenNode !== nextSibling) {
-            const toRemove = betweenNode;
+            const toMove = betweenNode;
             betweenNode = betweenNode.nextSibling;
-            if (toRemove.nodeType === Node.TEXT_NODE && !(toRemove as Text).textContent?.trim()) {
-              toRemove.remove();
-            }
+            span.appendChild(toMove);
+          }
+          while (nextSibling.firstChild) {
+            span.appendChild(nextSibling.firstChild);
           }
           nextSibling.remove();
           changed = true;
@@ -459,7 +425,7 @@ function cleanEmptyElements(element: Element): void {
   
   allSpans.forEach(span => {
     const textContent = span.textContent;
-    const hasText = textContent && textContent.trim().length > 0;
+    const hasText = textContent && textContent.length > 0;
     const hasChildren = span.children.length > 0;
     
     if (!hasText && !hasChildren) {
@@ -524,4 +490,3 @@ export function cleanWordHtml(html: string): string {
   
   return tempDiv.innerHTML;
 }
-

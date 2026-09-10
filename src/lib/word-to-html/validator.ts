@@ -4,6 +4,7 @@
  */
 
 import type { OutputMode, FeatureFlags } from './converter';
+import { resolveFeatures } from './mode-processor';
 
 /**
  * Centralized feature flag check with explicit defaults
@@ -265,7 +266,7 @@ function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult
 
   const sourcesList = findSourcesSection(doc)?.list ?? null;
 
-  const allElements = doc.body ? doc.body.querySelectorAll('*') : [];
+  const allElements = doc.body.querySelectorAll('*');
   allElements.forEach((el) => {
     const tagName = el.tagName.toLowerCase();
     if (!ALLOWED_ELEMENTS.has(tagName)) {
@@ -425,11 +426,12 @@ function validateHeadingStrong(doc: Document, mode: OutputMode, features?: Featu
     const elementChildren = Array.from(h.children);
     return (
       elementChildren.length === 1 &&
-      elementChildren[0].tagName.toLowerCase() === 'strong'
+      elementChildren[0].tagName.toLowerCase() === 'strong' &&
+      Array.from(h.childNodes).every(node => node === elementChildren[0] || !node.textContent?.trim())
     );
   }
 
-  if (mode === 'regular') {
+  if (mode === 'regular' && !features?.headingStrong) {
     const hasStrongWrapped = Array.from(headings).some(hasOnlyStrongChild);
     return {
       ruleId: 'heading-strong',
@@ -675,22 +677,6 @@ function validateLinkAttributes(doc: Document, mode: OutputMode, features?: Feat
     };
   }
 
-  if (mode === 'regular') {
-    const hasAttributes = Array.from(links).some(
-      (link) => link.hasAttribute('target') || link.hasAttribute('rel')
-    );
-    return {
-      ruleId: 'link-attributes',
-      feature: 'Link Attributes',
-      mode,
-      passed: !hasAttributes,
-      message: hasAttributes
-        ? 'Links should not have target/rel attributes in regular mode'
-        : 'Links correctly without target/rel attributes',
-      severity: hasAttributes ? 'error' : 'info',
-    };
-  }
-
   const isEnabled = isFeatureEnabled(features, 'linkAttributes', true);
 
   if (!isEnabled) {
@@ -742,7 +728,7 @@ function validateLinkAttributes(doc: Document, mode: OutputMode, features?: Feat
 }
 
 function validateRelativePaths(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
-  const enabled = features?.relativePaths ?? true;
+  const enabled = isFeatureEnabled(features, 'relativePaths', false);
   if (!enabled) {
     return {
       ruleId: 'relative-paths',
@@ -1425,6 +1411,13 @@ function validateSpacing(doc: Document, mode: OutputMode, features?: FeatureFlag
 
     allParagraphs.forEach((p) => {
       if (isNbspSpacingElement(p)) {
+        const previous = p.previousElementSibling;
+        const next = p.nextElementSibling;
+        // Paragraph Spacing is independent of the general spacing feature.
+        if (features?.paragraphSpacing && previous?.tagName === 'P' && next?.tagName === 'P' &&
+            previous.textContent?.trim() && next.textContent?.trim()) {
+          return;
+        }
         spacingElements.push('Found <p>&nbsp;</p> spacing element that should not be present');
       }
     });
@@ -1529,6 +1522,17 @@ function validateSourcesItalic(doc: Document, mode: OutputMode, features?: Featu
       mode,
       passed: true,
       message: 'Sources italic check not required for this mode',
+      severity: 'info',
+    };
+  }
+
+  if (features?.sourcesNormalize === false) {
+    return {
+      ruleId: 'sources-italic',
+      feature: 'Sources Italic',
+      mode,
+      passed: true,
+      message: 'Sources normalization disabled (skipped)',
       severity: 'info',
     };
   }
@@ -1889,6 +1893,7 @@ export function validateMode(html: string, mode: OutputMode, features: FeatureFl
   const doc = parser.parseFromString(html, 'text/html');
 
   const results = new ValidationResultsImpl();
+  features = resolveFeatures(mode, features);
 
   /* Run every validator. Each one self-gates on mode/feature flag and
    * returns an informational pass when not applicable. */

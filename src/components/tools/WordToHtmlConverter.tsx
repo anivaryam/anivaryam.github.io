@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { convertWordToHtml, getUnformattedHtml, convertToHtml, type OutputMode, type FeatureFlags } from "@/lib/word-to-html/converter";
+import { convertToHtml, type OutputMode, type FeatureFlags } from "@/lib/word-to-html/converter";
+import { resolveFeatures } from "@/lib/word-to-html/mode-processor";
 import DOMPurify from 'dompurify';
 import { cleanWordHtml } from "@/lib/word-to-html/word-html-cleaner";
 import { validateMode, type ValidationResults } from "@/lib/word-to-html/validator";
@@ -377,6 +378,15 @@ const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
       }
       currentContentHtml += element.outerHTML;
     }
+    else if (node.nodeType === Node.ELEMENT_NODE) {
+      // Tables, code blocks, and other supported elements are copyable content.
+      currentContentHtml += element.outerHTML;
+    }
+    else if (node.nodeType === Node.TEXT_NODE) {
+      const paragraph = doc.createElement('p');
+      paragraph.textContent = node.textContent;
+      currentContentHtml += paragraph.outerHTML;
+    }
   });
 
   if (currentContentHtml.trim()) {
@@ -398,7 +408,7 @@ export function WordToHtmlConverter() {
   const [copied, setCopied] = useState(false);
   const [checkingLinks, setCheckingLinks] = useState(false);
   const [showValidationWarnings, setShowValidationWarnings] = useState(true);
-  const [linkCheckResult, setLinkCheckResult] = useState<{ total: number; good: number; broken: number; serverErrors: number; blocked: number; goodLinks: { url: string; status: number }[]; brokenLinks: { url: string; status: number }[]; serverErrors: { url: string; status: number }[]; blockedLinks: { url: string; error: string; errorMessage: string }[] } | null>(null);
+  const [linkCheckResult, setLinkCheckResult] = useState<{ total: number; good: number; broken: number; serverErrors: number; blocked: number; goodLinks: { url: string; status: number }[]; brokenLinks: { url: string; status: number }[]; serverErrorLinks: { url: string; status: number }[]; blockedLinks: { url: string; error: string; errorMessage: string }[] } | null>(null);
   const [showLinkResults, setShowLinkResults] = useState(false);
   const [showBlogsFeatures, setShowBlogsFeatures] = useState(false);
   const [showShoppablesFeatures, setShowShoppablesFeatures] = useState(false);
@@ -414,74 +424,11 @@ export function WordToHtmlConverter() {
   const [outputView, setOutputView] = useState<'code' | 'preview' | 'blocks'>('code');
   const [copiedBlockId, setCopiedBlockId] = useState<string | null>(null);
 
-  // Feature flags - initial state for Regular mode (will be updated by useEffect when mode changes)
-  const [features, setFeatures] = useState<FeatureFlags>({
-    headingStrong: false,
-    keyTakeaways: false,
-    h1Removal: false,
-    linkAttributes: false,
-    relativePaths: false,
-    spacing: false,
-    olHeaderConversion: false,
-    sourcesNormalize: false,
-    disclaimerNormalize: false,
-    removeSourcesLinks: false,
-  });
-  
-  // Initialize features based on output format
-  // Regular mode: all features off by default (user can enable if needed)
-  // Blogs mode: features on by default
-  // Shoppables mode: uses its own specific defaults
-  // Reset to defaults when switching modes
+  const [features, setFeatures] = useState<FeatureFlags>(() => resolveFeatures('regular'));
+
+  // Use the same defaults as the conversion and validation pipelines.
   useEffect(() => {
-    if (outputFormat === 'regular') {
-      setFeatures({
-        headingStrong: false,
-        keyTakeaways: false,
-        h1Removal: false,
-        linkAttributes: false,
-        relativePaths: false,
-        spacing: false,
-        olHeaderConversion: false,
-        sourcesNormalize: false,
-        sourcesItalic: false,
-        disclaimerNormalize: false,
-        removeSourcesLinks: false,
-        wrapLinksStrongUnderline: false,
-      });
-    } else if (outputFormat === 'blogs') {
-      setFeatures({
-        headingStrong: true,
-        keyTakeaways: true,
-        h1Removal: true,
-        linkAttributes: true,
-        relativePaths: false,
-        spacing: true,
-        olHeaderConversion: true,
-        sourcesNormalize: true,
-        sourcesItalic: true,
-        disclaimerNormalize: true,
-        removeSourcesLinks: true,
-        wrapLinksStrongUnderline: false,
-      });
-    } else if (outputFormat === 'shoppables') {
-      setFeatures({
-        headingStrong: true,
-        keyTakeaways: false,
-        h1Removal: false,
-        linkAttributes: true,
-        relativePaths: false,
-        spacing: false,
-        olHeaderConversion: true,
-        sourcesNormalize: true,
-        sourcesItalic: true,
-        disclaimerNormalize: true,
-        removeSourcesLinks: true,
-        brBeforeReadMore: false,
-        brBeforeSources: false,
-        wrapLinksStrongUnderline: false,
-      });
-    }
+    setFeatures(resolveFeatures(outputFormat));
   }, [outputFormat]);
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
@@ -490,6 +437,8 @@ export function WordToHtmlConverter() {
   const modalCodeAreaRef = useRef<HTMLDivElement>(null);
   const cssTextareaRef = useRef<HTMLTextAreaElement>(null);
   const cssResizeHandleRef = useRef<HTMLDivElement>(null);
+  const checkLinksButtonRef = useRef<HTMLButtonElement>(null);
+  const maximizeButtonRef = useRef<HTMLButtonElement>(null);
 
   // Initialize Lenis smooth scroll for input and output containers
   useEffect(() => {
@@ -532,14 +481,16 @@ export function WordToHtmlConverter() {
     }
 
     // Animation loop for Lenis
+    let animationFrame: number;
     function raf(time: number) {
       lenisInstances.forEach((lenis) => lenis.raf(time));
-      requestAnimationFrame(raf);
+      animationFrame = requestAnimationFrame(raf);
     }
-    requestAnimationFrame(raf);
+    animationFrame = requestAnimationFrame(raf);
 
     // Cleanup
     return () => {
+      cancelAnimationFrame(animationFrame);
       lenisInstances.forEach((lenis) => lenis.destroy());
     };
   }, []);
@@ -647,11 +598,12 @@ export function WordToHtmlConverter() {
     
     // Wait for container to be focused first, then focus input
     // Container focus happens in parent component, so we wait a bit longer
-    requestAnimationFrame(() => {
-      setTimeout(focusInput, 250);
+    const focusFrame = requestAnimationFrame(() => {
+      focusTimeout = setTimeout(focusInput, 250);
     });
     
     return () => {
+      cancelAnimationFrame(focusFrame);
       clearTimeout(focusTimeout);
       clearTimeout(restoreTimeout);
       document.removeEventListener('mousedown', handleUserInteraction, { capture: true });
@@ -772,37 +724,13 @@ export function WordToHtmlConverter() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ links }),
       });
+
+      if (!response.ok) {
+        throw new Error(`Link check failed (${response.status})`);
+      }
       
       const result = await response.json();
       setLinkCheckResult(result);
-      
-      // Build detailed feedback message
-      let feedbackTitle = "";
-      let feedbackDesc = "";
-      
-      if (result.good === result.total) {
-        feedbackTitle = "✅ All links valid";
-        feedbackDesc = `${result.good} link${result.good > 1 ? 's' : ''} checked successfully`;
-      } else {
-        const issues = result.broken + result.serverErrors + result.blocked;
-        feedbackTitle = `⚠️ ${issues} issue${issues > 1 ? 's' : ''} found`;
-        
-        // Build detailed list
-        const details = [];
-        if (result.good > 0) {
-          details.push(`✅ ${result.good} valid: ${result.goodLinks.map((l: { url: string }) => l.url).join(', ')}`);
-        }
-        if (result.broken > 0) {
-          details.push(`❌ ${result.broken} 404 (not found): ${result.brokenLinks.map((l: { url: string }) => l.url).join(', ')}`);
-        }
-        if (result.serverErrors > 0) {
-          details.push(`⚠️ ${result.serverErrors} server error (500+): ${result.serverErrorLinks.map((l: { url: string }) => l.url).join(', ')}`);
-        }
-        if (result.blocked > 0) {
-          details.push(`🚫 ${result.blocked} blocked (CORS/bot protection): ${result.blockedLinks.map((l: { url: string }) => l.url).join(', ')}`);
-        }
-        feedbackDesc = details.join('\n\n');
-      }
       
       // Show detailed results in dialog
       setShowLinkResults(true);
@@ -858,8 +786,8 @@ export function WordToHtmlConverter() {
         if (result.ruleId === 'heading-strong') {
           const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
           
-          if (outputFormat === 'regular') {
-            // Regular mode: headings should NOT be wrapped in <strong>
+          if (features.headingStrong === false) {
+            // Disabled: headings should not be wrapped in <strong>.
             headings.forEach(h => {
               if (h.querySelector('strong')) {
                 h.setAttribute('data-warning', 'Heading should not be wrapped in <strong>');
@@ -1298,7 +1226,7 @@ export function WordToHtmlConverter() {
       console.error('Error adding warning attributes:', error);
       return previewHtml;
     }
-  }, [previewHtml, validationResults, showValidationWarnings]);
+  }, [previewHtml, validationResults, showValidationWarnings, features.headingStrong]);
 
   return (
     <div className="flex flex-col gap-3 md:gap-4 w-full max-w-full">
@@ -1698,6 +1626,9 @@ export function WordToHtmlConverter() {
           <div
             ref={inputAreaRef}
             contentEditable
+            role="textbox"
+            aria-label="Word document content"
+            aria-multiline="true"
             tabIndex={0}
             data-placeholder="Paste your Word document content here..."
             className="flex-1 min-h-[200px] max-h-[50vh] lg:max-h-[calc(100vh-380px)] p-4 text-sm bg-background/80 border border-border/50 rounded-lg overflow-y-auto overflow-x-hidden resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 input-editable"
@@ -1740,7 +1671,7 @@ export function WordToHtmlConverter() {
 
         {/* Output Section */}
         <div className="flex flex-col bg-card/50 border border-border/50 rounded-xl p-3 md:p-4 backdrop-blur-sm min-w-0 max-w-full lg:h-[calc(100vh-280px)] lg:min-h-[400px] lg:max-h-[700px]">
-          <div className="flex items-center justify-between mb-3 flex-shrink-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3 flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded bg-primary/10">
                 <Code className="h-4 w-4 text-primary" />
@@ -1748,7 +1679,7 @@ export function WordToHtmlConverter() {
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Output</span>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {/* View Toggle - Code/Preview/Blocks */}
               <div className="flex items-center bg-muted/50 rounded-md p-0.5 mr-1">
                 <Button
@@ -1837,6 +1768,7 @@ export function WordToHtmlConverter() {
               </Button>
               {/* Maximize Button */}
               <Button
+                ref={maximizeButtonRef}
                 variant="outline"
                 size="sm"
                 onClick={() => {
@@ -1890,6 +1822,7 @@ export function WordToHtmlConverter() {
               </Button>
               {/* Check Links Button */}
               <Button
+                ref={checkLinksButtonRef}
                 variant="outline"
                 size="sm"
                 onClick={checkLinks}
@@ -1899,9 +1832,9 @@ export function WordToHtmlConverter() {
               >
                 {checkingLinks ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
-                ) : linkCheckResult && linkCheckResult.broken > 0 ? (
+                ) : linkCheckResult && linkCheckResult.good !== linkCheckResult.total ? (
                   <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                ) : linkCheckResult && linkCheckResult.broken === 0 ? (
+                ) : linkCheckResult && linkCheckResult.good === linkCheckResult.total ? (
                   <Link className="h-4 w-4 text-green-500" />
                 ) : (
                   <Link className="h-4 w-4" />
@@ -2468,14 +2401,21 @@ export function WordToHtmlConverter() {
 
       {/* Maximized Output Modal */}
       <Dialog open={showMaximizedOutput} onOpenChange={setShowMaximizedOutput}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-[95vh] flex flex-col p-0">
+        <DialogContent
+          className="max-w-[95vw] max-h-[95vh] w-full h-[95vh] flex flex-col p-0"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            maximizeButtonRef.current?.focus();
+          }}
+        >
           <DialogHeader className="px-6 pt-6 pb-4 pr-14 border-b border-border flex-shrink-0">
-            <div className="flex items-center justify-between">
+            <DialogDescription className="sr-only">Inspect and copy the converted HTML, preview, or content blocks.</DialogDescription>
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <DialogTitle className="flex items-center gap-2">
                 <Code className="h-5 w-5 text-primary" />
                 Output - {maximizedOutputView === 'preview' ? 'Preview' : maximizedOutputView === 'blocks' ? 'Blocks' : 'Code'}
               </DialogTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {/* View Toggle in Modal */}
                 <div className="flex items-center bg-muted/50 rounded-md p-0.5">
                   <Button
@@ -2740,7 +2680,13 @@ export function WordToHtmlConverter() {
       
       {/* Link Check Results Dialog */}
       <Dialog open={showLinkResults} onOpenChange={setShowLinkResults}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-2xl max-h-[80vh] overflow-y-auto"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            checkLinksButtonRef.current?.focus();
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {linkCheckResult?.good === linkCheckResult?.total ? (
@@ -2750,6 +2696,7 @@ export function WordToHtmlConverter() {
               )}
               Link Check Results
             </DialogTitle>
+            <DialogDescription>HTTP status and availability of links in the converted output.</DialogDescription>
           </DialogHeader>
           
           {linkCheckResult && (
@@ -2813,11 +2760,11 @@ export function WordToHtmlConverter() {
               )}
               
               {/* Server Errors */}
-              {linkCheckResult.serverErrors.length > 0 && (
+              {linkCheckResult.serverErrorLinks.length > 0 && (
                 <div>
                   <h4 className="font-medium text-orange-600 mb-2">⚠️ Server Errors (5xx)</h4>
                   <ul className="space-y-1">
-                    {linkCheckResult.serverErrors.map((link, i) => (
+                    {linkCheckResult.serverErrorLinks.map((link, i) => (
                       <li key={i}>
                         <a 
                           href={link.url} 

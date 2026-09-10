@@ -57,25 +57,25 @@ export function convertToHtml(
     // Step 1: Sanitize HTML (removes styling and unsafe attributes)
     const sanitized = sanitizeHtml(cleanedHtml);
     if (!sanitized) {
-      throw new Error('Sanitization returned null or undefined');
+      return { formatted: '', unformatted: '' };
     }
     
     // Step 2: Clean HTML structure (remove unnecessary tags, unwrap elements)
     const cleanedStructure = cleanHtml(sanitized);
     if (!cleanedStructure) {
-      throw new Error('HTML cleaning returned null or undefined');
+      return { formatted: '', unformatted: '' };
     }
     
     // Step 3: Apply mode-specific processing
     const processed = processMode(cleanedStructure, mode, features);
     if (!processed) {
-      throw new Error('Mode processing returned null or undefined');
+      return { formatted: '', unformatted: '' };
     }
     
     // Step 4: Format HTML for display
     const formatted = formatCompact(processed);
     if (!formatted) {
-      throw new Error('HTML formatting returned null or undefined');
+      return { formatted: '', unformatted: '' };
     }
     
     return { formatted, unformatted: processed };
@@ -123,4 +123,3 @@ export function getUnformattedHtml(
   
   return result.unformatted;
 }
-

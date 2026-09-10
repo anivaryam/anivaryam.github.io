@@ -13,6 +13,8 @@
  * - URLs are normalized (not just validated) to handle Word-exported HTML encoding issues
  */
 
+import DOMPurify from 'dompurify';
+
 // Note: 'i' and 'b' are normalized to 'em' and 'strong' during processing
 const ALLOWED_ELEMENTS = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -64,17 +66,10 @@ function extractFormatting(style: string): FormattingInfo | null {
     styleObj['font-weight'].toLowerCase() === 'bold' || 
     parseInt(styleObj['font-weight'], 10) >= 700
   ) || false;
-  const isSuperscript = styleObj['vertical-align'] && (
-    styleObj['vertical-align'].toLowerCase() === 'super' ||
-    styleObj['vertical-align'].includes('super') ||
-    /^[\d.]+%?$/.test(styleObj['vertical-align']) ||
-    !isNaN(parseFloat(styleObj['vertical-align']))
-  ) || false;
-  const isSubscript = styleObj['vertical-align'] && (
-    styleObj['vertical-align'].toLowerCase() === 'sub' ||
-    styleObj['vertical-align'].includes('sub') ||
-    styleObj['vertical-align'].startsWith('-')
-  ) || false;
+  const verticalAlign = styleObj['vertical-align']?.toLowerCase() || '';
+  const offset = parseFloat(verticalAlign);
+  const isSuperscript = verticalAlign === 'super' || offset > 0;
+  const isSubscript = verticalAlign === 'sub' || offset < 0;
   
   if (!isItalic && !isBold && !isSuperscript && !isSubscript) {
     return null;
@@ -193,7 +188,12 @@ export function sanitizeHtml(html: string): string {
 
 
   const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = html;
+  // Reuse DOMPurify before semantic cleanup. Keep inline styles
+  // long enough to extract formatting, but discard script/stylesheet contents.
+  tempDiv.innerHTML = DOMPurify.sanitize(html, {
+    FORBID_TAGS: ['style'],
+    ADD_ATTR: ['target'],
+  });
 
   sanitizeElement(tempDiv);
 
@@ -295,13 +295,15 @@ function sanitizeElement(element: Element): void {
         continue;
       }
       
-      // Sanitize attributes (removes style, class, ARIA, etc.)
-      sanitizeAttributes(node, tagName);
-      
-      // Recursively sanitize children if no formatting was applied
-      if (!formatting) {
-        sanitizeElement(node);
+      // Always clean descendants, including beneath styled semantic elements.
+      sanitizeElement(node);
+      if (formatting) {
+        const wrapper = convertFormattingToSemanticTags(node);
+        if (wrapper) node.appendChild(wrapper);
       }
+
+      // Extract formatting before removing style/class/unsafe attributes.
+      sanitizeAttributes(node, tagName);
     }
   }
 }
@@ -352,20 +354,19 @@ function sanitizeAttributes(element: Element, tagName: string): void {
         attrsToRemove.push(attr.name);
       }
     }
-
-    if (tagName === 'a' && attrName === 'target' && attr.value.toLowerCase() === '_blank') {
-      const relAttr = element.getAttribute('rel');
-      const relValue = relAttr ? relAttr.toLowerCase() : '';
-      if (!NOOPENER_REGEX.test(relValue)) {
-        const newRel = relValue ? relValue + ' noopener' : 'noopener';
-        element.setAttribute('rel', newRel);
-      }
-    }
   });
 
   attrsToRemove.forEach(attrName => {
     element.removeAttribute(attrName);
   });
+
+  // Apply this after rel filtering so a rejected rel cannot remove noopener.
+  if (tagName === 'a' && element.getAttribute('target')?.toLowerCase() === '_blank') {
+    const rel = (element.getAttribute('rel') || '').toLowerCase();
+    if (!NOOPENER_REGEX.test(rel)) {
+      element.setAttribute('rel', rel ? `${rel} noopener` : 'noopener');
+    }
+  }
 }
 
 /**
@@ -445,4 +446,3 @@ function unwrapElement(element: Element): void {
     element.remove();
   }
 }
-

@@ -142,9 +142,7 @@ function addSpacingBeforeSources(doc: Document): void {
   
   paragraphs.forEach(p => {
     const text = p.textContent?.trim().toLowerCase() || '';
-    if ((text === 'sources' || text === 'sources:') &&
-        p.previousElementSibling &&
-        p.previousElementSibling.tagName.toLowerCase() === 'p') {
+    if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
       
       const prevSibling = p.previousElementSibling;
       const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);
@@ -267,15 +265,6 @@ export function addSpacingBetweenParagraphs(doc: Document): void {
           continue;
         }
 
-        // Check if there's already a spacing element between these paragraphs
-        // (i.e., check if the element immediately before this paragraph is a spacing element)
-        if (pIndex > 0) {
-          const prevSibling = parent.children[pIndex - 1];
-          if (prevSibling && isSpacingElement(prevSibling as Element)) {
-            continue;
-          }
-        }
-
         // Insert spacing paragraph before the next paragraph
         const spacing = doc.createElement('p');
         spacing.innerHTML = '&nbsp;';
@@ -307,4 +296,3 @@ export function addSpacing(html: string): string {
     return html;
   }
 }
-

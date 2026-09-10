@@ -1,5 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { addSpacing } from "./mode-spacing";
+import { addSpacing, addSpacingBetweenParagraphs } from "./mode-spacing";
+import { validateMode } from "./validator";
+
+describe("spacing pipeline parity", () => {
+  it.each([
+    '<ul><li>Content</li></ul><p>Sources:</p>',
+    '<p>Sources: An inline citation.</p>',
+  ])("adds the Sources spacing required by validation: %s", (input) => {
+    const output = addSpacing(input);
+    const validation = validateMode(output, 'blogs', {});
+    expect(validation.results.find(result => result.ruleId === 'spacing-rules')?.passed).toBe(true);
+    expect(addSpacing(output)).toBe(output);
+  });
+
+  it("fills every paragraph gap even when the preceding gap already has spacing", () => {
+    const doc = new DOMParser().parseFromString('<p>A</p><p>&nbsp;</p><p>B</p><p>C</p>', 'text/html');
+    addSpacingBetweenParagraphs(doc);
+    expect(doc.body.innerHTML).toBe('<p>A</p><p>&nbsp;</p><p>B</p><p>&nbsp;</p><p>C</p>');
+    const validation = validateMode(doc.body.innerHTML, 'shoppables', { paragraphSpacing: true });
+    expect(validation.results.find(result => result.ruleId === 'paragraph-spacing')?.passed).toBe(true);
+  });
+});
 
 describe("addSpacing — Disclaimer section", () => {
   it("inserts spacing before an inline-form Disclaimer paragraph (single <p>)", () => {
