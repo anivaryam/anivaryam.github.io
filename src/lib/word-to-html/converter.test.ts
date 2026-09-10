@@ -138,6 +138,42 @@ describe('URL preservation', () => {
   });
 });
 
+describe('spacing within formatted links', () => {
+  it.each([
+    '<p>visit <a href="/how-it-works">our <strong><u>How It Works</u></strong></a> page.</p>',
+    '<p>visit <a href="/how-it-works"><span style="font-size:11pt">our </span><strong><u>How It Works</u></strong></a> page.</p>',
+    '<p>visit our <a href="/how-it-works"><strong><u>How It Works</u></strong> page</a>.</p>',
+    '<p>visit <a href="/how-it-works"><em>our</em> <strong><u>How It Works</u></strong></a> page.</p>',
+    '<p>visit <a href="/how-it-works"><em>our</em> <strong>How</strong> <u>It Works</u></a> page.</p>',
+    '<p>visit our <a href="/how-it-works"><strong><u>How It Works</u></strong></a> page.</p>',
+  ])('preserves word boundaries in code and preview: %s', (input) => {
+    const inputLinkText = new DOMParser().parseFromString(input, 'text/html').querySelector('a')?.textContent?.trim();
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      for (const wrapLinksStrongUnderline of [false, true]) {
+        const output = convertToHtml(cleanWordHtml(input), mode, { wrapLinksStrongUnderline });
+        for (const html of [output.formatted, output.unformatted]) {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          expect(doc.body.textContent).toBe('visit our How It Works page.');
+          expect(doc.querySelector('a')?.getAttribute('href')).toBe('/how-it-works');
+          expect(doc.querySelector('a')?.textContent?.trim()).toBe(inputLinkText);
+        }
+      }
+    }
+  });
+
+  it('trims only outer anchor padding while keeping inner separators', () => {
+    const input = '<p><a href="/how-it-works">  <strong>How</strong> It <em>Works</em>  </a></p>';
+    const output = cleanHtml(input);
+    expect(output).toBe('<p><a href="/how-it-works"><strong>How</strong> It <em>Works</em></a></p>');
+    expect(cleanHtml(output)).toBe(output);
+  });
+
+  it('preserves non-breaking spaces between plain and formatted anchor text', () => {
+    const output = cleanHtml('<p><a href="/how-it-works">our&nbsp;<strong>How It Works</strong></a></p>');
+    expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')?.textContent).toBe('our\u00a0How It Works');
+  });
+});
+
 describe('Word-to-HTML pipeline regressions', () => {
   it.each<OutputMode>(['regular', 'blogs', 'shoppables'])('preserves literal markup as text in %s output', (mode) => {
     const input = '<p>Use &lt;img src=x onerror=alert(1)&gt; &amp; &amp;copy; literally.</p>';

@@ -299,11 +299,11 @@ function mergeAdjacentEmTags(element: Element): void {
 }
 
 /**
- * Trims leading and trailing whitespace from anchor text nodes.
+ * Trims whitespace at the outer edges of an anchor.
  * 
- * IMPORTANT: Only trims whitespace in text nodes directly under <a> elements.
- * Does not alter whitespace inside nested inline elements (e.g., <a><span>Link</span></a>).
- * This conservative approach is intentional to avoid unintended formatting changes.
+ * Only direct text nodes at those boundaries are trimmed. Spaces separating
+ * plain text from nested formatting (e.g. "our <strong>How It Works</strong>")
+ * belong to the link text and must remain intact.
  */
 function trimAnchorWhitespace(element: Element): void {
   if (!element || element.nodeType !== Node.ELEMENT_NODE) {
@@ -322,51 +322,17 @@ function trimAnchorWhitespace(element: Element): void {
     return;
   }
   
-  let firstTextNode: Text | null = null;
-  let lastTextNode: Text | null = null;
-  
-  const childNodes = Array.from(element.childNodes);
-  for (let i = 0; i < childNodes.length; i++) {
-    const node = childNodes[i];
-    if (node.nodeType === Node.TEXT_NODE) {
-      if (firstTextNode === null) {
-        firstTextNode = node as Text;
-      }
-      lastTextNode = node as Text;
-    }
-  }
-  
-  if (firstTextNode === null && lastTextNode === null) {
-    return;
+  const first = element.firstChild;
+  const last = element.lastChild;
+  if (first?.nodeType === Node.TEXT_NODE) {
+    first.textContent = (first.textContent || '').replace(/^\s+/, '');
+    if (!first.textContent) element.removeChild(first);
   }
 
-  // A single text node is both boundaries; trim and remove it only once.
-  if (firstTextNode && firstTextNode === lastTextNode) {
-    firstTextNode.textContent = (firstTextNode.textContent || '').trim();
-    if (!firstTextNode.textContent) firstTextNode.remove();
-    return;
-  }
-  
-  if (firstTextNode) {
-    const originalText = firstTextNode.textContent || '';
-    const trimmedText = originalText.replace(/^\s+/, '');
-    
-    if (trimmedText.length === 0) {
-      element.removeChild(firstTextNode);
-    } else {
-      firstTextNode.textContent = trimmedText;
-    }
-  }
-  
-  if (lastTextNode && lastTextNode !== firstTextNode) {
-    const originalText = lastTextNode.textContent || '';
-    const trimmedText = originalText.replace(/\s+$/, '');
-    
-    if (trimmedText.length === 0) {
-      element.removeChild(lastTextNode);
-    } else {
-      lastTextNode.textContent = trimmedText;
-    }
+  // If the only text node was empty, the leading trim already removed it.
+  if (last?.nodeType === Node.TEXT_NODE && last.parentNode === element) {
+    last.textContent = (last.textContent || '').replace(/\s+$/, '');
+    if (!last.textContent) element.removeChild(last);
   }
 }
 
