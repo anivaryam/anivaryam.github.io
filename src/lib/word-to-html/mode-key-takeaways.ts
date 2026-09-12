@@ -3,6 +3,18 @@
  * Removes <em> tags from Key Takeaways section for Blogs mode
  */
 
+import { nextNonSpacingElement } from './html-spacing';
+
+/** A section's list must follow its label, without crossing article content. */
+export function findKeyTakeawaysSection(root: ParentNode): { heading: Element; list: Element } | null {
+  const heading = Array.from(root.querySelectorAll('h2')).find(element =>
+    /^key takeaways\s*:?$/i.test(element.textContent?.trim() || '')
+  );
+  if (!heading) return null;
+  const list = nextNonSpacingElement(heading);
+  return list?.matches('ul, ol') ? { heading, list } : null;
+}
+
 export function formatKeyTakeaways(html: string): string {
   if (!html || typeof html !== 'string') {
     return '';
@@ -12,31 +24,10 @@ export function formatKeyTakeaways(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
-    const headings = Array.from(doc.querySelectorAll('h2'));
-    let keyTakeawaysHeading: Element | null = null;
-    
-    for (const heading of headings) {
-      const text = heading.textContent?.trim() || '';
-      if (text.toLowerCase().includes('key takeaways')) {
-        keyTakeawaysHeading = heading;
-        break;
-      }
-    }
-    
-    if (keyTakeawaysHeading) {
-      formatKeyTakeawaysHeading(keyTakeawaysHeading);
-      
-      let nextSibling = keyTakeawaysHeading.nextElementSibling;
-      while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ul') {
-        nextSibling = nextSibling.nextElementSibling;
-      }
-      
-      if (nextSibling && nextSibling.tagName.toLowerCase() === 'ul') {
-        const listItems = nextSibling.querySelectorAll('li');
-        listItems.forEach(li => {
-          removeEmTags(li);
-        });
-      }
+    const section = findKeyTakeawaysSection(doc);
+    if (section) {
+      formatKeyTakeawaysHeading(section.heading);
+      section.list.querySelectorAll('li').forEach(removeEmTags);
     }
     
     return doc.body.innerHTML;
@@ -87,4 +78,3 @@ function removeEmTags(element: Element): void {
     }
   }
 }
-

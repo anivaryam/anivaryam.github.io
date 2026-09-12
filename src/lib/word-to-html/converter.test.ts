@@ -7,6 +7,194 @@ import { cleanWordHtml } from './word-html-cleaner';
 import { normalizeSources } from './mode-sources-normalize';
 import { validateMode } from './validator';
 import { normalizeLists } from './mode-list-normalize';
+import { removeH1AfterKeyTakeaways } from './mode-h1-removal';
+
+describe('text preservation during structural cleanup', () => {
+  it.each([
+    ['<p>First<br>Second</p>', 'First Second'],
+    ['<ul><li><p><strong>Hello</strong> <em>world</em></p></li></ul>', 'Hello world'],
+    ['<ul><li><p>First</p><p>Second</p></li></ul>', 'First Second'],
+    ['<ul><li>Before<p>Middle</p>After</li></ul>', 'Before Middle After'],
+  ])('preserves word boundaries in %s', (input, text) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect((doc.querySelector('li') || doc.querySelector('p'))?.textContent).toBe(text);
+        expect(doc.querySelector('br, li p')).toBeNull();
+      }
+    }
+  });
+
+  it('preserves paragraph boundaries in adjacent and nested layout blocks', () => {
+    const output = getUnformattedHtml('<div>First</div><div><strong>Second</strong><div>Third</div>Fourth</div>');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(Array.from(doc.querySelectorAll('p')).map(p => p.textContent)).toEqual(['First', 'Second', 'Third', 'Fourth']);
+    expect(doc.querySelector('strong')?.textContent).toBe('Second');
+  });
+
+  it('keeps caption text while removing images and empty image wrappers', () => {
+    const output = getUnformattedHtml('<div class="image"><img src="photo.png"><p class="image-caption">Important caption</p></div><div class="image"><img src="other.png"></div><p style="background-image:url(photo.png)">Body</p>');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(Array.from(doc.querySelectorAll('p')).map(p => p.textContent)).toEqual(['Important caption', 'Body']);
+    expect(doc.querySelector('img, [style], [class]')).toBeNull();
+  });
+
+  it.each(['text-decoration:underline', 'text-decoration-line:underline', 'text-decoration:underline solid red'])('preserves CSS underlining: %s', (style) => {
+    const output = getUnformattedHtml(`<p><span style="${style};font-weight:bold;font-style:italic">Important</span></p>`);
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('u')?.textContent).toBe('Important');
+    expect(doc.querySelector('strong')?.textContent).toBe('Important');
+    expect(doc.querySelector('em')?.textContent).toBe('Important');
+  });
+});
+
+describe('formatted-output content parity', () => {
+  it('retains empty table cells and rows in the same columns as the preview', () => {
+    const output = convertToHtml('<table><tr><th>A</th><th></th><th>C</th></tr><tr><td>1</td><td></td><td>3</td></tr><tr><td></td><td></td><td></td></tr></table>');
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(Array.from(doc.querySelectorAll('tr')).map(row => Array.from(row.children).map(cell => cell.textContent))).toEqual([
+        ['A', '', 'C'], ['1', '', '3'], ['', '', ''],
+      ]);
+    }
+  });
+
+  it.each(['first\n\nsecond  \n  third', '  \n\n  ', '&lt;literal&gt;\n\n&amp; text'])('preserves preformatted whitespace and text: %s', (content) => {
+    const output = convertToHtml(`<pre><code>${content}</code></pre>`);
+    const preview = new DOMParser().parseFromString(output.unformatted, 'text/html');
+    const formatted = new DOMParser().parseFromString(output.formatted, 'text/html');
+    expect(formatted.querySelector('code')?.textContent).toBe(preview.querySelector('code')?.textContent);
+  });
+
+  it('does not truncate large documents in the copied code', () => {
+    const text = 'a'.repeat(1000000) + ' END';
+    const output = convertToHtml(`<p>${text}</p>`);
+    for (const html of [output.formatted, output.unformatted]) {
+      expect(new DOMParser().parseFromString(html, 'text/html').querySelector('p')?.textContent).toBe(text);
+    }
+  });
+
+  it('preserves links and emphasis when numbering headings', () => {
+    const output = getUnformattedHtml('<ol><li><h3><a href="https://example.com/product">Product <em>name</em></a> H<sub>2</sub>O</h3></li></ol>', 'shoppables');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('h3')?.textContent).toBe('1. Product name H2O');
+    expect(doc.querySelector('a')?.getAttribute('href')).toBe('https://example.com/product');
+    expect(doc.querySelector('a em')?.textContent).toBe('name');
+    expect(doc.querySelector('sub')?.textContent).toBe('2');
+  });
+});
+
+describe('article titles after Key Takeaways', () => {
+  const takeaways = '<h2>Key Takeaways:</h2><ul><li>One point</li></ul>';
+  const intro = '<p style="font-size:11pt">The introduction must remain.</p>';
+  const title = 'How To Measure Your Closet Before You Buy An Organizer System';
+  const titleVariants = [
+    `<h1>${title}</h1>`,
+    `<p class="title"><span style="font-size:20pt;font-weight:700">${title}</span></p>`,
+    `<p class="MsoTitle">${title}</p>`,
+    `<p style="mso-style-name:Title">${title}</p>`,
+    `<p style="font-size:20pt">${title}</p>`,
+    `<p><span style="font-size:20pt">${title}</span></p>`,
+    `<div style="font-size:32px">${title}</div>`,
+    `<p><span style="font-size:24px">How To Measure </span><strong style="font-size:28px">Your Closet</strong></p>`,
+  ];
+
+  it.each(titleVariants)('removes only the article title: %s', (heading) => {
+    const input = takeaways + '<p><span>&nbsp;</span></p><br>' + heading + intro + '<h1>A later heading</h1>';
+    const expectedTitle = new DOMParser().parseFromString(heading, 'text/html').body.textContent;
+    for (const html of [convertWordToHtml(input, 'blogs'), getUnformattedHtml(input, 'blogs')]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(doc.body.textContent).not.toContain(expectedTitle);
+      expect(doc.body.textContent).toContain('The introduction must remain.');
+      expect(doc.querySelector('h1')?.textContent).toBe('A later heading');
+      expect(validateMode(html, 'blogs', {}).results.find(r => r.ruleId === 'h1-after-key-takeaways')?.passed).toBe(true);
+    }
+  });
+
+  it.each(titleVariants)('retains the title when disabled and in default Regular/Shoppables: %s', (heading) => {
+    const input = takeaways + heading + intro;
+    const expectedTitle = new DOMParser().parseFromString(heading, 'text/html').body.textContent;
+    for (const [mode, features] of [['blogs', { h1Removal: false }], ['regular', {}], ['shoppables', {}]] as const) {
+      const output = getUnformattedHtml(input, mode, features);
+      expect(new DOMParser().parseFromString(output, 'text/html').querySelector('h1')?.textContent).toBe(expectedTitle);
+      expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'h1-after-key-takeaways')?.passed).toBe(true);
+    }
+  });
+
+  it('recognizes the Google Docs draft title through stylesheet classes', () => {
+    const input = `<style>.title {font-size:26pt} .draft-title {font-size:20pt;font-weight:700} .body {font-size:11pt}</style>${takeaways}<p class="title"><span class="draft-title">${title}</span></p><p class="body">A premium organizer can only perform as intended when it fits the space it was selected for.</p>`;
+    expect(getUnformattedHtml(input, 'blogs')).not.toContain(title);
+    expect(getUnformattedHtml(input, 'blogs', { h1Removal: false })).toContain(title);
+  });
+
+  it('recognizes manually sized text through stylesheet classes without a Title label', () => {
+    const input = `<style>.large {font-size:20pt} .body {font-size:11pt}</style>${takeaways}<p><span class="large">${title}</span></p><p class="body">Introduction.</p>`;
+    expect(getUnformattedHtml(input, 'blogs')).not.toContain(title);
+  });
+
+  it.each([
+    '<p>Ordinary introductory text.</p>',
+    '<p><strong>ORDINARY BOLD INTRODUCTION.</strong></p>',
+    '<p style="font-size:16pt">A smaller paragraph.</p>',
+    '<p><span style="font-size:28pt">One</span> <span style="font-size:11pt">enlarged word is not a title.</span></p>',
+    '<h2 style="font-size:26pt">A genuine section heading</h2>',
+    '<div><p style="font-size:24pt">First paragraph.</p><p>Second paragraph.</p></div>',
+  ])('keeps non-title content: %s', (content) => {
+    const input = takeaways + content + intro;
+    const expected = new DOMParser().parseFromString(content, 'text/html').body.textContent;
+    expect(new DOMParser().parseFromString(getUnformattedHtml(input, 'blogs'), 'text/html').body.textContent).toContain(expected);
+  });
+
+  it('requires both the absolute minimum and the body-size ratio', () => {
+    const input = takeaways + `<p style="font-size:20pt">${title}</p><p style="font-size:16pt">Large body text.</p>`;
+    expect(getUnformattedHtml(input, 'blogs')).toContain(title);
+    const boundary = takeaways + `<p style="font-size:18pt">${title}</p><p style="font-size:12pt">Body.</p>`;
+    expect(getUnformattedHtml(boundary, 'blogs')).not.toContain(title);
+  });
+
+  it('requires body-text evidence for manually enlarged text', () => {
+    expect(getUnformattedHtml(takeaways + `<p style="font-size:24pt">${title}</p>`, 'blogs')).toContain(title);
+  });
+
+  it('does not search beyond the first real content block', () => {
+    expect(getUnformattedHtml(takeaways + intro + `<p class="title">${title}</p>`, 'blogs')).toContain(title);
+  });
+
+  it.each(['<h2>Another section</h2>', '<p>Ordinary content.</p>'])('does not attach a later list across %s', (boundary) => {
+    const input = '<h2>Key Takeaways:</h2>' + boundary + `<ul><li>Unrelated list</li></ul><h1>${title}</h1>`;
+    expect(getUnformattedHtml(input, 'blogs')).toContain(title);
+  });
+
+  it('handles an ordered Takeaways list and wrapped clipboard content', () => {
+    const input = `<div><h2>Key Takeaways:</h2><ol><li>Point</li></ol><p class="title">${title}</p>${intro}</div>`;
+    const output = getUnformattedHtml(input, 'blogs');
+    expect(output).not.toContain(title);
+    expect(validateMode(output, 'blogs', {}).summary.failed).toBe(0);
+  });
+
+  it('honors explicit removal in Regular/Blogs and works independently of Takeaways formatting', () => {
+    for (const mode of ['regular', 'blogs'] as const) {
+      const features = { h1Removal: true, keyTakeaways: false };
+      const output = getUnformattedHtml(takeaways + titleVariants[2] + intro, mode, features);
+      expect(output).not.toContain(title);
+      expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'h1-after-key-takeaways')?.passed).toBe(true);
+    }
+  });
+
+  it('skips real spacing nodes in the shared removal utility', () => {
+    expect(removeH1AfterKeyTakeaways(takeaways + '<p><span>&nbsp;</span></p><br><h1>Title</h1>' + intro)).not.toContain('<h1>');
+  });
+
+  it('preserves source link boundaries when the same document has a visual article title', () => {
+    const input = takeaways + `<p style="font-size:20pt">${title}</p><p style="font-size:11pt;color:black">Consult <a href="https://example.com/article" style="color:inherit;text-decoration:none">our article <span style="color:#1155cc;text-decoration:underline">Reference title</span></a> for details.</p>`;
+    const output = getUnformattedHtml(input, 'blogs');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.body.textContent).not.toContain(title);
+    expect(doc.body.textContent).toContain('Consult our article Reference title for details.');
+    expect(Array.from(doc.querySelectorAll('a')).map(a => a.textContent)).toEqual(['Reference title']);
+  });
+});
 
 describe('accepted spacing formats with Word clipboard markup', () => {
   const faqHeading = 'Frequently Asked Questions About How Often Do Newborns Eat?';
@@ -134,6 +322,135 @@ describe('URL preservation', () => {
     for (const style of ['', ' style="font-weight:bold"']) {
       const output = getUnformattedHtml(`<p${style}><a href="${href}">Link</a></p>`, 'shoppables');
       expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')?.getAttribute('href')).toBe(href);
+    }
+  });
+});
+
+describe('source-visible link boundaries', () => {
+  const href = 'https://example.com/closet-details';
+  const title = 'Closet Measurements: Rod Heights, Shelf Depth & Valet Rods';
+  const cases = [
+    {
+      name: 'adjacent anchors with class-based source styles',
+      // jsdom 28 miscomputes stylesheet text-decoration shorthand after ancestor
+      // style reads; longhand exercises the equivalent cascade here.
+      html: `<style>p { color: black } .source-link { color: inherit; text-decoration-line: none } .visible { color: #1155cc; text-decoration-line: underline }</style><p>Consult <span><a class="source-link" href="${href}">our article </a></span><span class="visible"><a class="source-link" href="${href}">${title.replace('&', '&amp;')}</a></span> while recording dimensions.</p>`,
+      text: `Consult our article ${title} while recording dimensions.`,
+      links: [title],
+    },
+    {
+      name: 'inline clipboard formatting within a single anchor',
+      html: `<p>See <a href="${href}" style="color: inherit; text-decoration: none"><span>our </span><span style="color:#1155cc;text-decoration:underline"><strong>Products</strong></span></a> today.</p>`,
+      text: 'See our Products today.',
+      links: ['Products'],
+    },
+    {
+      name: 'entire link styled as normal text',
+      html: `<p>See <a href="${href}" style="color:inherit;text-decoration:none">our Products</a> today.</p>`,
+      text: 'See our Products today.',
+      links: [],
+    },
+    {
+      name: 'plain text between two visible runs in one anchor',
+      html: `<p><a href="${href}" style="color:inherit;text-decoration:none"><u>First</u> and <em><u>Second</u></em></a></p>`,
+      text: 'First and Second',
+      links: ['First', 'Second'],
+    },
+    {
+      name: 'normal browser link appearance without explicit CSS',
+      html: `<p><a href="${href}">Products</a></p>`,
+      text: 'Products',
+      links: ['Products'],
+    },
+    {
+      name: 'color-only link indicator',
+      html: `<p><a href="${href}" style="color:#1155cc;text-decoration:none">Products</a></p>`,
+      text: 'Products',
+      links: ['Products'],
+    },
+    {
+      name: 'matching non-black body color is ordinary text',
+      html: `<p style="color:#333333"><a href="${href}" style="color:#333333;text-decoration:none">Products</a></p>`,
+      text: 'Products',
+      links: [],
+    },
+  ];
+
+  it.each(cases)('$name', ({ html, text, links }) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(html), mode, { wrapLinksStrongUnderline: true });
+      for (const result of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(result, 'text/html');
+        expect(doc.querySelector('p')?.textContent).toBe(text);
+        expect(Array.from(doc.querySelectorAll('a')).map(a => a.textContent)).toEqual(links);
+        doc.querySelectorAll('a').forEach(a => expect(a.getAttribute('href')).toBe(href));
+      }
+      expect(document.querySelector('iframe')).toBeNull();
+    }
+  });
+
+  it('preserves nested emphasis while splitting an anchor', () => {
+    const doc = new DOMParser().parseFromString(getUnformattedHtml(cases[1].html), 'text/html');
+    expect(doc.querySelector('a strong')?.textContent).toBe('Products');
+  });
+
+  it('does not use the application theme to classify source links', () => {
+    const style = document.createElement('style');
+    style.textContent = 'a { color: red !important; text-decoration: underline !important; }';
+    document.head.appendChild(style);
+    try {
+      const output = getUnformattedHtml(cases[2].html);
+      expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')).toBeNull();
+    } finally {
+      style.remove();
+    }
+  });
+});
+
+describe('non-redundant link underlining', () => {
+  const cases = [
+    '<p><a href="/products" style="text-decoration:underline">Products</a></p>',
+    '<p><a href="/products"><span style="text-decoration:underline">Products</span></a></p>',
+    '<p><a href="/products"><strong><u>Products</u></strong></a></p>',
+    '<p><span style="text-decoration:underline"><a href="/products">Products</a></span></p>',
+  ];
+
+  it.each(cases)('omits redundant underlining by default: %s', (input) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.querySelector('a')?.getAttribute('href')).toBe('/products');
+        expect(doc.querySelector('a')?.textContent).toBe('Products');
+        expect(doc.querySelector('u')).toBeNull();
+      }
+    }
+  });
+
+  it('keeps non-link underlining and nested emphasis around a linked portion', () => {
+    const input = '<p><u><strong>Our <a href="/products"><em>Products</em></a> today</strong></u></p>';
+    const output = getUnformattedHtml(input);
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('p')?.textContent).toBe('Our Products today');
+    expect(doc.querySelector('strong a em')?.textContent).toBe('Products');
+    expect(doc.querySelector('a u, u a')).toBeNull();
+    expect(Array.from(doc.querySelectorAll('u')).map(u => u.textContent?.trim())).toEqual(['Our', 'today']);
+  });
+
+  it('retains underline markup on ordinary text and anchors without a destination', () => {
+    const output = sanitizeHtml('<p><u>Plain</u> <a><u>Named anchor</u></a> <a href="javascript:alert(1)"><u>Unsafe destination</u></a></p>');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(Array.from(doc.querySelectorAll('u')).map(u => u.textContent)).toEqual(['Plain', 'Named anchor', 'Unsafe destination']);
+    expect(doc.querySelector('a[href]')).toBeNull();
+  });
+
+  it.each(cases)('adds exactly one explicit wrapper when the option is enabled: %s', (input) => {
+    for (const mode of ['blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml(input, mode, { wrapLinksStrongUnderline: true });
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('a > strong > u')?.textContent).toBe('Products');
+      expect(doc.querySelectorAll('u')).toHaveLength(1);
+      expect(doc.querySelectorAll('a strong')).toHaveLength(1);
     }
   });
 });
@@ -269,6 +586,57 @@ describe('Word-to-HTML pipeline regressions', () => {
 });
 
 describe('Sources content preservation', () => {
+  it.each(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])('recognizes a <%s> Sources label', (tag) => {
+    for (const mode of ['blogs', 'shoppables'] as const) {
+      const input = `<p>Body.</p><${tag}>Sources:</${tag}><ol><li><a href="https://example.com/study">Study</a></li></ol>`;
+      const output = getUnformattedHtml(input, mode);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('a')).toBeNull();
+      expect(doc.querySelector('p > strong > em')?.textContent).toBe('Sources:');
+      expect(doc.querySelector('li > em')?.textContent).toBe('Study');
+      expect(validateMode(output, mode, {}).summary.failed).toBe(0);
+    }
+  });
+
+  it.each(['<h2>Recommended products</h2>', '<p>Unrelated introduction.</p>', 'Unrelated plain text'])('does not cross %s into an unrelated list', (boundary) => {
+    const input = `<p>Sources: <a href="https://example.com/study">Study</a>.</p>${boundary}<ol><li><a href="https://example.com/product">Buy product</a></li></ol>`;
+    const output = getUnformattedHtml(input, 'shoppables');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(Array.from(doc.querySelectorAll('a')).map(a => a.getAttribute('href'))).toEqual(['https://example.com/product']);
+    expect(doc.querySelector('ol li')?.hasAttribute('style')).toBe(false);
+  });
+
+  it('handles multiple Sources sections, unordered lists, and nested citations', () => {
+    const input = '<p>Sources:</p><ol><li><a href="/one">One</a></li></ol><h2>Other section</h2><p>Body.</p><h3>sources:</h3><p>&nbsp;</p><ul><li><a href="/two">Two</a><ol><li><a href="/three">Three</a></li></ol></li></ul>';
+    const output = getUnformattedHtml(input, 'shoppables');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('a')).toBeNull();
+    expect(doc.querySelectorAll('li[style="font-style: italic"]')).toHaveLength(3);
+    expect(validateMode(output, 'shoppables', {}).summary.failed).toBe(0);
+  });
+
+  it('removes source links independently of label normalization and supports heading BR spacing', () => {
+    const features = { sourcesNormalize: false, brBeforeSources: true };
+    const output = getUnformattedHtml('<p>Body.</p><h2>Sources:</h2><ul><li><a href="/study">Study</a></li></ul>', 'shoppables', features);
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('h2')?.textContent).toBe('Sources:');
+    expect(doc.querySelector('h2')?.previousElementSibling?.innerHTML).toBe('<br>');
+    expect(doc.querySelector('a')).toBeNull();
+    expect(validateMode(output, 'shoppables', features).summary.failed).toBe(0);
+  });
+
+  it('preserves source links when removal is disabled', () => {
+    const output = getUnformattedHtml('<h2>Sources:</h2><ol><li><a href="/study">Study</a></li></ol>', 'shoppables', { removeSourcesLinks: false });
+    expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')?.getAttribute('href')).toBe('/study');
+  });
+
+  it('does not classify ordinary headings containing the word Sources as references', () => {
+    const output = getUnformattedHtml('<h2>Sources of wood</h2><ol><li><a href="/product">Product</a></li></ol>', 'shoppables');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('h2')?.textContent).toBe('Sources of wood');
+    expect(doc.querySelector('a')?.getAttribute('href')).toBe('/product');
+  });
+
   it('preserves citations in the Sources paragraph itself', () => {
     const input = '<p><strong>Sources:</strong> <a href="https://example.com">Study</a> by Author.</p>';
     const output = normalizeSources(input);

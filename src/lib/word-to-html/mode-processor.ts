@@ -71,7 +71,7 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = formatKeyTakeaways(processedHtml);
     }
 
-    // H1 removal
+    // Source Title styles are normalized to H1 before this removal.
     if (features.h1Removal !== false) {
       processedHtml = removeH1AfterKeyTakeaways(processedHtml);
     }
@@ -138,7 +138,6 @@ export function processMode(html: string, mode: OutputMode, features: FeatureFla
       processedHtml = formatKeyTakeaways(processedHtml);
     }
 
-    // H1 removal
     if (features.h1Removal !== false) {
       processedHtml = removeH1AfterKeyTakeaways(processedHtml);
     }

@@ -7,8 +7,8 @@
  * 
  * Behavior:
  * - Allowed elements (p, h1, etc.) are preserved; formatting styles become inner wrappers
- * - Disallowed elements (span, div, etc.) are unwrapped; formatting styles replace the element
- * - Formatting is normalized: i→em, b→strong, style attributes→semantic tags
+ * - Layout blocks retain paragraph boundaries; unsupported inline wrappers are unwrapped
+ * - Formatting is normalized: i→em, b→strong, underline/bold/italic styles→semantic tags
  * - Superscript/subscript wrap italic/bold (outer tags)
  * - URL destinations are preserved; only surrounding whitespace is trimmed
  */
@@ -82,6 +82,7 @@ interface FormattingInfo {
   isBold: boolean;
   isSuperscript: boolean;
   isSubscript: boolean;
+  isUnderline: boolean;
 }
 
 function extractFormatting(style: string): FormattingInfo | null {
@@ -104,12 +105,14 @@ function extractFormatting(style: string): FormattingInfo | null {
   const offset = parseFloat(verticalAlign);
   const isSuperscript = verticalAlign === 'super' || offset > 0;
   const isSubscript = verticalAlign === 'sub' || offset < 0;
+  const isUnderline = (styleObj['text-decoration-line'] ?? styleObj['text-decoration'] ?? '')
+    .toLowerCase().split(/\s+/).includes('underline');
   
-  if (!isItalic && !isBold && !isSuperscript && !isSubscript) {
+  if (!isItalic && !isBold && !isSuperscript && !isSubscript && !isUnderline) {
     return null;
   }
   
-  return { isItalic, isBold, isSuperscript, isSubscript };
+  return { isItalic, isBold, isSuperscript, isSubscript, isUnderline };
 }
 
 /**
@@ -128,7 +131,7 @@ function convertFormattingToSemanticTags(
 ): Element | null {
   if (!formatting) return null;
   
-  const { isItalic, isBold, isSuperscript, isSubscript } = formatting;
+  const { isItalic, isBold, isSuperscript, isSubscript, isUnderline } = formatting;
   
   // Build nested semantic tags: sup/sub wraps em/strong (opinionated order)
   let wrapper: Element | null = null;
@@ -154,6 +157,13 @@ function convertFormattingToSemanticTags(
     }
   }
   
+  if (isUnderline) {
+    const underline = document.createElement('u');
+    if (wrapper) underline.appendChild(wrapper);
+    else while (element.firstChild) underline.appendChild(element.firstChild);
+    wrapper = underline;
+  }
+
   // Handle superscript/subscript (outer tags)
   if (isSuperscript) {
     const sup = document.createElement('sup');
@@ -184,14 +194,15 @@ function convertFormattingToSemanticTags(
 
 /**
  * Wraps consecutive inline nodes without reordering text or enclosing structural
- * blocks. Used by Sources formatting and block-copy paragraph grouping.
+ * blocks or optional feature-specific boundaries. Used by Sources formatting,
+ * underline cleanup, and block-copy paragraph grouping.
  */
-export function wrapInlineContent(element: Element, tagName: string): void {
+export function wrapInlineContent(element: Element, tagName: string, isBoundary?: (child: Element) => boolean): void {
   let wrapper: Element | null = null;
   for (const child of Array.from(element.childNodes)) {
     if (child.nodeType === Node.ELEMENT_NODE) {
       const childTag = (child as Element).tagName.toLowerCase();
-      if (BLOCK_ELEMENT_SET.has(childTag) || ['img', 'hr', 'br'].includes(childTag)) {
+      if (BLOCK_ELEMENT_SET.has(childTag) || ['img', 'hr', 'br'].includes(childTag) || isBoundary?.(child as Element)) {
         wrapper = null;
         continue;
       }
@@ -204,6 +215,17 @@ export function wrapInlineContent(element: Element, tagName: string): void {
     }
     wrapper.appendChild(child);
   }
+}
+
+/** Preserve non-link underlining when a source <u> also surrounds links. */
+function underlineNonLinkContent(element: Element): void {
+  const containsLink = (child: Element) => child.matches('a[href]') || !!child.querySelector('a[href]');
+  for (const child of Array.from(element.children)) {
+    if (!child.matches('a[href]') && (containsLink(child) || BLOCK_ELEMENT_SET.has(child.tagName.toLowerCase()))) {
+      underlineNonLinkContent(child);
+    }
+  }
+  wrapInlineContent(element, 'u', containsLink);
 }
 
 export function sanitizeHtml(html: string): string {
@@ -221,6 +243,17 @@ export function sanitizeHtml(html: string): string {
   });
 
   sanitizeElement(tempDiv);
+
+  // Source appearance has already determined link boundaries in Word cleanup.
+  // Links use their own CSS underline; the explicit strong/underline feature
+  // runs later and can add its requested wrapper back exactly once.
+  Array.from(tempDiv.querySelectorAll('a[href] u')).reverse().forEach(unwrapElement);
+  for (const underline of Array.from(tempDiv.querySelectorAll('u')).reverse()) {
+    if (underline.querySelector('a[href]')) {
+      underlineNonLinkContent(underline);
+      unwrapElement(underline);
+    }
+  }
 
   // Unwrap single disallowed wrapper elements
   if (tempDiv.children.length === 1) {
@@ -272,6 +305,19 @@ function sanitizeElement(element: Element): void {
     if (!ALLOWED_ELEMENTS.includes(tagName)) {
       // For disallowed elements: sanitize children, then either replace with formatting
       // or unwrap entirely
+      if (BLOCK_ELEMENT_SET.has(tagName)) {
+        // Replace layout blocks with paragraphs for their inline runs, keeping
+        // existing block children and the boundaries between adjacent divs.
+        wrapInlineContent(node, 'p');
+        for (const child of Array.from(node.children)) {
+          if (child.matches('p, h1, h2, h3, h4, h5, h6') && node.hasAttribute('style')) {
+            child.setAttribute('style', `${node.getAttribute('style')};${child.getAttribute('style') || ''}`);
+          }
+        }
+        sanitizeElement(node);
+        unwrapElement(node);
+        continue;
+      }
       sanitizeElement(node);
       
       const semanticReplacement = convertFormattingToSemanticTags(node);
@@ -292,6 +338,7 @@ function sanitizeElement(element: Element): void {
       // Extract formatting BEFORE sanitizing attributes (which removes style)
       const style = node.getAttribute('style') || '';
       const formatting = extractFormatting(style);
+      if (tagName === 'u' && formatting) formatting.isUnderline = false;
       
       // === LIFT AND SCRUB FOR LI ELEMENTS ===
       // Inside-Out Rule:

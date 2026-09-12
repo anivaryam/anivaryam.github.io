@@ -13,6 +13,10 @@ import { getStructuralIssues, wrapInlineContent } from "@/lib/word-to-html/html-
 import { getHeadingSpacingIssues } from "@/lib/word-to-html/mode-spacing";
 import DOMPurify from 'dompurify';
 import { cleanWordHtml } from "@/lib/word-to-html/word-html-cleaner";
+import { prepareWordSource } from "@/lib/word-to-html/word-source-formatting";
+import { findArticleTitleAfterKeyTakeaways } from "@/lib/word-to-html/mode-h1-removal";
+import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
+import { isBrSpacingParagraph } from "@/lib/word-to-html/html-spacing";
 import { validateMode, getUnexpectedSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -148,6 +152,7 @@ const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
   const container = doc.body;
   wrapInlineContent(container, 'p');
   const children = Array.from(container.childNodes);
+  const sourcesSections = new Map(findSourcesSections(doc).map(section => [section.label, section]));
 
   let currentContentHtml = '';
   const skipIndices = new Set<number>();
@@ -199,7 +204,7 @@ const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
         id: `block-${blockId++}`,
       });
     }
-    else if (tagName === 'p' && element.textContent?.includes('Sources:')) {
+    else if (sourcesSections.has(element)) {
       if (currentContentHtml.trim()) {
         blocks.push({
           type: 'content',
@@ -210,69 +215,12 @@ const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
         currentContentHtml = '';
       }
       let sourcesHtml = element.outerHTML;
-      let nextIndex = index + 1;
-      while (nextIndex < children.length) {
-        const nextNode = children[nextIndex];
-        if (nextNode.nodeType === 3) {
-          if (!nextNode.textContent?.trim()) {
-            skipIndices.add(nextIndex);
-            nextIndex++;
-            continue;
-          } else {
-            break;
-          }
-        }
-        const nextElement = nextNode as HTMLElement;
-        const nextTagName = nextElement.tagName?.toLowerCase();
-        if (nextTagName === 'ol' || nextTagName === 'ul') {
-          sourcesHtml += nextElement.outerHTML;
-          skipIndices.add(nextIndex);
-          nextIndex++;
-          break;
-        } else {
-          break;
-        }
-      }
-      blocks.push({
-        type: 'sources',
-        html: sourcesHtml,
-        preview: 'Sources',
-        id: `block-${blockId++}`,
-      });
-    }
-    else if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName) && element.textContent?.includes('Sources')) {
-      if (currentContentHtml.trim()) {
-        blocks.push({
-          type: 'content',
-          html: currentContentHtml,
-          preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
-          id: `block-${blockId++}`,
-        });
-        currentContentHtml = '';
-      }
-      let sourcesHtml = element.outerHTML;
-      let nextIndex = index + 1;
-      while (nextIndex < children.length) {
-        const nextNode = children[nextIndex];
-        if (nextNode.nodeType === 3) {
-          if (!nextNode.textContent?.trim()) {
-            skipIndices.add(nextIndex);
-            nextIndex++;
-            continue;
-          } else {
-            break;
-          }
-        }
-        const nextElement = nextNode as HTMLElement;
-        const nextTagName = nextElement.tagName?.toLowerCase();
-        if (nextTagName === 'ol' || nextTagName === 'ul') {
-          sourcesHtml += nextElement.outerHTML;
-          skipIndices.add(nextIndex);
-          nextIndex++;
-          break;
-        } else {
-          break;
-        }
+      const list = sourcesSections.get(element)!.list;
+      const listIndex = list ? children.indexOf(list) : -1;
+      for (let nextIndex = index + 1; nextIndex <= listIndex; nextIndex++) {
+        const next = children[nextIndex];
+        sourcesHtml += next.nodeType === Node.ELEMENT_NODE ? (next as Element).outerHTML : next.textContent || '';
+        skipIndices.add(nextIndex);
       }
       blocks.push({
         type: 'sources',
@@ -437,6 +385,7 @@ export function WordToHtmlConverter() {
   const cssResizeHandleRef = useRef<HTMLDivElement>(null);
   const checkLinksButtonRef = useRef<HTMLButtonElement>(null);
   const linkCheckTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const linkCheckAbortRef = useRef<AbortController | null>(null);
   const maximizeButtonRef = useRef<HTMLButtonElement>(null);
 
   // Initialize Lenis smooth scroll for input and output containers
@@ -615,11 +564,75 @@ export function WordToHtmlConverter() {
     const inputArea = inputAreaRef.current;
     if (!inputArea) return;
 
+    const removePasteBoundaries = () => {
+      inputArea.querySelectorAll('br[data-word-paste-boundary]').forEach(node => node.remove());
+    };
+
+    const prepareFullReplacement = () => {
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      if (!range || range.collapsed || !inputArea.contains(range.startContainer) || !inputArea.contains(range.endContainer)) return;
+      const before = range.cloneRange();
+      before.selectNodeContents(inputArea);
+      before.setEnd(range.startContainer, range.startOffset);
+      const after = range.cloneRange();
+      after.selectNodeContents(inputArea);
+      after.setStart(range.endContainer, range.endOffset);
+      const hasContent = (fragment: DocumentFragment) => !!fragment.textContent?.trim() ||
+        !!fragment.querySelector('img, hr, table, pre, video, audio, iframe, object, embed, svg, canvas');
+      if (hasContent(before.cloneContents()) || hasContent(after.cloneContents())) return;
+
+      // Chrome otherwise inherits the first selected heading as the container
+      // for pasted lists/paragraphs. A neutral leading break resets that context
+      // while keeping native paste and undo. Undo can restore this temporary
+      // node, so the input handler removes it before reading document content.
+      const boundary = document.createElement('br');
+      boundary.setAttribute('data-word-paste-boundary', '');
+      inputArea.prepend(boundary);
+      range.selectNodeContents(inputArea);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    };
+
     const handlePaste = (e: ClipboardEvent) => {
+      const sourceHtml = e.clipboardData?.getData('text/html');
+      if (sourceHtml || e.clipboardData?.getData('text/plain')) prepareFullReplacement();
+      if (sourceHtml) {
+        const source = document.createElement('div');
+        source.innerHTML = sourceHtml;
+        if (prepareWordSource(source, true)) {
+          // Resolve links and article titles from the original clipboard before
+          // native paste can discard their source formatting.
+          const html = DOMPurify.sanitize(source.innerHTML, { FORBID_TAGS: ['style'], ADD_ATTR: ['target'] });
+          e.preventDefault();
+          // insertHTML preserves the browser's editing/undo history. Range is
+          // the fallback for environments without this editing command.
+          if (!document.execCommand?.('insertHTML', false, html)) {
+            const selection = window.getSelection();
+            const range = selection?.rangeCount ? selection.getRangeAt(0) : document.createRange();
+            if (!inputArea.contains(range.commonAncestorContainer)) {
+              range.selectNodeContents(inputArea);
+              range.collapse(false);
+            }
+            range.deleteContents();
+            const fragment = range.createContextualFragment(html);
+            const lastNode = fragment.lastChild;
+            range.insertNode(fragment);
+            if (lastNode) range.setStartAfter(lastNode);
+            range.collapse(true);
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+          }
+          removePasteBoundaries();
+          setInputHtml(inputArea.innerHTML);
+          return;
+        }
+      }
       // Allow the paste to happen naturally in the contenteditable div
       // Then process it after a short delay to ensure content is inserted
       // This matches the original behavior
       setTimeout(() => {
+        removePasteBoundaries();
         const content = inputArea.innerHTML;
         if (content.trim()) {
           setInputHtml(content);
@@ -628,6 +641,7 @@ export function WordToHtmlConverter() {
     };
 
     const handleInput = () => {
+      removePasteBoundaries();
       // Process input changes immediately
       const content = inputArea.innerHTML;
       setInputHtml(content);
@@ -639,6 +653,7 @@ export function WordToHtmlConverter() {
     return () => {
       inputArea.removeEventListener('paste', handlePaste);
       inputArea.removeEventListener('input', handleInput);
+      removePasteBoundaries();
     };
   }, []);
 
@@ -665,6 +680,15 @@ export function WordToHtmlConverter() {
   }, [inputHtml, outputFormat, features]);
   const outputHtml = conversionResult.formatted;
   const previewHtml = conversionResult.unformatted;
+
+  useEffect(() => {
+    linkCheckAbortRef.current?.abort();
+    linkCheckAbortRef.current = null;
+    setLinkCheckResult(null);
+    setShowLinkResults(false);
+    setCheckingLinks(false);
+    return () => linkCheckAbortRef.current?.abort();
+  }, [previewHtml]);
 
   // Function to combine custom CSS with HTML output
   const getHtmlWithCSS = (html: string): string => {
@@ -747,12 +771,16 @@ export function WordToHtmlConverter() {
 
     setCheckingLinks(true);
     setLinkCheckResult(null);
+    linkCheckAbortRef.current?.abort();
+    const controller = new AbortController();
+    linkCheckAbortRef.current = controller;
 
     try {
       const response = await fetch('https://link-checker.rosettascript.workers.dev', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ links }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -760,11 +788,13 @@ export function WordToHtmlConverter() {
       }
       
       const result = await response.json();
+      if (controller.signal.aborted) return;
       setLinkCheckResult(result);
       
       // Show detailed results in dialog
       setShowLinkResults(true);
     } catch (error) {
+      if (controller.signal.aborted) return;
       console.error('Link check error:', error);
       toast({
         title: "Error checking links",
@@ -772,7 +802,10 @@ export function WordToHtmlConverter() {
         variant: "destructive",
       });
     } finally {
-      setCheckingLinks(false);
+      if (linkCheckAbortRef.current === controller) {
+        linkCheckAbortRef.current = null;
+        setCheckingLinks(false);
+      }
     }
   };
 
@@ -813,6 +846,8 @@ export function WordToHtmlConverter() {
     try {
       const parser = new DOMParser();
       const doc = parser.parseFromString(previewHtml, 'text/html');
+      const sourcesSections = findSourcesSections(doc);
+      const isInSourcesList = (element: Element) => sourcesSections.some(section => section.list?.contains(element));
       
       // Map warnings to elements - process all failed validations
       validationResults.results.forEach(result => {
@@ -842,27 +877,10 @@ export function WordToHtmlConverter() {
         
         // OL bold labels - flag all li with colon but no strong EXCEPT Sources section
         if (result.ruleId === 'ol-bold-labels') {
-          // Find Sources section to exclude (same logic as validator)
-          let sourcesOl: Element | null = null;
-          const paragraphs = doc.querySelectorAll('p');
-          for (const p of Array.from(paragraphs)) {
-            const text = p.textContent?.trim().toLowerCase() || '';
-            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
-              let nextSibling = p.nextElementSibling;
-              while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
-                nextSibling = nextSibling.nextElementSibling;
-              }
-              if (nextSibling) {
-                sourcesOl = nextSibling;
-              }
-              break;
-            }
-          }
-          
           const olItems = doc.querySelectorAll('ol > li');
           olItems.forEach(li => {
             // Skip list items in the Sources section
-            if (sourcesOl && sourcesOl.contains(li)) {
+            if (isInSourcesList(li)) {
               return;
             }
             const text = li.textContent || '';
@@ -874,63 +892,20 @@ export function WordToHtmlConverter() {
         
         // Remove sources links - flag all links in sources
         if (result.ruleId === 'remove-sources-links') {
-          const paragraphs = doc.querySelectorAll('p');
-          let inSources = false;
-          paragraphs.forEach(p => {
-            const text = p.textContent?.trim().toLowerCase() || '';
-            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
-              inSources = true;
-            }
-            if (inSources) {
-              const links = p.querySelectorAll('a');
-              links.forEach(a => {
-                a.setAttribute('data-warning', 'Link in Sources section');
-              });
-            }
-          });
-          // Check next ol after sources
-          paragraphs.forEach(p => {
-            const text = p.textContent?.trim().toLowerCase() || '';
-            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
-              let next = p.nextElementSibling;
-              while (next && next.tagName.toLowerCase() !== 'ol') {
-                next = next.nextElementSibling;
-              }
-              if (next) {
-                const links = next.querySelectorAll('a');
-                links.forEach(a => {
-                  a.setAttribute('data-warning', 'Link in Sources section');
-                });
-              }
-            }
+          sourcesSections.forEach(({ label, list }) => {
+            [label, ...(list ? [list] : [])].forEach(element => {
+              element.querySelectorAll('a').forEach(a => a.setAttribute('data-warning', 'Link in Sources section'));
+            });
           });
         }
         
         // List normalization - only flag list items with specific issues
         if (result.ruleId === 'list-normalization') {
           const details = result.details || [];
-          const sourcesOl = (() => {
-            let sourcesOl: Element | null = null;
-            const paragraphs = doc.querySelectorAll('p');
-            for (const p of Array.from(paragraphs)) {
-              const text = p.textContent?.trim().toLowerCase() || '';
-              if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
-                let nextSibling = p.nextElementSibling;
-                while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
-                  nextSibling = nextSibling.nextElementSibling;
-                }
-                if (nextSibling) {
-                  sourcesOl = nextSibling;
-                }
-                break;
-              }
-            }
-            return sourcesOl;
-          })();
           
           const listItems = doc.querySelectorAll('li');
           listItems.forEach(li => {
-            if (sourcesOl && sourcesOl.contains(li)) {
+            if (isInSourcesList(li)) {
               return;
             }
             const liText = li.textContent || '';
@@ -944,20 +919,9 @@ export function WordToHtmlConverter() {
         
         // Sources normalization - flag sources section and list
         if (result.ruleId === 'sources-normalization') {
-          const paragraphs = doc.querySelectorAll('p');
-          paragraphs.forEach(p => {
-            const text = p.textContent?.trim().toLowerCase() || '';
-            if (text === 'sources' || text === 'sources:') {
-              p.setAttribute('data-warning', 'Sources section formatting issue');
-              // Also flag the next ol after sources
-              let next = p.nextElementSibling;
-              while (next && next.tagName.toLowerCase() !== 'ol') {
-                next = next.nextElementSibling;
-              }
-              if (next) {
-                next.setAttribute('data-warning', 'Sources list formatting issue');
-              }
-            }
+          sourcesSections.forEach(({ label, list }) => {
+            label.setAttribute('data-warning', 'Sources section formatting issue');
+            list?.setAttribute('data-warning', 'Sources list formatting issue');
           });
         }
         
@@ -1067,12 +1031,9 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // H1 after key takeaways - flag h1 elements
+        // Use the same title boundary as conversion and validation.
         if (result.ruleId === 'h1-after-key-takeaways') {
-          const h1Elements = doc.querySelectorAll('h1');
-          h1Elements.forEach(h1 => {
-            h1.setAttribute('data-warning', 'H1 should not appear after Key Takeaways');
-          });
+          findArticleTitleAfterKeyTakeaways(doc)?.setAttribute('data-warning', 'Article title should be removed after Key Takeaways');
         }
         
         // Relative paths - only flag links with absolute URLs in href
@@ -1092,26 +1053,6 @@ export function WordToHtmlConverter() {
           getStructuralIssues(doc.body).forEach(issue => {
             issue.element.setAttribute('data-warning', issue.message);
           });
-          // Locate Sources <ol> so we never flag the legitimate italic style on its <li>.
-          let sourcesOl: Element | null = null;
-          const paragraphs = doc.querySelectorAll('p');
-          for (const p of Array.from(paragraphs)) {
-            const text = p.textContent?.trim().toLowerCase() || '';
-            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
-              let nextSibling = p.nextElementSibling;
-              while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
-                nextSibling = nextSibling.nextElementSibling;
-              }
-              if (nextSibling) {
-                sourcesOl = nextSibling;
-              }
-              break;
-            }
-          }
-
-          const isInSourcesLi = (el: Element): boolean =>
-            !!sourcesOl && sourcesOl.contains(el);
-
           const details = result.details || [];
           details.forEach((detail) => {
             // Disallowed element: 'Disallowed element <span> present'
@@ -1119,7 +1060,6 @@ export function WordToHtmlConverter() {
             if (tagMatch) {
               const tagName = tagMatch[1];
               doc.querySelectorAll(tagName).forEach((el) => {
-                if (tagName === 'li' && isInSourcesLi(el)) return;
                 el.setAttribute('data-warning', detail);
               });
               return;
@@ -1130,7 +1070,8 @@ export function WordToHtmlConverter() {
               const attrName = attrMatch[1];
               const tagName = attrMatch[2];
               doc.querySelectorAll(tagName).forEach((el) => {
-                if (tagName === 'li' && isInSourcesLi(el)) return;
+                if (tagName === 'li' && attrName === 'style' && isInSourcesList(el) &&
+                    el.getAttribute('style')?.trim().toLowerCase() === 'font-style: italic') return;
                 if (el.hasAttribute(attrName)) {
                   el.setAttribute('data-warning', detail);
                 }
@@ -1210,24 +1151,10 @@ export function WordToHtmlConverter() {
 
         // Sources italic - flag sources <li> not italicized
         if (result.ruleId === 'sources-italic' && !result.passed) {
-          const paragraphs = doc.querySelectorAll('p');
-          for (const p of Array.from(paragraphs)) {
-            const text = (p.textContent || '').trim().toLowerCase();
-            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
-              let next = p.nextElementSibling;
-              while (next && next.tagName.toLowerCase() !== 'ol') {
-                next = next.nextElementSibling;
-              }
-              if (next) {
-                next.querySelectorAll('li').forEach((li) => {
-                  if (!(li.getAttribute('style') || '').toLowerCase().includes('font-style: italic')) {
-                    li.setAttribute('data-warning', result.message);
-                  }
-                });
-              }
-              break;
-            }
-          }
+          sourcesSections.forEach(({ list }) => list?.querySelectorAll('li').forEach(li => {
+            const hasItalic = (li.getAttribute('style') || '').toLowerCase().includes('font-style: italic');
+            if (hasItalic !== (features.sourcesItalic !== false)) li.setAttribute('data-warning', result.message);
+          }));
         }
 
         // BR before read more - flag read-more paragraphs missing BR spacer
@@ -1245,11 +1172,8 @@ export function WordToHtmlConverter() {
 
         // BR before sources - flag the Sources paragraph
         if (result.ruleId === 'br-before-sources' && !result.passed) {
-          doc.querySelectorAll('p').forEach((p) => {
-            const text = (p.textContent || '').trim().toLowerCase();
-            if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
-              p.setAttribute('data-warning', result.message);
-            }
+          sourcesSections.forEach(({ label }) => {
+            if (!isBrSpacingParagraph(label.previousElementSibling)) label.setAttribute('data-warning', result.message);
           });
         }
       });
@@ -1451,7 +1375,7 @@ export function WordToHtmlConverter() {
                                 checked={features.h1Removal !== false}
                                 onCheckedChange={(checked) => setFeatures({ ...features, h1Removal: checked as boolean })}
                               />
-                              <span className="text-sm">Remove H1 after Key Takeaways</span>
+                              <span className="text-sm">Remove article title after Key Takeaways</span>
                             </label>
                           </>
                         )}

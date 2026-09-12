@@ -85,6 +85,23 @@ describe('wrapLinksStrongUnderline', () => {
     expect(twice).toBe(once);
   });
 
+  it.each([
+    '<strong>Products</strong>',
+    '<u><strong>Products</strong></u>',
+    '<strong><u>Products</u></strong> and <em>details</em>',
+  ])('uses one canonical wrapper around preformatted content: %s', (content) => {
+    const input = `<p><a href="/products">${content}</a></p>`;
+    const output = wrapLinksStrongUnderline(input);
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    const anchor = doc.querySelector('a')!;
+    const original = new DOMParser().parseFromString(input, 'text/html').querySelector('a')!;
+    expect(anchor.textContent).toBe(original.textContent);
+    expect(anchor.querySelectorAll('strong')).toHaveLength(1);
+    expect(anchor.querySelectorAll('u')).toHaveLength(1);
+    expect(anchor.querySelectorAll('em')).toHaveLength(original.querySelectorAll('em').length);
+    expect(wrapLinksStrongUnderline(output)).toBe(output);
+  });
+
   it('handles links nested inside other elements (li, blockquote)', () => {
     const html =
       '<ul><li><a href="https://x.com">x</a></li></ul>' +

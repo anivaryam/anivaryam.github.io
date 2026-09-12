@@ -168,11 +168,9 @@ export function convertOlHeaders(html: string): string {
         const innerStrong = newHeading.querySelector(':scope > strong');
         
         if (innerStrong) {
-          const originalText = innerStrong.textContent?.trim() || '';
-          innerStrong.textContent = `${counter}. ${originalText}`;
+          innerStrong.prepend(doc.createTextNode(`${counter}. `));
         } else {
-          const headingText = newHeading.textContent?.trim() || '';
-          newHeading.textContent = `${counter}. ${headingText}`;
+          newHeading.prepend(doc.createTextNode(`${counter}. `));
         }
         
         // Increment counter for next item
@@ -207,4 +205,3 @@ export function convertOlHeaders(html: string): string {
     return html;
   }
 }
-

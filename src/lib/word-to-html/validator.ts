@@ -6,7 +6,10 @@
 import type { OutputMode, FeatureFlags } from './converter';
 import { resolveFeatures } from './mode-processor';
 import { ALLOWED_ELEMENTS as SANITIZED_ELEMENTS, getStructuralIssues, isSafeUrl } from './html-sanitizer';
-import { isSpacingParagraph as isAnySpacingElement, isBrSpacingParagraph as isBrSpacingElement } from './html-spacing';
+import { isSpacingParagraph as isAnySpacingElement, isBrSpacingParagraph as isBrSpacingElement, nextNonSpacingElement } from './html-spacing';
+import { findKeyTakeawaysSection } from './mode-key-takeaways';
+import { findArticleTitleAfterKeyTakeaways } from './mode-h1-removal';
+import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
 import { getHeadingSpacingIssues } from './mode-spacing';
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
 
@@ -47,76 +50,6 @@ const SAFE_REL_VALUES = new Set([
   'noopener,noreferrer',
 ]);
 
-interface KeyTakeawaysSection {
-  heading: Element;
-  list: Element;
-}
-
-function findKeyTakeawaysSection(doc: Document): KeyTakeawaysSection | null {
-  const headings = doc.querySelectorAll('h2');
-  let keyTakeawaysHeading: Element | null = null;
-
-  for (const heading of Array.from(headings)) {
-    const text = heading.textContent?.trim() || '';
-    if (text.toLowerCase().includes('key takeaways')) {
-      keyTakeawaysHeading = heading;
-      break;
-    }
-  }
-
-  if (!keyTakeawaysHeading) {
-    return null;
-  }
-
-  let nextSibling = keyTakeawaysHeading.nextElementSibling;
-  while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ul') {
-    nextSibling = nextSibling.nextElementSibling;
-  }
-
-  if (!nextSibling || nextSibling.tagName.toLowerCase() !== 'ul') {
-    return null;
-  }
-
-  return { heading: keyTakeawaysHeading, list: nextSibling };
-}
-
-interface SourcesSection {
-  paragraph: Element;
-  list: Element;
-}
-
-/**
- * Locates the Sources paragraph and its companion ordered list.
- * Returns null when no Sources paragraph exists.
- */
-function findSourcesSection(doc: Document): SourcesSection | null {
-  const paragraphs = doc.querySelectorAll('p');
-
-  let sourcesParagraph: Element | null = null;
-  for (const p of Array.from(paragraphs)) {
-    const text = p.textContent?.trim().toLowerCase() || '';
-    if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
-      sourcesParagraph = p;
-      break;
-    }
-  }
-
-  if (!sourcesParagraph) {
-    return null;
-  }
-
-  let nextSibling = sourcesParagraph.nextElementSibling;
-  while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
-    nextSibling = nextSibling.nextElementSibling;
-  }
-
-  if (!nextSibling || nextSibling.tagName.toLowerCase() !== 'ol') {
-    return null;
-  }
-
-  return { paragraph: sourcesParagraph, list: nextSibling };
-}
-
 function findDisclaimerSection(doc: Document): { paragraph: Element } | null {
   const paragraphs = doc.querySelectorAll('p');
   for (const p of Array.from(paragraphs)) {
@@ -133,22 +66,6 @@ function findDisclaimerSection(doc: Document): { paragraph: Element } | null {
  */
 function isNbspSpacingElement(element: Element | null): boolean {
   return isAnySpacingElement(element) && !isBrSpacingElement(element);
-}
-
-/**
- * Helper: Locate the next non-spacing element after `from` within its parent.
- * Walks through text-node whitespace and <p>&nbsp;</p> / <p><br></p> spacers
- * so validators don't false-pass when a node is hidden behind inserted spacing.
- */
-function nextNonSpacingElement(from: Element): Element | null {
-  let node: Element | null = from.nextElementSibling;
-  while (node) {
-    if (!isAnySpacingElement(node)) {
-      return node;
-    }
-    node = node.nextElementSibling;
-  }
-  return null;
 }
 
 export interface TestResult {
@@ -226,7 +143,7 @@ class ValidationResultsImpl implements ValidationResults {
 function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult {
   const issues = getStructuralIssues(doc.body).map(issue => issue.message);
 
-  const sourcesList = findSourcesSection(doc)?.list ?? null;
+  const sourcesLists = findSourcesSections(doc).flatMap(section => section.list ? [section.list] : []);
 
   const allElements = doc.body.querySelectorAll('*');
   allElements.forEach((el) => {
@@ -238,7 +155,7 @@ function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult
     for (const attr of Array.from(el.attributes)) {
       const name = attr.name.toLowerCase();
       if (ALWAYS_BANNED_ATTRIBUTES.has(name)) {
-        if (isAllowedSourcesItalicStyle(el, attr, sourcesList)) {
+        if (isAllowedSourcesItalicStyle(el, attr, sourcesLists)) {
           continue;
         }
         issues.push(`Banned attribute "${name}" on <${tagName}>`);
@@ -274,10 +191,9 @@ function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult
  * whose ancestor <ol> is the Sources section. Any other value or mixed
  * declarations still fail.
  */
-function isAllowedSourcesItalicStyle(el: Element, attr: Attr, sourcesList: Element | null): boolean {
-  if (!sourcesList) return false;
+function isAllowedSourcesItalicStyle(el: Element, attr: Attr, sourcesLists: Element[]): boolean {
   if (el.tagName.toLowerCase() !== 'li') return false;
-  if (!sourcesList.contains(el)) return false;
+  if (!sourcesLists.some(list => list.contains(el))) return false;
   if (attr.name.toLowerCase() !== 'style') return false;
   return attr.value.trim().toLowerCase() === 'font-style: italic';
 }
@@ -533,23 +449,13 @@ function validateKeyTakeaways(doc: Document, mode: OutputMode, features?: Featur
 }
 
 function validateH1AfterKeyTakeaways(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
-  if (mode === 'regular') {
+  if (mode !== 'blogs' || !isFeatureEnabled(features, 'h1Removal', true)) {
     return {
       ruleId: 'h1-after-key-takeaways',
-      feature: 'H1 Removal',
+      feature: 'Article Title Removal',
       mode,
       passed: true,
-      message: 'H1 removal is a blogs/shoppables feature (skipped)',
-      severity: 'info',
-    };
-  }
-  if (mode === 'shoppables') {
-    return {
-      ruleId: 'h1-after-key-takeaways',
-      feature: 'H1 Removal',
-      mode,
-      passed: true,
-      message: 'H1 removal not required for this mode',
+      message: 'Article title removal disabled (skipped)',
       severity: 'info',
     };
   }
@@ -559,7 +465,7 @@ function validateH1AfterKeyTakeaways(doc: Document, mode: OutputMode, features?:
   if (!section) {
     return {
       ruleId: 'h1-after-key-takeaways',
-      feature: 'H1 Removal',
+      feature: 'Article Title Removal',
       mode,
       passed: true,
       message: 'No Key Takeaways section found (skipped)',
@@ -567,39 +473,19 @@ function validateH1AfterKeyTakeaways(doc: Document, mode: OutputMode, features?:
     };
   }
 
-  /* Walk past any spacing elements (added after the H1 removal pass) so a
-   * leftover H1 hiding behind a <p>&nbsp;</p> is still detected. */
-  const elementAfterUl = nextNonSpacingElement(section.list);
-  const hasH1After = elementAfterUl?.tagName.toLowerCase() === 'h1';
-
-  const isEnabled = isFeatureEnabled(features, 'h1Removal', true);
-
-  if (!isEnabled) {
-    return {
-      ruleId: 'h1-after-key-takeaways',
-      feature: 'H1 Removal',
-      mode,
-      passed: hasH1After,
-      message: hasH1After
-        ? 'H1 correctly preserved after Key Takeaways (feature disabled)'
-        : 'No H1 found after Key Takeaways (should be present when feature is disabled)',
-      severity: hasH1After ? 'info' : 'error',
-      expected: 'H1 preserved after Key Takeaways (feature disabled)',
-      actual: hasH1After ? 'H1 found after Key Takeaways' : 'No H1 found',
-    };
-  }
+  const hasTitle = !!findArticleTitleAfterKeyTakeaways(doc);
 
   return {
     ruleId: 'h1-after-key-takeaways',
-    feature: 'H1 Removal',
+    feature: 'Article Title Removal',
     mode,
-    passed: !hasH1After,
-    message: hasH1After
-      ? 'Found H1 after Key Takeaways (should be removed)'
-      : 'No H1 after Key Takeaways (correct)',
-    severity: !hasH1After ? 'info' : 'error',
-    expected: 'No H1 after Key Takeaways',
-    actual: hasH1After ? 'H1 found after Key Takeaways' : 'No H1 found',
+    passed: !hasTitle,
+    message: hasTitle
+      ? 'Found article title after Key Takeaways (should be removed)'
+      : 'No article title after Key Takeaways (correct)',
+    severity: hasTitle ? 'error' : 'info',
+    expected: 'No article title after Key Takeaways',
+    actual: hasTitle ? 'Article title found after Key Takeaways' : 'No article title found',
   };
 }
 
@@ -819,8 +705,7 @@ function trailingSpaceBeforeStrong(html: string): boolean {
 }
 
 function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
-  const sourcesSection = findSourcesSection(doc);
-  const sourcesOl = sourcesSection?.list ?? null;
+  const sourcesSections = findSourcesSections(doc);
 
   const listItems = doc.querySelectorAll('li');
 
@@ -838,7 +723,7 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
   const issues: string[] = [];
 
   listItems.forEach((li) => {
-    if (sourcesOl && sourcesOl.contains(li)) {
+    if (sourcesSections.some(section => section.list?.contains(li))) {
       return;
     }
 
@@ -902,11 +787,7 @@ function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: Featur
     };
   }
 
-  const sourcesOlSet = new Set<Element>();
-  const sourcesSection = findSourcesSection(doc);
-  if (sourcesSection) {
-    sourcesOlSet.add(sourcesSection.list);
-  }
+  const sourcesSections = findSourcesSections(doc);
 
   const olItems = doc.querySelectorAll('ol > li');
   let itemsWithColon = 0;
@@ -914,7 +795,7 @@ function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: Featur
   let skippedSources = 0;
 
   olItems.forEach((li) => {
-    if (li.parentElement && sourcesOlSet.has(li.parentElement)) {
+    if (sourcesSections.some(section => section.list?.contains(li))) {
       skippedSources++;
       return;
     }
@@ -982,9 +863,9 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
     };
   }
 
-  const section = findSourcesSection(doc);
+  const sections = findSourcesSections(doc);
 
-  if (!section) {
+  if (!sections.length) {
     return {
       ruleId: 'sources-normalization',
       feature: 'Sources Normalization',
@@ -995,17 +876,7 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
     };
   }
 
-  const listItems = section.list.querySelectorAll('li');
-  if (listItems.length === 0) {
-    return {
-      ruleId: 'sources-normalization',
-      feature: 'Sources Normalization',
-      mode,
-      passed: true,
-      message: 'Sources paragraph found but <ol> has no items (skipped)',
-      severity: 'info',
-    };
-  }
+  const listItems = sections.flatMap(section => Array.from(section.list?.querySelectorAll('li') || []));
 
   const isEnabled = isFeatureEnabled(features, 'sourcesNormalize', true);
 
@@ -1013,12 +884,12 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
     const issues: string[] = [];
 
     /* Label check: only look at the strong > em structure on the paragraph. */
-    const labelStrong = section.paragraph.querySelector(':scope > strong');
-    const labelEm = labelStrong?.querySelector(':scope > em');
-    const emText = labelEm?.textContent?.trim().toLowerCase() || '';
-    if (labelEm && emText === 'sources:') {
-      issues.push('Sources paragraph is normalized (should not have <strong><em> structure)');
-    }
+    sections.forEach(({ label }) => {
+      const labelEm = label.querySelector(':scope > strong > em');
+      if (labelEm?.textContent?.trim().toLowerCase() === 'sources:') {
+        issues.push('Sources paragraph is normalized (should not have <strong><em> structure)');
+      }
+    });
 
     listItems.forEach((li, index) => {
       const directEm = Array.from(li.children).find(
@@ -1052,20 +923,23 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
 
   const issues: string[] = [];
 
-  const labelStrong = section.paragraph.querySelector(':scope > strong');
-  const labelEm = labelStrong?.querySelector(':scope > em');
-  if (!labelStrong) {
-    issues.push('Sources paragraph missing <strong> tag');
-  } else if (!labelEm) {
-    issues.push('Sources paragraph missing <em> tag inside <strong>');
-  } else {
-    const emText = labelEm.textContent?.trim().toLowerCase() || '';
-    if (emText !== 'sources:') {
-      issues.push(
-        `Sources <em> tag should contain "Sources:" but found "${labelEm.textContent?.trim()}"`
-      );
+  sections.forEach(({ label }) => {
+    if (label.tagName.toLowerCase() !== 'p') issues.push('Sources heading should be normalized to a paragraph');
+    const labelStrong = label.querySelector(':scope > strong');
+    const labelEm = labelStrong?.querySelector(':scope > em');
+    if (!labelStrong) {
+      issues.push('Sources paragraph missing <strong> tag');
+    } else if (!labelEm) {
+      issues.push('Sources paragraph missing <em> tag inside <strong>');
+    } else {
+      const emText = labelEm.textContent?.trim().toLowerCase() || '';
+      if (emText !== 'sources:') {
+        issues.push(
+          `Sources <em> tag should contain "Sources:" but found "${labelEm.textContent?.trim()}"`
+        );
+      }
     }
-  }
+  });
 
   listItems.forEach((li, index) => {
     const directEm = Array.from(li.children).find(
@@ -1120,9 +994,9 @@ function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features?: 
   }
 
   const enabled = features?.removeSourcesLinks ?? true;
-  const section = findSourcesSection(doc);
+  const sections = findSourcesSections(doc);
 
-  if (!section) {
+  if (!sections.length) {
     return {
       ruleId: 'remove-sources-links',
       feature: 'Remove Sources Links',
@@ -1133,8 +1007,8 @@ function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features?: 
     };
   }
 
-  const sourcesLinks = section.list.querySelectorAll('a');
-  const totalLinks = sourcesLinks.length;
+  const totalLinks = sections.reduce((count, section) => count + section.label.querySelectorAll('a').length +
+    (section.list?.querySelectorAll('a').length || 0), 0);
 
   if (totalLinks === 0) {
     return {
@@ -1155,7 +1029,7 @@ function validateRemoveSourcesLinks(doc: Document, mode: OutputMode, features?: 
       passed: false,
       message: `${totalLinks} anchor tag(s) found in Sources (should be removed)`,
       severity: 'error',
-      expected: 'No <a> tags in Sources <ol>',
+      expected: 'No <a> tags in Sources labels or lists',
       actual: `${totalLinks} anchor tag(s) present in Sources`,
     };
   }
@@ -1283,7 +1157,7 @@ function validateSpecialParagraphSpacing(doc: Document, issues: string[]): void 
       }
     }
 
-    if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
+    if (isSourcesLabel(p)) {
       const prevSibling = p.previousElementSibling;
       if (!isAnySpacingElement(prevSibling)) {
         issues.push('Missing spacing before "Sources:" section');
@@ -1462,9 +1336,9 @@ function validateSourcesItalic(doc: Document, mode: OutputMode, features?: Featu
   }
 
   const enabled = isFeatureEnabled(features, 'sourcesItalic', true);
-  const section = findSourcesSection(doc);
+  const sections = findSourcesSections(doc);
 
-  if (!section) {
+  if (!sections.length) {
     return {
       ruleId: 'sources-italic',
       feature: 'Sources Italic',
@@ -1475,7 +1349,7 @@ function validateSourcesItalic(doc: Document, mode: OutputMode, features?: Featu
     };
   }
 
-  const listItems = section.list.querySelectorAll('li');
+  const listItems = sections.flatMap(section => Array.from(section.list?.querySelectorAll('li') || []));
   if (listItems.length === 0) {
     return {
       ruleId: 'sources-italic',
@@ -1619,8 +1493,8 @@ function validateBrBeforeSources(doc: Document, mode: OutputMode, features?: Fea
     };
   }
 
-  const section = findSourcesSection(doc);
-  if (!section) {
+  const sections = findSourcesSections(doc);
+  if (!sections.length) {
     return {
       ruleId: 'br-before-sources',
       feature: 'BR Before Sources',
@@ -1631,8 +1505,9 @@ function validateBrBeforeSources(doc: Document, mode: OutputMode, features?: Fea
     };
   }
 
-  const prevSibling = section.paragraph.previousElementSibling;
-  if (isBrSpacingElement(prevSibling)) {
+  const missing = sections.filter(section => !isBrSpacingElement(section.label.previousElementSibling));
+  const prevSibling = missing[0]?.label.previousElementSibling;
+  if (!missing.length) {
     return {
       ruleId: 'br-before-sources',
       feature: 'BR Before Sources',

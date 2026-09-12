@@ -56,14 +56,20 @@ function isInsideAltImageTextParagraph(anchor: Element): boolean {
 }
 
 function wrapAnchorContents(anchor: Element, doc: Document): void {
-  const children = Array.from(anchor.childNodes);
-  if (children.length === 0) return;
+  if (anchor.childNodes.length === 0) return;
 
   /* Idempotency guard: if every text node is already inside a <strong><u>,
    * skip. Mirrors the validator's expectations. */
   if (anchor.querySelector(':scope > strong > u') && hasOnlyWrappedContent(anchor)) {
     return;
   }
+
+  // The option makes the entire link bold and underlined. Existing copies of
+  // those wrappers are redundant, but other emphasis and all text must remain.
+  for (const wrapper of Array.from(anchor.querySelectorAll('strong, u')).reverse()) {
+    wrapper.replaceWith(...Array.from(wrapper.childNodes));
+  }
+  const children = Array.from(anchor.childNodes);
 
   const strong = doc.createElement('strong');
   const u = doc.createElement('u');
@@ -81,11 +87,8 @@ function wrapAnchorContents(anchor: Element, doc: Document): void {
 }
 
 function hasOnlyWrappedContent(anchor: Element): boolean {
-  return Array.from(anchor.childNodes).every((node) => {
-    if (node.nodeType === Node.TEXT_NODE) return true;
-    if (node.nodeType !== Node.ELEMENT_NODE) return false;
-    const el = node as Element;
-    if (el.tagName.toLowerCase() !== 'strong') return false;
-    return el.querySelector(':scope > u') !== null;
-  });
+  const strong = anchor.firstElementChild;
+  return anchor.childNodes.length === 1 && strong?.tagName.toLowerCase() === 'strong' &&
+    strong.childNodes.length === 1 && strong.firstElementChild?.tagName.toLowerCase() === 'u' &&
+    anchor.querySelectorAll('strong, u').length === 2;
 }

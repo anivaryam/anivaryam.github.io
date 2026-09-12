@@ -11,6 +11,11 @@ const INLINE_ELEMENTS = [
 ];
 
 const SELF_CLOSING = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'];
+const PRESERVE_EMPTY_ELEMENTS = new Set(['table', 'thead', 'tbody', 'tr', 'th', 'td']);
+
+function isInlineElement(node: Node | null): boolean {
+  return node?.nodeType === Node.ELEMENT_NODE && !BLOCK_ELEMENTS.includes((node as Element).tagName.toLowerCase());
+}
 
 function escapeHtml(str: unknown): string {
   if (str == null) return '';
@@ -66,6 +71,17 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
     }
   }
   openingTag += '>';
+
+  // Formatting whitespace is data inside pre/code. Serialize that subtree
+  // without indentation or line cleanup (DOM serialization still escapes text).
+  if (tagName === 'pre' || tagName === 'code') {
+    const content = element.innerHTML;
+    const leadingNewline = tagName === 'pre' && content.startsWith('\n') ? '\n' : '';
+    return (isBlock ? '\n' + indent : '') + openingTag + leadingNewline + content + `</${tagName}>`;
+  }
+  if (INLINE_ELEMENTS.includes(tagName) && !element.children.length && !element.textContent?.trim()) {
+    return escapeHtml(element.textContent);
+  }
   
   let content = '';
   let hasBlockChildren = false;
@@ -79,12 +95,8 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
     if (node.nodeType === Node.ELEMENT_NODE) {
       const childTag = (node as Element).tagName.toLowerCase();
       
-      if (INLINE_ELEMENTS.includes(childTag) && !(node as Element).textContent?.trim() && (node as Element).children.length === 0) {
-        continue;
-      }
-      
       const isSpacingElement = isSpacingParagraph(node as Element);
-      if (BLOCK_ELEMENTS.includes(childTag) && !(node as Element).textContent?.trim() && (node as Element).children.length === 0 && !isSpacingElement) {
+      if (BLOCK_ELEMENTS.includes(childTag) && !PRESERVE_EMPTY_ELEMENTS.has(childTag) && !['pre', 'code'].includes(childTag) && !(node as Element).textContent?.trim() && (node as Element).children.length === 0 && !isSpacingElement) {
         continue;
       }
       
@@ -110,8 +122,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
       const isSpaceOnly = text.trim() === '' && text.length > 0 && /^\s+$/.test(text);
       const prevSibling = node.previousSibling;
       const nextSibling = node.nextSibling;
-      const isBetweenElements = (prevSibling && prevSibling.nodeType === Node.ELEMENT_NODE) ||
-                               (nextSibling && nextSibling.nodeType === Node.ELEMENT_NODE);
+      const isBetweenElements = isInlineElement(prevSibling) || isInlineElement(nextSibling);
       
       if (text.trim() || (isSpaceOnly && isBetweenElements)) {
         content += escapeHtml(text);
@@ -121,7 +132,10 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
   }
   
   const isThisSpacingElement = isSpacingParagraph(element);
-  if (!hasContent && !isThisSpacingElement) {
+  if (!hasContent && PRESERVE_EMPTY_ELEMENTS.has(tagName)) {
+    return '\n' + indent + openingTag + `</${tagName}>`;
+  }
+  if (!hasContent && !isThisSpacingElement && !PRESERVE_EMPTY_ELEMENTS.has(tagName)) {
     return '';
   }
   
@@ -161,11 +175,6 @@ export function formatCompact(html: string): string {
     return '';
   }
 
-  if (html.length > 1000000) {
-    console.warn('HTML input too large, truncating to 1MB');
-    html = html.substring(0, 1000000);
-  }
-
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
@@ -178,26 +187,13 @@ export function formatCompact(html: string): string {
         result += formatted;
       } else if (node.nodeType === Node.TEXT_NODE) {
         // Keep separators between top-level inline nodes intact.
-        result += escapeHtml(node.textContent);
+        if (node.textContent?.trim() || isInlineElement(node.previousSibling) || isInlineElement(node.nextSibling)) {
+          result += escapeHtml(node.textContent);
+        }
       }
     }
     
-    result = result.split('\n')
-      .map(line => line.replace(/\s+$/, ''))
-      .filter(line => line.length > 0)
-      .join('\n');
-    
-    result = result.replace(/<(br|hr|img|input|meta|link|area|base|col|embed|source|track|wbr)><\/\1>/gi, '<$1>');
-    result = result.replace(/<(em|i|strong|b|span|code|sup|sub|small|mark|del|ins|u|abbr|cite|q|samp|var)><\/\1>/g, '');
-    result = result.replace(/<p><\/p>/g, '');
-    result = result.replace(/<p>(\s|&nbsp;|\u00A0)*<\/p>/g, (match) => {
-      if (match.includes('&nbsp;') || match.includes('\u00A0')) {
-        return '<p>&nbsp;</p>';
-      }
-      return '';
-    });
-    
-    return result.replace(/\n{3,}/g, '\n\n').trim();
+    return result.trim();
   } catch (e) {
     console.warn('HTML formatting failed:', e);
     return html;

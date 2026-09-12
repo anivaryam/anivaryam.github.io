@@ -8,6 +8,7 @@ import {
   isSpacingParagraph as isSpacingElement,
   isBrSpacingParagraph as isBrSpacingElement,
 } from './html-spacing';
+import { isSourcesLabel, findSourcesSections } from './mode-sources-section';
 
 export function isReadMoreParagraph(element: Element | null): boolean {
   if (element?.tagName.toLowerCase() !== 'p') return false;
@@ -16,9 +17,8 @@ export function isReadMoreParagraph(element: Element | null): boolean {
 }
 
 export function isSourcesParagraph(element: Element | null): boolean {
-  if (element?.tagName.toLowerCase() !== 'p') return false;
-  const text = element.textContent?.trim().toLowerCase() || '';
-  return text === 'sources' || text.startsWith('sources:');
+  // Preserve the existing export while sharing paragraph/heading detection.
+  return isSourcesLabel(element);
 }
 
 /**
@@ -99,7 +99,7 @@ export function addBrBeforeSources(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
-    const paragraphs = doc.querySelectorAll('p');
+    const paragraphs = findSourcesSections(doc).map(section => section.label);
     
     paragraphs.forEach(p => {
       if (isSourcesParagraph(p)) {

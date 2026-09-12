@@ -4,44 +4,15 @@
  */
 
 import { isSpacingParagraph as isSpacingElement } from './html-spacing';
+import { findKeyTakeawaysSection } from './mode-key-takeaways';
+import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
 
 function addSpacingAfterKeyTakeaways(doc: Document): void {
-  const headings = Array.from(doc.querySelectorAll('h2'));
-  let keyTakeawaysHeading: Element | null = null;
-  
-  for (const heading of headings) {
-    const text = heading.textContent?.trim() || '';
-    if (text.toLowerCase().includes('key takeaways')) {
-      keyTakeawaysHeading = heading;
-      break;
-    }
-  }
-  
-  if (keyTakeawaysHeading) {
-    let nextSibling = keyTakeawaysHeading.nextElementSibling;
-    while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ul') {
-      nextSibling = nextSibling.nextElementSibling;
-    }
-    
-    if (nextSibling && nextSibling.tagName.toLowerCase() === 'ul') {
-      const elementAfterUl = nextSibling.nextElementSibling;
-      const hasExistingSpacing = elementAfterUl && isSpacingElement(elementAfterUl);
-      if (hasExistingSpacing) {
-        return;
-      }
-      
-      const spacing = doc.createElement('p');
-      spacing.textContent = '\u00A0';
-      const parentNode = nextSibling.parentNode;
-      if (parentNode) {
-        if (elementAfterUl) {
-          parentNode.insertBefore(spacing, elementAfterUl);
-        } else {
-          parentNode.appendChild(spacing);
-        }
-      }
-    }
-  }
+  const section = findKeyTakeawaysSection(doc);
+  if (!section || isSpacingElement(section.list.nextElementSibling)) return;
+  const spacing = doc.createElement('p');
+  spacing.textContent = '\u00A0';
+  section.list.after(spacing);
 }
 
 /** One rule source for conversion, validation, and preview highlighting. */
@@ -125,11 +96,10 @@ function addSpacingBeforeReadSection(doc: Document): void {
 }
 
 function addSpacingBeforeSources(doc: Document): void {
-  const paragraphs = doc.querySelectorAll('p');
+  const paragraphs = findSourcesSections(doc).map(section => section.label);
   
   paragraphs.forEach(p => {
-    const text = p.textContent?.trim().toLowerCase() || '';
-    if (text === 'sources' || text === 'sources:' || text.startsWith('sources:')) {
+    if (isSourcesLabel(p)) {
       
       const prevSibling = p.previousElementSibling;
       const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);

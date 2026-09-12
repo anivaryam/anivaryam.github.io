@@ -338,6 +338,16 @@ describe('validateKeyTakeaways (D4)', () => {
 /* ------------------------------------------------------------------ */
 
 describe('validateH1AfterKeyTakeaways (D1)', () => {
+  it.each(['<p class="title">Title</p>', '<p class="MsoTitle">Title</p>', '<h1>Title</h1>'])('uses the same title detection for %s', (title) => {
+    const html = '<h2>Key Takeaways:</h2><ul><li>Point</li></ul><p>&nbsp;</p>' + title;
+    expectFail(validateMode(html, 'blogs', {}), 'h1-after-key-takeaways');
+    expectPass(validateMode(html, 'blogs', { h1Removal: false }), 'h1-after-key-takeaways');
+  });
+
+  it('does not require a title to exist when removal is disabled', () => {
+    expectPass(validateMode('<h2>Key Takeaways:</h2><ul><li>Point</li></ul><p>Introduction.</p>', 'blogs', { h1Removal: false }), 'h1-after-key-takeaways');
+  });
+
   it('passes when H1 is removed', () => {
     const html = '<h2><strong>Key Takeaways:</strong></h2><ul><li>x</li></ul><p>next</p>';
     const results = validateMode(html, 'blogs', defaultFeatures);
@@ -571,6 +581,21 @@ describe('validateSourcesNormalize (D7)', () => {
 /* ------------------------------------------------------------------ */
 
 describe('validateRemoveSourcesLinks (D8)', () => {
+  it.each([
+    '<h2>Sources:</h2><ol><li><a href="/study">Study</a></li></ol>',
+    '<p>Sources: <a href="/study">Study</a>.</p>',
+    '<p><strong><em>Sources:</em></strong></p><ol><li><em>One</em></li></ol><h2>Other</h2><h3>Sources:</h3><ul><li><a href="/study">Study</a></li></ul>',
+  ])('does not falsely pass retained source links: %s', (html) => {
+    expectFail(validateMode(html, 'shoppables', {}), 'remove-sources-links');
+  });
+
+  it('does not exempt an unrelated list from structural or bold-label validation', () => {
+    const html = '<p><strong><em>Sources:</em></strong> Citation.</p><h2>Products</h2><ol><li style="font-style: italic">Option: Product</li></ol>';
+    const results = validateMode(html, 'shoppables', {});
+    expectFail(results, 'sanitized-structure');
+    expectFail(results, 'ol-bold-labels');
+  });
+
   const sourcesWithLinks = '<p><strong><em>Sources:</em></strong></p><ol><li><em><a href="https://x.com">link</a></em></li></ol>';
 
   it('enabled: passes when no anchors in Sources', () => {

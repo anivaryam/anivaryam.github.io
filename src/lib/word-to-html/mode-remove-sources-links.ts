@@ -4,6 +4,8 @@
  * Works with both Blogs and Shoppables modes
  */
 
+import { findSourcesSections } from './mode-sources-section';
+
 export function removeSourcesLinks(html: string): string {
   if (!html || typeof html !== 'string') {
     return '';
@@ -13,31 +15,9 @@ export function removeSourcesLinks(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
-    const paragraphs = doc.querySelectorAll('p');
-    
-    paragraphs.forEach(p => {
-      const text = p.textContent?.trim() || '';
-      const lowerText = text.toLowerCase();
-      
-      // Check if this is a Sources paragraph (matches "sources" or "sources:" or "Sources: ...")
-      if (lowerText === 'sources' || lowerText === 'sources:' || lowerText.startsWith('sources:')) {
-        // Remove links in the Sources paragraph itself
-        removeLinksFromElement(p);
-        
-        // Find the next ol after Sources paragraph
-        let nextSibling = p.nextElementSibling;
-        while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
-          nextSibling = nextSibling.nextElementSibling;
-        }
-        
-        // Remove links from all list items in the Sources ol
-        if (nextSibling && nextSibling.tagName.toLowerCase() === 'ol') {
-          const listItems = nextSibling.querySelectorAll('li');
-          listItems.forEach(li => {
-            removeLinksFromElement(li);
-          });
-        }
-      }
+    findSourcesSections(doc).forEach(({ label, list }) => {
+      removeLinksFromElement(label);
+      if (list) removeLinksFromElement(list);
     });
     
     return doc.body.innerHTML;

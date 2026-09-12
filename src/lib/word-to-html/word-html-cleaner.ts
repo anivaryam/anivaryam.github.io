@@ -4,7 +4,8 @@
  * This matches the cleanWordHtml function from converter.js
  */
 
-import { removeSpacingParagraphs } from './html-spacing';
+import { removeSpacingParagraphs, removeLayoutBreaks } from './html-spacing';
+import { prepareWordSource } from './word-source-formatting';
 
 function escapeHtml(text: string): string {
   const map: Record<string, string> = {
@@ -97,10 +98,14 @@ function removeImages(element: Element): void {
   images.forEach(img => img.remove());
   
   const imageClassElements = element.querySelectorAll('[class*="image"], [class*="Image"]');
-  imageClassElements.forEach(el => el.remove());
+  imageClassElements.forEach(el => {
+    if (!el.textContent?.trim()) el.remove();
+  });
   
   const bgImageElements = element.querySelectorAll('[style*="background-image"]');
-  bgImageElements.forEach(el => el.remove());
+  bgImageElements.forEach(el => {
+    if (!el.textContent?.trim()) el.remove();
+  });
   
   const allElements = element.querySelectorAll('*');
   allElements.forEach(el => {
@@ -472,6 +477,7 @@ export function cleanWordHtml(html: string): string {
   tempDiv.innerHTML = html;
 
   removeImages(tempDiv);
+  prepareWordSource(tempDiv);
   preserveFormattingElements(tempDiv);
   removeWordSpecificAttributes(tempDiv);
   convertFontTagsToSpans(tempDiv);
@@ -480,9 +486,7 @@ export function cleanWordHtml(html: string): string {
   flattenNestedSpans(tempDiv);
   removeWordWrapperElements(tempDiv);
   
-  // Remove all <br> tags to clean up Word HTML
-  const brTags = tempDiv.querySelectorAll('br');
-  brTags.forEach(br => br.remove());
+  removeLayoutBreaks(tempDiv);
   
   return tempDiv.innerHTML;
 }

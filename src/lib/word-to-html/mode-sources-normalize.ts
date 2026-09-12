@@ -5,6 +5,7 @@
 
 import { normalizeSectionLabel } from './mode-disclaimer-normalize';
 import { wrapInlineContent } from './html-sanitizer';
+import { findSourcesSections } from './mode-sources-section';
 
 export function normalizeSources(html: string, sourcesItalic: boolean = true): string {
   if (!html || typeof html !== 'string') {
@@ -15,24 +16,15 @@ export function normalizeSources(html: string, sourcesItalic: boolean = true): s
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
-    const paragraphs = doc.querySelectorAll('p');
-    
-    paragraphs.forEach(p => {
-      const text = p.textContent?.trim() || '';
-      const lowerText = text.toLowerCase();
-      
-      if (lowerText === 'sources' || lowerText === 'sources:' || lowerText.startsWith('sources:')) {
-        normalizeSectionLabel(p, doc, 'Sources:', /^\s*Sources\s*:?/i);
-        
-        let nextSibling = p.nextElementSibling;
-        while (nextSibling && nextSibling.tagName.toLowerCase() !== 'ol') {
-          nextSibling = nextSibling.nextElementSibling;
-        }
-        
-        if (nextSibling && nextSibling.tagName.toLowerCase() === 'ol') {
-          normalizeSourcesListItems(nextSibling, doc, sourcesItalic);
-        }
+    findSourcesSections(doc).forEach(({ label, list }) => {
+      let paragraph = label;
+      if (label.tagName.toLowerCase() !== 'p') {
+        paragraph = doc.createElement('p');
+        paragraph.append(...Array.from(label.childNodes));
+        label.replaceWith(paragraph);
       }
+      normalizeSectionLabel(paragraph, doc, 'Sources:', /^\s*Sources\s*:?/i);
+      if (list) normalizeSourcesListItems(list, doc, sourcesItalic);
     });
     
     return doc.body.innerHTML;

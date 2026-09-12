@@ -16,7 +16,7 @@
  * not security or semantic normalization.
  */
 
-import { removeSpacingParagraphs } from './html-spacing';
+import { removeSpacingParagraphs, removeLayoutBreaks } from './html-spacing';
 
 // Block-level elements (including HTML5 semantic elements treated as layout blocks)
 // Note: Semantic HTML5 elements (section, article, etc.) are treated as layout blocks
@@ -57,6 +57,7 @@ export function cleanHtml(html: string): string {
 
     // Also covers direct convertToHtml callers and wrappers unwrapped by sanitization.
     removeSpacingParagraphs(doc.body);
+    removeLayoutBreaks(doc.body);
     cleanElement(doc.body, false);
     removeBrAtStartOfBlockElements(doc.body);
     removeBrAfterBlockElements(doc.body);
@@ -226,30 +227,19 @@ function unwrapParagraph(pElement: Element, parent: Element): void {
     return;
   }
 
-  const children = Array.from(pElement.childNodes);
-  
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
-    
-    if (child.nodeType === Node.ELEMENT_NODE) {
-      const childTag = (child as Element).tagName.toLowerCase();
-      
-      if (childTag === 'br') {
-        continue;
-      }
-      
-      parent.insertBefore(child, pElement);
-    } else if (child.nodeType === Node.TEXT_NODE) {
-      const text = child.textContent;
-      if (text?.trim()) {
-        // Intentionally recreates text nodes to normalize whitespace
-        // (moves nodes would preserve original whitespace, which we don't want here)
-        const textNode = document.createTextNode(text);
-        parent.insertBefore(textNode, pElement);
-      }
-    }
+  const canJoin = (node: Node | null): boolean => !!node &&
+    (node.nodeType === Node.TEXT_NODE || (node.nodeType === Node.ELEMENT_NODE &&
+      ((node as Element).tagName === 'P' || !BLOCK_ELEMENT_SET.has((node as Element).tagName.toLowerCase()))));
+  const previous = pElement.previousSibling;
+  const next = pElement.nextSibling;
+  const text = pElement.textContent || '';
+  if (canJoin(previous) && /\S$/.test(previous.textContent || '') && /^\S/.test(text)) {
+    pElement.before(pElement.ownerDocument.createTextNode(' '));
   }
-  
+  while (pElement.firstChild) parent.insertBefore(pElement.firstChild, pElement);
+  if (canJoin(next) && /\S$/.test(text) && /^\S/.test(next.textContent || '')) {
+    pElement.before(pElement.ownerDocument.createTextNode(' '));
+  }
   parent.removeChild(pElement);
 }
 
