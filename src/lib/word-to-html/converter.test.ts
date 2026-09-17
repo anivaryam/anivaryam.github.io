@@ -678,3 +678,36 @@ describe('Sources content preservation', () => {
     expect(normalizeSources(output)).toBe(output);
   });
 });
+
+describe('trailing whitespace before block end tags', () => {
+  it.each(['regular', 'blogs', 'shoppables'] as const)(
+    'trims trailing whitespace from both outputs in %s mode',
+    (mode) => {
+      const output = convertToHtml(
+        cleanWordHtml('<p>Hello World   </p><h1>What is Happening  </h1><p>Hello <strong>World   </strong></p>'),
+        mode,
+      );
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(html).not.toMatch(/[ \t]+<\/(p|h[1-6]|li|strong)>/);
+        expect(html).toContain('<p>Hello World</p>');
+        expect(html).toContain('What is Happening');
+      }
+    },
+  );
+
+  it('keeps inline spacing that separates words', () => {
+    const output = convertToHtml(cleanWordHtml('<p>Hello <strong>World </strong>more</p>'), 'regular');
+    for (const html of [output.formatted, output.unformatted]) {
+      expect(html).toContain('World </strong>more');
+    }
+  });
+
+  it('keeps the list-label separator so pipeline output still validates', () => {
+    const output = convertToHtml(cleanWordHtml('<ul><li><strong>Label:</strong></li></ul>'), 'blogs');
+    for (const html of [output.formatted, output.unformatted]) {
+      expect(html).toContain('Label:</strong> </li>');
+    }
+    const results = validateMode(output.unformatted, 'blogs', {});
+    expect(results.results.find(result => result.ruleId === 'list-normalization')?.passed).toBe(true);
+  });
+});

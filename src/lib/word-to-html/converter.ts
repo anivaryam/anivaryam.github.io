@@ -14,7 +14,7 @@ function logError(message: string, error: unknown): void {
   }
 }
 
-import { cleanHtml } from './html-cleaner';
+import { cleanHtml, trimTrailingBlockWhitespace } from './html-cleaner';
 import { sanitizeHtml } from './html-sanitizer';
 import { formatCompact } from './html-formatter';
 import { processMode } from './mode-processor';
@@ -71,14 +71,21 @@ export function convertToHtml(
     if (!processed) {
       return { formatted: '', unformatted: '' };
     }
-    
-    // Step 4: Format HTML for display
-    const formatted = formatCompact(processed);
+
+    // Step 4: Trim whitespace that sits at the rendered end of block elements.
+    // Runs after mode processing so both outputs share the same normalization.
+    const trimmed = trimTrailingBlockWhitespace(processed);
+    if (!trimmed) {
+      return { formatted: '', unformatted: '' };
+    }
+
+    // Step 5: Format HTML for display
+    const formatted = formatCompact(trimmed);
     if (!formatted) {
       return { formatted: '', unformatted: '' };
     }
-    
-    return { formatted, unformatted: processed };
+
+    return { formatted, unformatted: trimmed };
   } catch (error) {
     logError('Conversion error:', error);
     throw error instanceof Error ? error : new Error(String(error));

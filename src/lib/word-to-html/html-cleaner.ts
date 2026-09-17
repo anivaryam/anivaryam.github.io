@@ -11,6 +11,8 @@
  * - Eliminates layout <br> elements (inside blocks, after blocks)
  * - Cleans inline formatting inside list items (normalizes strong/em nesting)
  * - Trims whitespace from anchor text
+ * - Trims whitespace at the end of block elements (trimTrailingBlockWhitespace,
+ *   run after mode processing; see its docs)
  * 
  * Note: This runs after sanitization and focuses on structural cleanup,
  * not security or semantic normalization.
@@ -323,6 +325,110 @@ function trimAnchorWhitespace(element: Element): void {
   if (last?.nodeType === Node.TEXT_NODE && last.parentNode === element) {
     last.textContent = (last.textContent || '').replace(/\s+$/, '');
     if (!last.textContent) element.removeChild(last);
+  }
+}
+
+/**
+ * Whitespace that HTML collapses: space, tab, line feed, form feed, carriage
+ * return. Deliberately excludes U+00A0 (&nbsp;), which carries intentional
+ * spacing and must be preserved.
+ */
+const TRAILING_HTML_WHITESPACE = /[\t\n\r\f\v ]+$/;
+
+/** Elements whose interior whitespace is data, not layout. */
+const WHITESPACE_PRESERVING_TAGS = new Set(['pre', 'code']);
+
+/**
+ * Trims whitespace at the rendered end of every block element in a subtree.
+ *
+ * Trailing whitespace at the end of a block is discarded by HTML whitespace
+ * collapsing, so removing it does not change rendering. The walk descends
+ * through trailing inline wrappers (e.g. <p>Hello <strong>World   </strong></p>)
+ * but stops at nested block boundaries, since each block is handled by its own
+ * pass. Inline whitespace that separates words is never touched, and neither is
+ * &nbsp; or the contents of <pre>/<code>.
+ */
+export function trimTrailingWhitespaceInBlocks(root: Element): void {
+  if (!root || root.nodeType !== Node.ELEMENT_NODE) {
+    return;
+  }
+
+  const tagName = root.tagName.toLowerCase();
+  if (BLOCK_ELEMENT_SET.has(tagName) && !WHITESPACE_PRESERVING_TAGS.has(tagName)) {
+    trimBlockEnd(root);
+  }
+
+  const children = Array.from(root.children);
+  for (let i = 0; i < children.length; i++) {
+    trimTrailingWhitespaceInBlocks(children[i]);
+  }
+}
+
+/**
+ * The list-label convention intentionally keeps one space after a bold colon
+ * label, and the list validator enforces it. Preserve that single separator so
+ * trimming never turns valid pipeline output into a validation failure.
+ */
+function isListLabelSeparator(block: Element, node: Node): boolean {
+  if (block.tagName.toLowerCase() !== 'li') {
+    return false;
+  }
+  const previous = node.previousSibling;
+  if (!previous || previous.nodeType !== Node.ELEMENT_NODE) {
+    return false;
+  }
+  const element = previous as Element;
+  return element.tagName.toLowerCase() === 'strong' &&
+    (element.textContent || '').trim().endsWith(':');
+}
+
+function trimBlockEnd(block: Element): void {
+  let node: Node | null = block.lastChild;
+  while (node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent || '';
+      const trimmed = text.replace(TRAILING_HTML_WHITESPACE, '');
+      if (trimmed === text) {
+        return;
+      }
+      if (trimmed) {
+        node.textContent = trimmed;
+      } else if (isListLabelSeparator(block, node)) {
+        node.textContent = ' ';
+      } else {
+        node.parentNode?.removeChild(node);
+      }
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+    const element = node as Element;
+    const childTag = element.tagName.toLowerCase();
+    if (BLOCK_ELEMENT_SET.has(childTag) || WHITESPACE_PRESERVING_TAGS.has(childTag)) {
+      return;
+    }
+    node = element.lastChild;
+  }
+}
+
+/**
+ * String-level entry point for trimming block-end whitespace. Runs after all
+ * mode processing so both formatted and unformatted output share the result.
+ */
+export function trimTrailingBlockWhitespace(html: string): string {
+  if (!html || typeof html !== 'string') {
+    return '';
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    trimTrailingWhitespaceInBlocks(doc.body);
+    return doc.body.innerHTML;
+  } catch (e) {
+    console.warn('Trailing whitespace trimming failed:', e);
+    return html;
   }
 }
 
