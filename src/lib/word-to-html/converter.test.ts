@@ -309,6 +309,40 @@ describe('structural and formatting regressions', () => {
       expect(new DOMParser().parseFromString(html, 'text/html').body.textContent).toBe('Hello world today.');
     }
   });
+
+  it('keeps the numbering of a Word Online list split into one <ol> per item', () => {
+    const item = (n: number, text: string) => `<div class="ListContainerWrapper"><ol start="${n}" role="list"><li role="listitem" data-aria-posinset="${n}" data-aria-level="1"><p class="Paragraph"><span>${text}</span></p></li></ol></div>`;
+    const input = item(1, 'One') + item(2, 'Two') + item(3, 'Three');
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('ol')).map(ol => ol.getAttribute('start'))).toEqual([null, '2', '3']);
+        expect(Array.from(doc.querySelectorAll('ol > li')).map(li => li.textContent)).toEqual(['One', 'Two', 'Three']);
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
+    }
+  });
+
+  it('resumes an interrupted list at its source number', () => {
+    const input = '<ol><li>One</li></ol><p>Note between.</p><ol start="2"><li>Two</li></ol>';
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('ol')).map(ol => ol.getAttribute('start'))).toEqual([null, '2']);
+      }
+    }
+  });
+
+  it.each([
+    ['<ol><li>A</li></ol><ol><li>B</li></ol>', '<ol><li>A</li></ol><ol><li>B</li></ol>', '<ol>\n  <li>A</li>\n</ol>\n<ol>\n  <li>B</li>\n</ol>'],
+    ['<ol start="1"><li>A</li></ol>', '<ol><li>A</li></ol>', '<ol>\n  <li>A</li>\n</ol>'],
+  ])('keeps output unchanged when list numbering is the default: %s', (input, unformatted, formatted) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      expect(convertToHtml(cleanWordHtml(input), mode)).toEqual({ formatted, unformatted });
+    }
+  });
 });
 
 describe('URL preservation', () => {
@@ -528,6 +562,35 @@ describe('Word-to-HTML pipeline regressions', () => {
     const output = sanitizeHtml('<a href="https://example.com" target="_blank" rel="opener">link</a>');
     const doc = new DOMParser().parseFromString(output, 'text/html');
     expect(doc.querySelector('a')?.getAttribute('rel')).toBe('noopener');
+  });
+
+  it.each([
+    ['abc', null], [' 4 ', '4'], ['007', '7'], ['+3', '3'], ['2.5', '2'], ['0', '0'], ['-2', '-2'],
+    ['99999999999', null], ['', null], ['3abc', '3'], ['1e3', null], ['0x10', '0'],
+    ['2147483647', '2147483647'], ['2147483648', null], ['-2147483648', '-2147483648'], ['-2147483649', null],
+  ])('reduces <ol start="%s"> to the browser-rendered integer', (value, expected) => {
+    const ol = new DOMParser().parseFromString(sanitizeHtml(`<ol start="${value}"><li>x</li></ol>`), 'text/html').querySelector('ol');
+    expect(ol?.textContent).toBe('x');
+    expect(ol?.getAttribute('start')).toBe(expected);
+  });
+
+  it.each([
+    ['<ol reversed start="3"><li>x</li></ol>', '3'],
+    ['<ol reversed><li>x</li></ol>', null],
+    ['<ol reversed start="1"><li>x</li></ol>', '1'],
+    ['<ol reversed="reversed"><li>x</li></ol>', null],
+  ])('keeps reversed numbering on %s', (input, start) => {
+    const ol = new DOMParser().parseFromString(sanitizeHtml(input), 'text/html').querySelector('ol');
+    expect(ol?.getAttribute('reversed')).toBe('');
+    expect(ol?.getAttribute('start')).toBe(start);
+  });
+
+  it.each([
+    ['<ul start="2" reversed><li>x</li></ul>', '<ul><li>x</li></ul>'],
+    ['<ol><li start="2" reversed>x</li></ol>', '<ol><li>x</li></ol>'],
+    ['<p start="2" reversed>x</p>', '<p>x</p>'],
+  ])('removes list numbering attributes outside <ol>: %s', (input, expected) => {
+    expect(sanitizeHtml(input)).toBe(expected);
   });
 
   it('preserves combined bold and italic Word formatting', () => {
