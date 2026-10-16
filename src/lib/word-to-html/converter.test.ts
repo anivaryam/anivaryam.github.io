@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convertToHtml, convertWordToHtml, getUnformattedHtml, type OutputMode } from './converter';
 import { cleanHtml } from './html-cleaner';
 import { formatCompact } from './html-formatter';
 import { sanitizeHtml } from './html-sanitizer';
 import { cleanWordHtml } from './word-html-cleaner';
+import { createInertContainer } from './word-source-formatting';
 import { normalizeSources } from './mode-sources-normalize';
 import { validateMode } from './validator';
 import { normalizeLists } from './mode-list-normalize';
@@ -709,5 +710,81 @@ describe('trailing whitespace before block end tags', () => {
     }
     const results = validateMode(output.unformatted, 'blogs', {});
     expect(results.results.find(result => result.ruleId === 'list-normalization')?.passed).toBe(true);
+  });
+});
+
+describe('inert parsing of untrusted markup', () => {
+  // jsdom runs inline handlers; <details open> fires toggle without user interaction.
+  const marker = (id: string) => `data-bug1-${id}`;
+  const details = (id: string) => `<details open ontoggle="document.documentElement.setAttribute('${marker(id)}','1')">x</details>`;
+  const settle = () => new Promise(resolve => setTimeout(resolve, 100));
+  const handlerRan = (id: string) => document.documentElement.hasAttribute(marker(id));
+
+  // Positive control: the same payload runs its handler when parsed in the live document.
+  async function expectHandlerToRunInLiveDocument(id: string, html: string) {
+    const live = document.createElement('div');
+    live.innerHTML = html;
+    await settle();
+    expect(handlerRan(id)).toBe(true);
+  }
+
+  afterEach(() => {
+    for (const { name } of Array.from(document.documentElement.attributes)) {
+      if (name.startsWith('data-bug1-')) document.documentElement.removeAttribute(name);
+    }
+  });
+
+  it('parses untrusted markup in an inert no-quirks container', async () => {
+    const container = createInertContainer();
+    // Quirks mode would keep a <table> inside an open <p>, unlike the live document.
+    expect(container.ownerDocument.compatMode).toBe('CSS1Compat');
+    const html = details('container');
+    container.innerHTML = html;
+    await settle();
+    expect(handlerRan('container')).toBe(false);
+    await expectHandlerToRunInLiveDocument('container', html);
+  });
+
+  it('runs no inline handler from cleanWordHtml input', async () => {
+    const html = `<p>Hello</p>${details('clean')}`;
+    cleanWordHtml(html);
+    await settle();
+    expect(handlerRan('clean')).toBe(false);
+    await expectHandlerToRunInLiveDocument('clean', html);
+  });
+
+  // Each site re-parses serialized content into a replacement element.
+  const REPARSE_SITES = [
+    ['font', `<font color="red">${details('font')}</font>`,
+      '<p><font color="red">a<noscript><b>x</b></noscript></font></p>',
+      '<p><span style="color: red">a<noscript><b>x</b></noscript></span></p>'],
+    ['italic', `<div><span style="font-style:italic">${details('italic')}</span></div>`,
+      '<p><span style="font-style:italic">a<noscript><b>x</b></noscript></span></p>',
+      '<p><em>a<noscript><b>x</b></noscript></em></p>'],
+    ['bold', `<div><span style="font-weight:bold">${details('bold')}</span></div>`,
+      '<p><span style="font-weight:bold">a<noscript><b>x</b></noscript></span></p>',
+      '<p><strong>a<noscript><b>x</b></noscript></strong></p>'],
+  ] as const;
+
+  it.each(REPARSE_SITES)('runs no inline handler at the %s re-parse site', async (id, payload) => {
+    cleanWordHtml(payload);
+    await settle();
+    expect(handlerRan(id)).toBe(false);
+    await expectHandlerToRunInLiveDocument(id, payload);
+  });
+
+  it.each(REPARSE_SITES)('re-parses %s content with the same <noscript> semantics as the first parse', (_id, _payload, input, expected) => {
+    // Mixing scripting-disabled and scripting-enabled parses serializes <noscript> children as escaped text.
+    expect(cleanWordHtml(input)).toBe(expected);
+  });
+
+  describe.each(['regular', 'blogs', 'shoppables'] as const)('in %s mode', (mode) => {
+    it.each([
+      ['11', '<p>Body</p><noscript><p class=MsoNormal><font color=red>legacy</font></p></noscript>', '<p>Body</p>', '<p>Body</p>'],
+      ['N1', '<p>Intro</p><p><noscript><img src="/lazy.jpg"></noscript></p><p>After</p>', '<p>Intro</p>\n<p>After</p>', '<p>Intro</p><p>After</p>'],
+      ['S7', '<font color="red"><noscript><!--</noscript><img src="/nope.png" alt="hidden">--></noscript></font>', '', ''],
+    ])('preserves the final output of <noscript> input %s', (_id, input, formatted, unformatted) => {
+      expect(convertToHtml(cleanWordHtml(input), mode)).toEqual({ formatted, unformatted });
+    });
   });
 });

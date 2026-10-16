@@ -13,7 +13,7 @@ import { getStructuralIssues, wrapInlineContent } from "@/lib/word-to-html/html-
 import { getHeadingSpacingIssues } from "@/lib/word-to-html/mode-spacing";
 import DOMPurify from 'dompurify';
 import { cleanWordHtml } from "@/lib/word-to-html/word-html-cleaner";
-import { prepareWordSource } from "@/lib/word-to-html/word-source-formatting";
+import { createInertContainer, prepareWordSource } from "@/lib/word-to-html/word-source-formatting";
 import { findArticleTitleAfterKeyTakeaways } from "@/lib/word-to-html/mode-h1-removal";
 import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isBrSpacingParagraph } from "@/lib/word-to-html/html-spacing";
@@ -598,7 +598,7 @@ export function WordToHtmlConverter() {
       const sourceHtml = e.clipboardData?.getData('text/html');
       if (sourceHtml || e.clipboardData?.getData('text/plain')) prepareFullReplacement();
       if (sourceHtml) {
-        const source = document.createElement('div');
+        const source = createInertContainer();
         source.innerHTML = sourceHtml;
         if (prepareWordSource(source, true)) {
           // Resolve links and article titles from the original clipboard before
