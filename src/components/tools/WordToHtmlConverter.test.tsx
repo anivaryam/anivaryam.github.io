@@ -312,6 +312,10 @@ describe('WordToHtmlConverter', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
     const items = Array.from(document.querySelector('.output-preview')!.querySelectorAll('li'));
     expect(items.map(li => li.getAttribute('data-warning'))).toEqual(['Missing bold label before colon', null]);
+    enterHtml('<ul><li><em>Step</em> one: preheat</li><li>Meet at 9:30 am</li><li>Step two: serve</li></ul>');
+    const bulleted = Array.from(document.querySelector('.output-preview')!.querySelectorAll('ul > li'));
+    expect(bulleted.map(li => li.getAttribute('data-warning'))).toEqual(['Missing bold label before colon', null, null]);
+    expect(bulleted[2].querySelector('strong')?.textContent).toBe('Step two:');
   });
 
   it('does not highlight a source Disclaimer that is already normalized when normalization is off', () => {

@@ -573,10 +573,27 @@ describe('validateOlBoldLabels', () => {
     expect(getOlBoldLabelItems(doc).missingBold.map(li => li.textContent)).toEqual(['Step one: preheat', 'No bold here:']);
   });
 
+  it('flags an unbolded label in an unordered list', () => {
+    const html = '<ul><li>Tip: rinse</li><li><strong>Done:</strong> dry</li><li><strong>Step</strong>: wipe</li></ul>';
+    const results = validateMode(html, 'shoppables', defaultFeatures);
+    expectFail(results, 'ol-bold-labels');
+    expect(getResult(results, 'ol-bold-labels').message).toBe('1/3 list items have bold labels (2 missing)');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    expect(getOlBoldLabelItems(doc).missingBold.map(li => li.textContent)).toEqual(['Tip: rinse', 'Step: wipe']);
+  });
+
+  it('does not count times, ratios, URLs or sentence colons as labels', () => {
+    const items = '<li>Meet at 9:30 am</li><li>Mix a 1:2 ratio</li><li>Visit https://example.com today</li><li>Rinse well. Then: dry it</li>';
+    const results = validateMode(`<ol>${items}</ol><ul>${items}</ul>`, 'blogs', defaultFeatures);
+    expectSkipped(results, 'ol-bold-labels');
+    expect(getResult(results, 'ol-bold-labels').message).toBe('No list items with colons found');
+  });
+
   it('excludes Sources list items', () => {
     const html = '<p>Sources:</p><ol><li>plain source</li></ol><ol><li><strong>Bolded:</strong> text</li></ol>';
     const results = validateMode(html, 'blogs', defaultFeatures);
     expectPass(results, 'ol-bold-labels');
+    expectSkipped(validateMode('<p>Sources:</p><ul><li>Smith J: Cleaning Science</li></ul>', 'blogs', defaultFeatures), 'ol-bold-labels');
   });
 });
 

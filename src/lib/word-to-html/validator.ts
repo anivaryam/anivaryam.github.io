@@ -14,6 +14,7 @@ import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
 import { getHeadingSpacingIssues } from './mode-spacing';
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
 import { isHeaderList } from './mode-ol-header-conversion';
+import { findListLabel } from './mode-list-normalize';
 import { isFootnoteLink } from './mode-link-spacing';
 import { isDisclaimerParagraph, isDisclaimerSectionStart } from './mode-disclaimer-normalize';
 
@@ -781,8 +782,10 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
 }
 
 /**
- * Ordered-list items outside Sources whose text has a colon, and those whose
- * first <strong> does not hold the colon. Shared with preview highlights.
+ * List items (<ol> and <ul>) outside Sources with a label colon, and those
+ * whose colon no <strong> holds. findListLabel is the converter's own label
+ * test, so a label it would bold is exactly one flagged here when missing.
+ * Shared with preview highlights.
  */
 export function getOlBoldLabelItems(doc: Document): { withColon: Element[]; missingBold: Element[]; skippedSources: number } {
   const sourcesSections = findSourcesSections(doc);
@@ -790,17 +793,16 @@ export function getOlBoldLabelItems(doc: Document): { withColon: Element[]; miss
   const missingBold: Element[] = [];
   let skippedSources = 0;
 
-  doc.querySelectorAll('ol > li').forEach((li) => {
+  doc.querySelectorAll('ol > li, ul > li').forEach((li) => {
     if (sourcesSections.some(section => section.list?.contains(li))) {
       skippedSources++;
       return;
     }
 
-    const text = li.textContent || '';
-    if (text.includes(':')) {
+    const label = findListLabel(li);
+    if (label) {
       withColon.push(li);
-      const strongText = li.querySelector('strong')?.textContent || '';
-      if (!strongText.includes(':')) {
+      if (!label.bold) {
         missingBold.push(li);
       }
     }
@@ -832,8 +834,8 @@ function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: Featur
       mode,
       passed: true,
       message: skippedSources > 0
-        ? `No ordered list items with colons found (${skippedSources} Sources items skipped)`
-        : 'No ordered list items with colons found',
+        ? `No list items with colons found (${skippedSources} Sources items skipped)`
+        : 'No list items with colons found',
       severity: 'info',
     };
   }
@@ -846,10 +848,10 @@ function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: Featur
     mode,
     passed,
     message: passed
-      ? `${itemsWithBold}/${itemsWithColon} ordered list items have bold labels`
-      : `${itemsWithBold}/${itemsWithColon} ordered list items have bold labels (${itemsWithColon - itemsWithBold} missing)`,
+      ? `${itemsWithBold}/${itemsWithColon} list items have bold labels`
+      : `${itemsWithBold}/${itemsWithColon} list items have bold labels (${itemsWithColon - itemsWithBold} missing)`,
     severity: passed ? 'info' : 'warning',
-    expected: 'Text before colon in <ol> wrapped in <strong>',
+    expected: 'Text before colon in list items wrapped in <strong>',
     actual: `${itemsWithBold}/${itemsWithColon} items have bold (${skippedSources} Sources items excluded)`,
   };
 }
