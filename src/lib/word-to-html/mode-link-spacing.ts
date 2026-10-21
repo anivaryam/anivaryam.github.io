@@ -69,30 +69,10 @@ export function addLinkSpacing(html: string): string {
       return !!node.parentElement?.closest('pre, code');
     };
 
-    // Helper function to find the previous meaningful sibling (skips empty text nodes)
-    const findPreviousMeaningfulSibling = (node: Node | null): Node | null => {
-      let current = node;
-      while (
-        current &&
-        current.nodeType === Node.TEXT_NODE &&
-        !(current as Text).textContent?.trim()
-      ) {
-        current = current.previousSibling;
-      }
-      return current;
-    };
-
-    // Helper function to find the next meaningful sibling (skips empty text nodes)
-    const findNextMeaningfulSibling = (node: Node | null): Node | null => {
-      let current = node;
-      while (
-        current &&
-        current.nodeType === Node.TEXT_NODE &&
-        !(current as Text).textContent?.trim()
-      ) {
-        current = current.nextSibling;
-      }
-      return current;
+    // A whitespace-only text node beside a link is already its separator; the
+    // neighboring link, label, or formatting must not absorb another space
+    const isWhitespaceText = (node: Node): boolean => {
+      return node.nodeType === Node.TEXT_NODE && !node.textContent?.trim();
     };
     
     const allAnchors = doc.querySelectorAll('a');
@@ -114,24 +94,11 @@ export function addLinkSpacing(html: string): string {
       let textNodeToModify: Text | null = null;
       let textContent = '';
 
-      if (prevSibling) {
+      if (prevSibling && !isWhitespaceText(prevSibling)) {
         if (prevSibling.nodeType === Node.TEXT_NODE) {
-          const text = (prevSibling as Text).textContent || '';
-          if (text.trim()) {
-            // Found a text node with content
-            textNodeToModify = prevSibling as Text;
-            textContent = text;
-          } else {
-            // Empty text node - look for previous element's last text
-            const prevElement = findPreviousMeaningfulSibling(prevSibling.previousSibling);
-            if (prevElement && prevElement.nodeType === Node.ELEMENT_NODE) {
-              const lastText = getLastTextNodeFromElement(prevElement as Element);
-              if (lastText) {
-                textNodeToModify = lastText;
-                textContent = lastText.textContent || '';
-              }
-            }
-          }
+          // Found a text node with content
+          textNodeToModify = prevSibling as Text;
+          textContent = (prevSibling as Text).textContent || '';
         } else if (prevSibling.nodeType === Node.ELEMENT_NODE) {
           // Previous sibling is an element - get its last text node
           const lastText = getLastTextNodeFromElement(prevSibling as Element);
@@ -164,26 +131,13 @@ export function addLinkSpacing(html: string): string {
       // --- Space AFTER the link ---
       const nextSibling = anchor.nextSibling;
 
-      if (nextSibling) {
+      if (nextSibling && !isWhitespaceText(nextSibling)) {
         let nextTextNode: Text | null = null;
         let nextText = '';
 
         if (nextSibling.nodeType === Node.TEXT_NODE) {
-          const text = (nextSibling as Text).textContent || '';
-          if (text.trim()) {
-            nextTextNode = nextSibling as Text;
-            nextText = text;
-          } else {
-            // Empty text node - look for next element's first text
-            const nextElement = findNextMeaningfulSibling(nextSibling.nextSibling);
-            if (nextElement && nextElement.nodeType === Node.ELEMENT_NODE) {
-              const firstText = getFirstTextNodeFromElement(nextElement as Element);
-              if (firstText) {
-                nextTextNode = firstText;
-                nextText = firstText.textContent || '';
-              }
-            }
-          }
+          nextTextNode = nextSibling as Text;
+          nextText = nextSibling.textContent || '';
         } else if (nextSibling.nodeType === Node.ELEMENT_NODE) {
           // Next sibling is an element - get its first text node
           const firstText = getFirstTextNodeFromElement(nextSibling as Element);

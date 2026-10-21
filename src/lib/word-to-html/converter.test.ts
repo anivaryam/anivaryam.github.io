@@ -574,6 +574,22 @@ describe('spacing within formatted links', () => {
     }
   });
 
+  it.each([
+    '<p><a href="https://example.com/a">Twitter</a> <a href="https://example.com/b">Facebook</a></p>',
+    '<p><strong>Note</strong> <a href="https://example.com/a">Twitter</a> <em>Facebook</em></p>',
+  ])('keeps an existing separator outside neighboring links and formatting: %s', (input) => {
+    const source = new DOMParser().parseFromString(input, 'text/html');
+    const texts = (doc: Document) => Array.from(doc.querySelectorAll('a, strong, em')).map(el => el.textContent);
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.body.textContent).toBe(source.body.textContent);
+        expect(texts(doc)).toEqual(texts(source));
+      }
+    }
+  });
+
   it('trims only outer anchor padding while keeping inner separators', () => {
     const input = '<p><a href="/how-it-works">  <strong>How</strong> It <em>Works</em>  </a></p>';
     const output = cleanHtml(input);
@@ -748,6 +764,14 @@ describe('Sources content preservation', () => {
     expect(doc.querySelector('h2')?.previousElementSibling?.innerHTML).toBe('<br>');
     expect(doc.querySelector('a')).toBeNull();
     expect(validateMode(output, 'shoppables', features).summary.failed).toBe(0);
+  });
+
+  it('keeps a single space between adjacent source links once they are removed', () => {
+    const input = '<p>Sources:</p><ol><li><a href="https://example.com/a">A</a> <a href="https://example.com/b">B</a></li></ol>';
+    for (const mode of ['blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml(input, mode);
+      expect(new DOMParser().parseFromString(output, 'text/html').querySelector('li')?.textContent).toBe('A B');
+    }
   });
 
   it('preserves source links when removal is disabled', () => {
