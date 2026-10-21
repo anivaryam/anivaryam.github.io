@@ -4,7 +4,7 @@ import { loadZipAsHtml } from "./load-zip";
 
 async function toZipFile(zip: JSZip): Promise<File> {
   const contents = await zip.generateAsync({ type: "uint8array" });
-  return new File([contents], "document.zip", { type: "application/zip" });
+  return new File([contents as Uint8Array<ArrayBuffer>], "document.zip", { type: "application/zip" });
 }
 
 function parse(html: string): Document {

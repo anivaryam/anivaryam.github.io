@@ -35,6 +35,6 @@ describe("ImageCombinerModal", () => {
         onOpenChange={() => {}}
       />,
     );
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeNull();
   });
 });

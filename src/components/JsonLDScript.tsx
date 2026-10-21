@@ -1,5 +1,3 @@
-import { Organization, Website, BreadcrumbList } from "lucide-react";
-
 const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
