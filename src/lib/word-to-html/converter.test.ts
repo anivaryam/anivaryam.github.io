@@ -379,6 +379,25 @@ describe('structural and formatting regressions', () => {
     expect(new DOMParser().parseFromString(output, 'text/html').body.textContent).toBe('FirstSecond');
   });
 
+  it.each([
+    ['<ul><li>Parent</li><ul><li>Child</li></ul><li>Next</li></ul>', ['Parent', 'Next']],
+    ['<ol><li>Parent</li><ol><li>Child</li></ol><li>Next</li></ol>', ['Parent', 'Next']],
+    ['<ul><li dir="ltr"><p dir="ltr"><span>Parent</span></p></li><ul><li dir="ltr"><p dir="ltr"><span>Child</span></p></li></ul></ul>', ['Parent']],
+    ['<ul><ul><li>Child</li></ul><li>Next</li></ul>', ['', 'Next']],
+  ])('moves a sub-list placed directly in its parent list into an item: %s', (input, items) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const list = new DOMParser().parseFromString(html, 'text/html').body.firstElementChild!;
+        expect(Array.from(list.children).map(li => li.tagName)).toEqual(items.map(() => 'LI'));
+        expect(Array.from(list.children).map(li => Array.from(li.childNodes)
+          .filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent?.trim()).join(''))).toEqual(items);
+        expect(list.querySelector(':scope > li > :is(ul, ol) > li')?.textContent?.trim()).toBe('Child');
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
+    }
+  });
+
   it('converts styled heading lists to numbered headings', () => {
     const output = getUnformattedHtml('<ol style="font-weight:bold"><li><h3>First</h3></li><li><h3>Second</h3></li></ol>', 'blogs');
     const doc = new DOMParser().parseFromString(output, 'text/html');

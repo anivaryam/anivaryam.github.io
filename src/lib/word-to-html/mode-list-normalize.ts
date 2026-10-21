@@ -16,6 +16,25 @@
  * This is inline text normalization, not structural list normalization.
  */
 
+/**
+ * Google Docs places a sub-list directly inside its parent list
+ * (<ul><li>Parent</li><ul>…</ul></ul>). Move it into the preceding item, or
+ * into a new item when none precedes it, so every list child is an <li>.
+ */
+function nestSubListsInItems(doc: Document): void {
+  // Document order: an outer sub-list moves before the ones it contains.
+  doc.querySelectorAll(':is(ul, ol) > :is(ul, ol)').forEach(list => {
+    const previous = list.previousElementSibling;
+    if (previous?.tagName.toLowerCase() === 'li') {
+      previous.appendChild(list);
+    } else {
+      const item = doc.createElement('li');
+      list.replaceWith(item);
+      item.appendChild(list);
+    }
+  });
+}
+
 function mergeAdjacentUl(doc: Document): void {
   let hasChanges = true;
   
@@ -56,6 +75,8 @@ export function normalizeLists(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
+    nestSubListsInItems(doc);
+
     // Merge adjacent ul elements first
     mergeAdjacentUl(doc);
     
