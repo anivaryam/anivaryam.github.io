@@ -654,6 +654,25 @@ describe('Word desktop list paragraphs', () => {
     }
   });
 
+  it('nests a sub-list when only the deeper items kept an inline margin', () => {
+    // The prepareWordSource snapshot drops the class margin of level 1, but
+    // Word writes deeper levels inline. The sub-list also ends the run.
+    const nested = 'margin-left: 1in; text-indent: -0.25in;';
+    const input = '<h2>Key Takeaways</h2>' + item('CxSpFirst', '1.', 'Prepare the seat', 'text-indent: -0.25in;') +
+      item('CxSpMiddle', 'a.', 'Vacuum it', nested) + item('CxSpLast', 'b.', 'Test a spot', nested) +
+      '<p class="MsoTitle">How to Clean Car Seats</p><p class="MsoNormal">Intro paragraph.</p>';
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('body > ol > li')).map(li => li.firstChild?.textContent?.trim())).toEqual(['Prepare the seat']);
+        expect(Array.from(doc.querySelectorAll('body > ol > li > ol > li')).map(li => li.textContent)).toEqual(['Vacuum it', 'Test a spot']);
+        expect(doc.querySelectorAll('body > ol')).toHaveLength(1);
+        expect(doc.body.textContent?.includes('How to Clean Car Seats')).toBe(mode !== 'blogs');
+      }
+    }
+  });
+
   it('starts a new list for a different marker family without indent evidence', () => {
     const style = 'text-indent: -0.25in;';
     const input = item('CxSpFirst', '1.', 'One', style) + item('CxSpMiddle', '2.', 'Two', style) +

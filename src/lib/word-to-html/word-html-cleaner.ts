@@ -562,12 +562,15 @@ function removeLeadingText(element: Element, length: number): void {
 
 /**
  * Build the lists for one run of consecutive Word list paragraphs. Levels come
- * from left margins when every item kept one. Otherwise a new marker family
- * nests only if an enclosing list resumes after it, or if it was nested earlier
- * in the run; else it starts a new list at the same level.
+ * from left margins when any item kept one: an item without one sits at its
+ * paragraph style's indent, the base level, because the prepareWordSource
+ * snapshot keeps only the margins Word writes inline for deeper levels.
+ * Otherwise a new marker family nests only if an enclosing list resumes after
+ * it, or if it was nested earlier in the run; else it starts a new list at the
+ * same level.
  */
 function buildWordLists(items: WordListItem[]): void {
-  const byIndent = items.every(item => item.indent !== null);
+  const byIndent = items.some(item => item.indent !== null);
   const open: { list: HTMLElement; family: string; last: number; indent: number }[] = [];
   const familyDepths = new Map<string, number>();
 
@@ -575,11 +578,12 @@ function buildWordLists(items: WordListItem[]): void {
     const marker = item.markers.find(candidate =>
       open.some(level => level.family === candidate.family && level.last + 1 === candidate.value)
     ) || item.markers[0];
+    const indent = item.indent ?? 0;
     let depth: number;
     if (byIndent) {
       depth = open.length - 1;
-      while (depth > 0 && open[depth].indent > item.indent! + INDENT_TOLERANCE) depth--;
-      if (depth >= 0 && item.indent! > open[depth].indent + INDENT_TOLERANCE) depth++;
+      while (depth > 0 && open[depth].indent > indent + INDENT_TOLERANCE) depth--;
+      if (depth >= 0 && indent > open[depth].indent + INDENT_TOLERANCE) depth++;
       depth = Math.max(depth, 0);
     } else {
       depth = open.map(level => level.family).lastIndexOf(marker.family);
@@ -606,7 +610,7 @@ function buildWordLists(items: WordListItem[]): void {
       if (level) level.list.after(list);
       else if (depth === 0) item.paragraph.before(list);
       else open[depth - 1].list.lastElementChild!.append(list);
-      level = open[depth] = { list, family: marker.family, last: 0, indent: item.indent ?? 0 };
+      level = open[depth] = { list, family: marker.family, last: 0, indent };
     }
     level.last = marker.value;
 
