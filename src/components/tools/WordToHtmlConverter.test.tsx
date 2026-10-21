@@ -475,6 +475,41 @@ describe('WordToHtmlConverter', () => {
     }
   });
 
+  it('copies a selection of the rendered preview without warning highlights or spacer markers', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Intro.</p><h2>Products</h2><ol><li>Option: <a href="/product">Buy product</a></li></ol>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), {
+      target: { value: '<div style="height:10px;"></div>' },
+    });
+    const preview = document.querySelector('.output-preview')!;
+    const item = preview.querySelector('li')!;
+    expect(item.getAttribute('data-warning')).toBe('Missing bold label before colon');
+
+    const copySelection = (select: (range: Range) => void) => {
+      const range = document.createRange();
+      select(range);
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+      const setData = vi.fn();
+      fireEvent.copy(preview, { clipboardData: { setData } });
+      return Object.fromEntries(setData.mock.calls) as Record<string, string>;
+    };
+
+    const all = copySelection(range => range.selectNodeContents(preview));
+    expect(all['text/html']).toContain('<div style="height:10px;"></div>');
+    expect(all['text/html']).toContain('<a href="/product"');
+    expect(all['text/plain']).toContain('Buy product');
+    const part = copySelection(range => range.selectNodeContents(item.firstChild!));
+    expect(part['text/html']).toBe('<ol><li>Option: </li></ol>');
+    for (const html of [all['text/html'], part['text/html']]) {
+      expect(html).not.toContain('data-warning');
+      expect(html).not.toContain('data-w2h-spacer');
+    }
+    expect(item.getAttribute('data-warning')).toBe('Missing bold label before colon');
+  });
+
   it('keeps the custom spacer in the copyable blocks', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');

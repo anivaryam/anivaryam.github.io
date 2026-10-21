@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, type ClipboardEvent as ReactClipboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import Lenis from "lenis";
 import { Copy, Check, FileText, Code, Braces, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash, Link, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -1189,6 +1189,31 @@ export function WordToHtmlConverter() {
   // spacer markup without the converter's marker.
   const displayedPreviewHtml = useMemo(() => stripSpacerMarkers(previewHtmlWithWarnings), [previewHtmlWithWarnings]);
 
+  // A selection copied from the rendered preview leaves out the warning
+  // highlights and the spacer marker; the Copy buttons copy clean HTML on their
+  // own. The selected nodes keep their ancestors inside the preview, so text
+  // selected in a list item is still copied as a list.
+  const handlePreviewCopy = (event: ReactClipboardEvent<HTMLDivElement>) => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    const container = document.createElement('div');
+    for (let i = 0; i < selection.rangeCount; i++) {
+      const range = selection.getRangeAt(i);
+      let copied: Node = range.cloneContents();
+      for (let node: Node | null = range.commonAncestorContainer; node && node !== event.currentTarget && event.currentTarget.contains(node); node = node.parentNode) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        const wrapper = node.cloneNode(false);
+        wrapper.appendChild(copied);
+        copied = wrapper;
+      }
+      container.appendChild(copied);
+    }
+    container.querySelectorAll('[data-warning]').forEach(element => element.removeAttribute('data-warning'));
+    event.clipboardData.setData('text/html', stripSpacerMarkers(container.innerHTML));
+    event.clipboardData.setData('text/plain', selection.toString());
+    event.preventDefault();
+  };
+
   return (
     <div className="flex flex-col gap-3 md:gap-4 w-full max-w-full">
       {/* Main grid: Sidebar | Input | Output */}
@@ -1852,6 +1877,7 @@ export function WordToHtmlConverter() {
             {/* Using h-full instead of absolute to properly calculate scroll height */}
             <div
               ref={outputPreviewRef}
+              onCopy={handlePreviewCopy}
               className={`h-full pl-8 pr-4 pt-4 pb-4 border border-border/50 rounded-lg overflow-y-auto overflow-x-auto bg-background/80 output-preview ${
                 outputView === 'preview' ? 'block' : 'hidden'
               }`}
@@ -2528,6 +2554,7 @@ export function WordToHtmlConverter() {
               /* Preview in Modal */
               <div
                 className="pl-8 pr-6 pt-6 pb-6 bg-background/80 output-preview"
+                onCopy={handlePreviewCopy}
                 style={{
                   fontSize: '1rem',
                   lineHeight: '1.75',
