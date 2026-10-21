@@ -22,12 +22,13 @@ const CLOSING_PUNCTUATION_RE = /^[.,;:!?)}\]'"'\u201D\u2019]/;
 const WORD_CONTINUATION_RE = /^[\p{L}\p{N}\u2010-\u2015-]/u;
 
 /**
- * Text that the following link continues: a word or number ("e<a>Bay</a>"),
- * a hyphen, dash or slash compound ("non-<a>toxic</a>", "and/<a>or</a>") or a
- * currency amount ("$<a>29.99</a>"). No space is added before the link.
+ * Text that the following link continues: a hyphen, dash or slash compound
+ * ("non-<a>toxic</a>", "and/<a>or</a>") or a currency amount
+ * ("$<a>29.99</a>"). No space is added before the link. A letter or digit
+ * does not count: Word often drops the space in "word<a>link</a>".
  * Shared with the validator's link-spacing rule.
  */
-export const LINK_CONTINUES_TEXT_RE = /[\p{L}\p{N}\p{Sc}\u2010-\u2015/-]$/u;
+export const LINK_CONTINUES_TEXT_RE = /[\p{Sc}\u2010-\u2015/-]$/u;
 
 // Whitespace that HTML collapses (the set html-cleaner trims). U+00A0 (&nbsp;)
 // is intentional spacing and must survive normalization.

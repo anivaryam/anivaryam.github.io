@@ -660,7 +660,7 @@ export function getLinkSpacingIssues(doc: Document): { element: Element; message
     if (TRAILING_PUNCT.test(trimmedEnd)) {
       return;
     }
-    /* A link that continues a word or token ("non-<a>", "$<a>") needs no space. */
+    /* A link that continues a compound or amount ("non-<a>", "$<a>") needs no space. */
     if (LINK_CONTINUES_TEXT_RE.test(previousText)) {
       return;
     }
@@ -690,7 +690,7 @@ function validateLinkSpacing(doc: Document, mode: OutputMode, features?: Feature
       ? `Link spacing correctly applied (${links.length} link(s) checked)`
       : `${issues.length} spacing issue(s): ${issues.join('; ')}`,
     severity: issues.length === 0 ? 'info' : 'warning',
-    expected: 'Links preceded by space (except after opening/closing punctuation or a word or token the link continues)',
+    expected: 'Links preceded by space (except after opening/closing punctuation, a hyphen, dash, slash or currency sign)',
     actual: issues.length === 0
       ? `All ${links.length} link(s) have proper spacing`
       : `${issues.length} link(s) have spacing issues`,

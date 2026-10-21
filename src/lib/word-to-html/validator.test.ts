@@ -489,6 +489,12 @@ describe('validateLinkSpacing (D2)', () => {
     expectPass(results, 'link-spacing');
   });
 
+  it('fails with no space and no punctuation', () => {
+    const html = '<p>word<a href="https://x.com">link</a></p>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    expectFail(results, 'link-spacing');
+  });
+
   it('fails with no space after a symbol that does not continue the link', () => {
     const html = '<p>Save 50%<a href="https://x.com">link</a></p>';
     const results = validateMode(html, 'blogs', defaultFeatures);
@@ -499,8 +505,7 @@ describe('validateLinkSpacing (D2)', () => {
     '<p>a non-<a href="https://x.com">toxic</a> cleaner</p>',
     '<p>for $<a href="https://x.com">29.99</a> or €<a href="https://x.com">5</a></p>',
     '<p>e-<a href="https://x.com">Bay</a> and/<a href="https://x.com">or</a> 10–<a href="https://x.com">12</a></p>',
-    '<p>word<a href="https://x.com">link</a> and 4<a href="https://x.com">K</a></p>',
-  ])('passes for a link that continues a word or token: %s', (html) => {
+  ])('passes for a link that continues a compound or amount: %s', (html) => {
     const results = validateMode(html, 'blogs', defaultFeatures);
     expectPass(results, 'link-spacing');
   });
@@ -512,7 +517,7 @@ describe('validateLinkSpacing (D2)', () => {
   });
 
   it('reports the link it counts for preview highlighting', () => {
-    const doc = new DOMParser().parseFromString('<p>Save 50%<a href="https://x.com">link</a> and <a href="https://x.com/ok">ok</a></p>', 'text/html');
+    const doc = new DOMParser().parseFromString('<p>word<a href="https://x.com">link</a> and <a href="https://x.com/ok">ok</a></p>', 'text/html');
     const issues = getLinkSpacingIssues(doc);
     expect(issues.map(issue => issue.element.textContent)).toEqual(['link']);
     expect(getResult(validateMode(doc.body.innerHTML, 'blogs', defaultFeatures), 'link-spacing').message).toContain(issues[0].message);
