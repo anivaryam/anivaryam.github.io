@@ -470,6 +470,12 @@ describe('validateLinkSpacing (D2)', () => {
     expectFail(results, 'link-spacing');
   });
 
+  it('passes for a footnote link attached to the preceding word', () => {
+    const html = '<p>drug<a href="#fn1"><sup>1</sup></a> and more</p>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    expectPass(results, 'link-spacing');
+  });
+
   it('passes at start of paragraph', () => {
     const html = '<p><a href="https://x.com">link</a> after</p>';
     const results = validateMode(html, 'blogs', defaultFeatures);

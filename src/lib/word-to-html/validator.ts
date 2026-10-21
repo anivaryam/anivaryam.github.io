@@ -14,6 +14,7 @@ import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
 import { getHeadingSpacingIssues } from './mode-spacing';
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
 import { isHeaderList } from './mode-ol-header-conversion';
+import { isFootnoteLink } from './mode-link-spacing';
 
 /**
  * Feature flags that toggle behavior. The custom spacer is a text setting,
@@ -654,6 +655,8 @@ function validateLinkSpacing(doc: Document, mode: OutputMode, features?: Feature
   links.forEach((link) => {
     const parent = link.parentNode;
     if (!parent) return;
+    /* Footnote markers attach to the preceding word; link spacing keeps them so. */
+    if (isFootnoteLink(link)) return;
 
     /* Walk siblings before the link and capture the closest visible text. */
     let previousText = '';

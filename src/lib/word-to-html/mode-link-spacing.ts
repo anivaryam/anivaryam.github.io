@@ -17,9 +17,29 @@ const OPENING_PUNCTUATION_RE = /[\("'\[\{\u201C\u2018]$/;
 // Regex pattern for checking if text starts with closing punctuation that doesn't need a space before it
 const CLOSING_PUNCTUATION_RE = /^[.,;:!?)}\]'"'\u201D\u2019]/;
 
+// Text that continues the link's word: a suffix ("FDAs") or a hyphen/dash
+// compound ("FDA-approved"). No space is added before it.
+const WORD_CONTINUATION_RE = /^[\p{L}\p{N}\u2010-\u2015-]/u;
+
 // Whitespace that HTML collapses (the set html-cleaner trims). U+00A0 (&nbsp;)
 // is intentional spacing and must survive normalization.
 const COLLAPSIBLE_WHITESPACE_RE = /[\t\n\r\f\v ]+/g;
+
+/**
+ * A link whose visible text is all superscript/subscript is a footnote marker
+ * that attaches to the preceding word ("drug<sup>1</sup>"). Shared with the
+ * validator's link-spacing rule.
+ */
+export function isFootnoteLink(anchor: Element): boolean {
+  const walker = anchor.ownerDocument.createTreeWalker(anchor, NodeFilter.SHOW_TEXT);
+  let hasText = false;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.textContent?.trim()) continue;
+    if (!node.parentElement?.closest('sup, sub')) return false;
+    hasText = true;
+  }
+  return hasText;
+}
 
 export function addLinkSpacing(html: string): string {
   if (!html || typeof html !== 'string') {
@@ -94,7 +114,7 @@ export function addLinkSpacing(html: string): string {
       let textNodeToModify: Text | null = null;
       let textContent = '';
 
-      if (prevSibling && !isWhitespaceText(prevSibling)) {
+      if (prevSibling && !isWhitespaceText(prevSibling) && !isFootnoteLink(anchor)) {
         if (prevSibling.nodeType === Node.TEXT_NODE) {
           // Found a text node with content
           textNodeToModify = prevSibling as Text;
@@ -155,8 +175,10 @@ export function addLinkSpacing(html: string): string {
           nextText = nextTextNode.textContent || '';
         }
 
-        // Add space after if needed
-        if (nextTextNode && !isCodeNeighbor && nextText.trim() && !WHITESPACE_START_RE.test(nextText) && !CLOSING_PUNCTUATION_RE.test(nextText)) {
+        // Add space after if needed; a word continuation or a footnote marker
+        // in <sup>/<sub> stays attached to the link
+        if (nextTextNode && !isCodeNeighbor && nextText.trim() && !WHITESPACE_START_RE.test(nextText) && !CLOSING_PUNCTUATION_RE.test(nextText) &&
+            !WORD_CONTINUATION_RE.test(nextText) && !nextTextNode.parentElement?.closest('sup, sub')) {
           nextTextNode.textContent = ' ' + nextText;
         } else if (!nextTextNode) {
           // No text node found - insert a space node after the anchor

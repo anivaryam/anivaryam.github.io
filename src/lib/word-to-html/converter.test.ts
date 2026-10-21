@@ -590,6 +590,21 @@ describe('spacing within formatted links', () => {
     }
   });
 
+  it.each([
+    ['<p>The <a href="https://example.com/fda">FDA</a>-approved drug<a href="#fn1"><sup>1</sup></a> per <a href="https://example.com/study">study</a><sup>2</sup>.</p>', 'The FDA-approved drug1 per study2.'],
+    ['<p>All <a href="https://example.com/fda">FDA</a>s agree.</p>', 'All FDAs agree.'],
+    ['<p>See <a href="https://example.com/a">our article </a>today.</p>', 'See our article today.'],
+    ['<p><span>See </span><a href="https://example.com/a"><span style="color:blue">our article </span></a><span>today.</span></p>', 'See our article today.'],
+  ])('keeps the source word boundaries around a link: %s', (input, text) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(new DOMParser().parseFromString(html, 'text/html').body.textContent).toBe(text);
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'link-spacing')?.passed).toBe(true);
+    }
+  });
+
   it('trims only outer anchor padding while keeping inner separators', () => {
     const input = '<p><a href="/how-it-works">  <strong>How</strong> It <em>Works</em>  </a></p>';
     const output = cleanHtml(input);

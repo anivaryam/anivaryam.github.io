@@ -295,7 +295,9 @@ function mergeAdjacentEmTags(element: Element): void {
  * 
  * Only direct text nodes at those boundaries are trimmed. Spaces separating
  * plain text from nested formatting (e.g. "our <strong>How It Works</strong>")
- * belong to the link text and must remain intact.
+ * belong to the link text and must remain intact. Trimmed padding that
+ * separates the link from adjacent content moves outside the link, so
+ * "<a>our article </a>today" keeps its word boundary.
  */
 function trimAnchorWhitespace(element: Element): void {
   if (!element || element.nodeType !== Node.ELEMENT_NODE) {
@@ -317,15 +319,34 @@ function trimAnchorWhitespace(element: Element): void {
   const first = element.firstChild;
   const last = element.lastChild;
   if (first?.nodeType === Node.TEXT_NODE) {
-    first.textContent = (first.textContent || '').replace(/^\s+/, '');
+    const text = first.textContent || '';
+    first.textContent = text.replace(/^\s+/, '');
+    keepSeparatorOutsideAnchor(element, text.slice(0, text.length - first.textContent.length), 'before');
     if (!first.textContent) element.removeChild(first);
   }
 
   // If the only text node was empty, the leading trim already removed it.
   if (last?.nodeType === Node.TEXT_NODE && last.parentNode === element) {
-    last.textContent = (last.textContent || '').replace(/\s+$/, '');
+    const text = last.textContent || '';
+    last.textContent = text.replace(/\s+$/, '');
+    keepSeparatorOutsideAnchor(element, text.slice(last.textContent.length), 'after');
     if (!last.textContent) element.removeChild(last);
   }
+}
+
+/**
+ * Re-inserts trimmed anchor padding next to the anchor when a sibling on that
+ * side has no separator of its own. At the parent's edge it is dropped.
+ */
+function keepSeparatorOutsideAnchor(anchor: Element, padding: string, side: 'before' | 'after'): void {
+  const sibling = side === 'before' ? anchor.previousSibling : anchor.nextSibling;
+  if (!padding || !sibling) return;
+  if (sibling.nodeType === Node.TEXT_NODE) {
+    const text = sibling.textContent || '';
+    if (side === 'before' ? /\s$/.test(text) : /^\s/.test(text)) return;
+  }
+  const separator = anchor.ownerDocument.createTextNode(padding);
+  anchor.parentNode?.insertBefore(separator, side === 'before' ? anchor : anchor.nextSibling);
 }
 
 /**
