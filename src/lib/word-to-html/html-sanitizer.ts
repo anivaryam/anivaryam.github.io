@@ -89,9 +89,7 @@ interface FormattingInfo {
   isUnderline: boolean;
 }
 
-function extractFormatting(style: string): FormattingInfo | null {
-  if (!style) return null;
-  
+function parseStyle(style: string): Record<string, string> {
   const styleObj: Record<string, string> = {};
   style.split(';').forEach(rule => {
     const parts = rule.split(':').map(s => s.trim());
@@ -99,6 +97,13 @@ function extractFormatting(style: string): FormattingInfo | null {
       styleObj[parts[0].toLowerCase()] = parts[1];
     }
   });
+  return styleObj;
+}
+
+function extractFormatting(style: string): FormattingInfo | null {
+  if (!style) return null;
+
+  const styleObj = parseStyle(style);
   
   const isItalic = styleObj['font-style']?.toLowerCase().includes('italic') || false;
   const isBold = styleObj['font-weight'] && (
@@ -246,6 +251,74 @@ function underlineNonLinkContent(element: Element): void {
   wrapInlineRuns(element, 'u', child => child.matches('a[href]'));
 }
 
+// Bold and italic are inherited; a descendant's explicit normal weight or
+// style cancels them. Semibold (500/600) is not treated as a cancellation.
+const EMPHASES = [
+  {
+    tags: ['b', 'strong'],
+    property: 'font-weight',
+    isSet: (formatting: FormattingInfo) => formatting.isBold,
+    isCancelledBy: (value: string) => value.toLowerCase() === 'normal' || parseInt(value, 10) <= 400,
+  },
+  {
+    tags: ['i', 'em'],
+    property: 'font-style',
+    isSet: (formatting: FormattingInfo) => formatting.isItalic,
+    isCancelledBy: (value: string) => value.toLowerCase() === 'normal',
+  },
+];
+
+/**
+ * Keep source emphasis exact where a descendant cancels inherited bold or
+ * italic. An emphasis tag whose own style cancels it becomes a <span>. Each
+ * emphasized ancestor of a cancelling element passes its emphasis to its
+ * inline runs as <b>/<i> instead, and the runs skip the cancelling element.
+ * Word cleanup runs this before it drops `font-style: normal` as a default.
+ */
+export function splitEmphasisOverrides(root: Element): void {
+  for (const { tags, property, isSet, isCancelledBy } of EMPHASES) {
+    const cancels = (element: Element) => {
+      const value = parseStyle(element.getAttribute('style') || '')[property];
+      return value !== undefined && isCancelledBy(value);
+    };
+    // The sanitizer ignores formatting on list items and table/list containers.
+    const provides = (element: Element) => {
+      const tag = element.tagName.toLowerCase();
+      if (cancels(element)) return false;
+      if (tags.includes(tag)) return true;
+      const formatting = extractFormatting(element.getAttribute('style') || '');
+      return !!formatting && isSet(formatting) && tag !== 'li' && !STRUCTURAL_CHILDREN.has(tag);
+    };
+    const toSpan = (element: Element) => {
+      const span = element.ownerDocument.createElement('span');
+      Array.from(element.attributes).forEach(attr => span.setAttribute(attr.name, attr.value));
+      span.append(...Array.from(element.childNodes));
+      element.replaceWith(span);
+      return span;
+    };
+
+    root.querySelectorAll(tags.join(', ')).forEach(element => {
+      if (cancels(element)) toSpan(element);
+    });
+
+    for (const override of Array.from(root.querySelectorAll('[style]')).filter(cancels)) {
+      let ancestor = override.parentElement;
+      while (ancestor && ancestor !== root) {
+        const parent = ancestor.parentElement;
+        if (provides(ancestor)) {
+          const plain = tags.includes(ancestor.tagName.toLowerCase()) ? toSpan(ancestor) : ancestor;
+          const style = (plain.getAttribute('style') || '').split(';')
+            .filter(rule => rule.split(':')[0].trim().toLowerCase() !== property).join(';').trim();
+          if (style) plain.setAttribute('style', style);
+          else plain.removeAttribute('style');
+          wrapInlineRuns(plain, tags[0], element => cancels(element) || provides(element));
+        }
+        ancestor = parent;
+      }
+    }
+  }
+}
+
 export function sanitizeHtml(html: string): string {
   if (!html || typeof html !== 'string') {
     return '';
@@ -259,6 +332,8 @@ export function sanitizeHtml(html: string): string {
     FORBID_TAGS: ['style'],
     ADD_ATTR: ['target'],
   });
+
+  splitEmphasisOverrides(tempDiv);
 
   // <caption> is not allowed, and its unwrapped text would be moved out of the
   // table when the HTML is parsed again. Keep it as a layout block directly

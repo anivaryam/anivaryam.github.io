@@ -4,6 +4,7 @@
  * This matches the cleanWordHtml function from converter.js
  */
 
+import { splitEmphasisOverrides } from './html-sanitizer';
 import { removeSpacingParagraphs, removeLayoutBreaks } from './html-spacing';
 import { createInertContainer, prepareWordSource } from './word-source-formatting';
 
@@ -480,6 +481,8 @@ export function cleanWordHtml(html: string): string {
 
   removeImages(tempDiv);
   prepareWordSource(tempDiv);
+  // Style cleanup drops `font-style: normal`; resolve the overrides it marks first.
+  splitEmphasisOverrides(tempDiv);
   preserveFormattingElements(tempDiv);
   removeWordSpecificAttributes(tempDiv);
   convertFontTagsToSpans(tempDiv);

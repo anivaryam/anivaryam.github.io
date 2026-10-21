@@ -824,6 +824,34 @@ describe('Word-to-HTML pipeline regressions', () => {
     expect(doc.querySelector('em')?.textContent).toBe('Both');
   });
 
+  it.each([
+    ['<p style="font-style:italic">Book <span style="font-style:normal">Title</span> here</p>', 'Book Title here', [], ['Book', 'here']],
+    ['<p><b>Bold <span style="font-weight:normal">plain</span> end</b></p>', 'Bold plain end', ['Bold', 'end'], []],
+    ['<p><span style="font-weight:700">Bold <a href="/x"><span style="font-weight:400">plain</span></a> end</span></p>', 'Bold plain end', ['Bold', 'end'], []],
+    ['<p><strong><em>Both <span style="font-style:normal;font-weight:normal">plain</span></em></strong></p>', 'Both plain', ['Both'], ['Both']],
+    ['<table><tr><td style="font-weight:bold"><p>Head <span style="font-weight:normal">note</span></p><p>Next</p></td></tr></table>', 'Head noteNext', ['Head', 'Next'], []],
+    ['<b style="font-weight:normal"><p>Docs paragraph</p><p><span style="font-weight:700">Bold</span> text</p></b>', 'Docs paragraphBold text', ['Bold'], []],
+    ['<p><i style="font-style:normal">Upright</i> and <em style="font-style:normal">plain</em></p>', 'Upright and plain', [], []],
+    ['<p><b>Bold <span style="font-weight:600">semibold</span></b></p>', 'Bold semibold', ['Bold semibold'], []],
+    ['<p><b>Bold <span style="font-style:normal">still</span></b></p>', 'Bold still', ['Bold still'], []],
+  ])('keeps an explicit normal weight or style inside bold or italic: %s', (input, text, strong, em) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('p, td')).filter(block => !block.querySelector('p')).map(block => block.textContent?.trim()).join('')).toBe(text);
+        expect(Array.from(doc.querySelectorAll('strong')).map(wrapper => wrapper.textContent?.trim())).toEqual(strong);
+        expect(Array.from(doc.querySelectorAll('em')).map(wrapper => wrapper.textContent?.trim())).toEqual(em);
+        expect(doc.querySelector(':is(strong, em) :is(p, a), a :is(strong, em)')).toBeNull();
+      }
+    }
+  });
+
+  it('keeps an explicit normal weight inside bold in direct sanitizer input', () => {
+    expect(sanitizeHtml('<p><b>Bold <span style="font-weight:normal">plain</span></b></p>')).toBe('<p><strong>Bold </strong>plain</p>');
+    expect(sanitizeHtml('<b style="font-weight:normal"><p>Docs paragraph</p></b>')).toBe('<p>Docs paragraph</p>');
+  });
+
   it.each(['-35%', '-0.6em', 'sub'])('keeps %s vertical alignment as subscript', (alignment) => {
     const output = getUnformattedHtml(`<p>H<span style="vertical-align: ${alignment}">2</span>O</p>`);
     const doc = new DOMParser().parseFromString(output, 'text/html');
