@@ -33,10 +33,22 @@ export const ALLOWED_ELEMENTS = [
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   'a': ['href', 'target', 'rel'],
   'img': ['src', 'alt'],
-  'ol': ['start', 'reversed'],
+  'ol': ['start', 'reversed', 'type'],
   'th': ['colspan', 'rowspan'],
   'td': ['colspan', 'rowspan'],
   '*': []
+};
+
+// Non-default <ol type> values; the value is case-sensitive. type="1" is the
+// default decimal numbering and is dropped, like start="1".
+const OL_TYPES = ['a', 'A', 'i', 'I'];
+// CSS list numbering with an <ol type> equivalent.
+const LIST_STYLE_TYPES: Record<string, string> = {
+  'decimal': '1',
+  'lower-alpha': 'a', 'lower-latin': 'a',
+  'upper-alpha': 'A', 'upper-latin': 'A',
+  'lower-roman': 'i',
+  'upper-roman': 'I',
 };
 
 const SAFE_PROTOCOLS = ['http:', 'https:', 'mailto:'];
@@ -347,6 +359,19 @@ export function sanitizeHtml(html: string): string {
     caption.remove();
   });
 
+  // Lettered and roman numbering is CSS in Google Docs paste, and styles are
+  // discarded: keep it as the <ol> type. An item's own style overrides the
+  // list's, and Google Docs repeats the style on every item.
+  const listStyleType = (element: Element): string | undefined => {
+    const value = parseStyle(element.getAttribute('style') || '')['list-style-type'];
+    return value ? LIST_STYLE_TYPES[value.toLowerCase()] : undefined;
+  };
+  tempDiv.querySelectorAll('ol').forEach(list => {
+    const itemTypes = new Set(Array.from(list.children).filter(child => child.matches('li')).map(listStyleType));
+    const type = (itemTypes.size === 1 ? [...itemTypes][0] : undefined) ?? listStyleType(list);
+    if (type) list.setAttribute('type', type);
+  });
+
   sanitizeElement(tempDiv);
 
   // Source appearance has already determined link boundaries in Word cleanup.
@@ -550,6 +575,10 @@ function sanitizeAttributes(element: Element, tagName: string): void {
 
     if (tagName === 'ol' && attrName === 'reversed' && attr.value !== '') {
       element.setAttribute(attr.name, '');
+    }
+
+    if (tagName === 'ol' && attrName === 'type' && !OL_TYPES.includes(attr.value)) {
+      attrsToRemove.push(attr.name);
     }
 
     if ((tagName === 'td' || tagName === 'th') && (attrName === 'colspan' || attrName === 'rowspan')) {

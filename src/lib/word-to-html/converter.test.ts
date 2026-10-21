@@ -595,16 +595,20 @@ describe('Word desktop list paragraphs', () => {
   });
 
   it.each([
-    ['3.', '4.', '3'],
-    ['c)', 'd)', '3'],
-    ['iv.', 'v.', '4'],
-  ])('starts an ordered list at the Word number %s', (first, second, start) => {
+    ['3.', '4.', '3', null],
+    ['c)', 'd)', '3', 'a'],
+    ['C.', 'D.', '3', 'A'],
+    ['iv.', 'v.', '4', 'i'],
+    ['(IV)', '(V)', '4', 'I'],
+  ])('starts an ordered list at the Word number %s with its numbering type', (first, second, start, type) => {
     const input = item('CxSpFirst', first, 'One') + item('CxSpLast', second, 'Two');
     for (const mode of modes) {
       const output = convertToHtml(cleanWordHtml(input), mode);
       for (const html of [output.formatted, output.unformatted]) {
         expect(blocks(html)).toEqual([`ol[${start}]: One | Two`]);
+        expect(new DOMParser().parseFromString(html, 'text/html').querySelector('ol')?.getAttribute('type')).toBe(type);
       }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
     }
   });
 
@@ -963,9 +967,33 @@ describe('Word-to-HTML pipeline regressions', () => {
   });
 
   it.each([
+    ['a', 'a'], ['A', 'A'], ['i', 'i'], ['I', 'I'], ['1', null],
+    ['b', null], ['disc', null], ['lower-alpha', null], ['', null], ['aa', null],
+  ])('keeps only a valid numbering type on <ol type="%s">', (value, expected) => {
+    const ol = new DOMParser().parseFromString(sanitizeHtml(`<ol type="${value}"><li>x</li></ol>`), 'text/html').querySelector('ol');
+    expect(ol?.textContent).toBe('x');
+    expect(ol?.getAttribute('type')).toBe(expected);
+  });
+
+  it.each([
+    ['<ol style="list-style-type:lower-alpha"><li>x</li></ol>', 'a'],
+    ['<ol style="list-style-type: upper-roman"><li>x</li></ol>', 'I'],
+    // Google Docs sets the type on every item.
+    ['<ol><li style="list-style-type:upper-alpha">x</li><li style="list-style-type:upper-alpha">y</li></ol>', 'A'],
+    ['<ol style="list-style-type:lower-alpha"><li style="list-style-type:lower-roman">x</li></ol>', 'i'],
+    ['<ol type="a" style="list-style-type:decimal"><li>x</li></ol>', null],
+    ['<ol style="list-style-type:disc"><li>x</li></ol>', null],
+  ])('maps CSS list numbering to the <ol> type: %s', (input, expected) => {
+    for (const html of [sanitizeHtml(input), getUnformattedHtml(input)]) {
+      expect(new DOMParser().parseFromString(html, 'text/html').querySelector('ol')?.getAttribute('type')).toBe(expected);
+    }
+  });
+
+  it.each([
     ['<ul start="2" reversed><li>x</li></ul>', '<ul><li>x</li></ul>'],
     ['<ol><li start="2" reversed>x</li></ol>', '<ol><li>x</li></ol>'],
     ['<p start="2" reversed>x</p>', '<p>x</p>'],
+    ['<ul type="a"><li type="a">x</li></ul>', '<ul><li>x</li></ul>'],
   ])('removes list numbering attributes outside <ol>: %s', (input, expected) => {
     expect(sanitizeHtml(input)).toBe(expected);
   });

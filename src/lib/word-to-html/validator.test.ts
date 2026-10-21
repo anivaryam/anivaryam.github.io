@@ -102,7 +102,7 @@ describe('validateSanitizedStructure', () => {
   });
 
   it('allows list numbering attributes on <ol>', () => {
-    const results = validateMode('<ol start="2" reversed><li>x</li></ol>', 'blogs', defaultFeatures);
+    const results = validateMode('<ol start="2" reversed type="a"><li>x</li></ol>', 'blogs', defaultFeatures);
     expectPass(results, 'sanitized-structure');
   });
 

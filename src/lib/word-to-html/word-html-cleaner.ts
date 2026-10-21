@@ -600,6 +600,9 @@ function buildWordLists(items: WordListItem[]): void {
     if (!level || level.family !== marker.family || (marker.tag === 'ol' && marker.value !== level.last + 1)) {
       const list = doc.createElement(marker.tag);
       if (marker.tag === 'ol' && marker.value !== 1) list.setAttribute('start', String(marker.value));
+      // The numbering type is the family without its punctuation: a, A, i or I.
+      const type = marker.family.replace(/[().]/g, '');
+      if (marker.tag === 'ol' && type !== '1') list.setAttribute('type', type);
       if (level) level.list.after(list);
       else if (depth === 0) item.paragraph.before(list);
       else open[depth - 1].list.lastElementChild!.append(list);
