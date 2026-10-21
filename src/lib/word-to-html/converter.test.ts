@@ -1529,6 +1529,47 @@ describe('trailing whitespace before block end tags', () => {
     },
   );
 
+  it.each([
+    '<p>end word&nbsp;</p>',
+    '<p class="MsoNormal"><span style="font-size:12pt">end word </span><o:p>&nbsp;</o:p></p>',
+    '<p><b>end word&nbsp;</b></p>',
+    '<p>end word\u200B</p>',
+    '<p>end word\u2002</p>',
+    '<p>end word\u3000</p>',
+    '<p>end word\uFEFF</p>',
+  ])('trims a trailing non-breaking or Unicode space from both outputs: %s', (input) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(html).toMatch(/end word<\//);
+      }
+    }
+  });
+
+  it('keeps interior and code non-breaking spaces', () => {
+    const input = '<p>Take 10&nbsp;kg daily</p><p>Run <code>x&nbsp;</code></p><pre>code&nbsp;</pre>';
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.querySelector('p')?.textContent).toBe('Take 10\u00A0kg daily');
+        expect(doc.querySelector('p code')?.textContent).toBe('x\u00A0');
+        expect(doc.querySelector('pre')?.textContent).toBe('code\u00A0');
+      }
+    }
+  });
+
+  it.each([undefined, '<p>&nbsp;</p>', '<p class="gap">&nbsp;</p>', '<p>&#8203;</p>', '<div>&nbsp;&nbsp;</div>'])(
+    'keeps blank spacer markup intact: %s',
+    (customSpacer) => {
+      const spacer = new DOMParser().parseFromString(customSpacer ?? '<p>&nbsp;</p>', 'text/html').body.firstElementChild!;
+      const output = convertToHtml(cleanWordHtml('<p>First.</p><p>Second.</p>'), 'regular', { paragraphSpacing: true, customSpacer });
+      expect(output.formatted).toContain(spacer.outerHTML);
+      const doc = new DOMParser().parseFromString(output.unformatted, 'text/html');
+      expect(doc.body.children[1].innerHTML).toBe(spacer.innerHTML);
+    },
+  );
+
   it('keeps inline spacing that separates words', () => {
     const output = convertToHtml(cleanWordHtml('<p>Hello <strong>World </strong>more</p>'), 'regular');
     for (const html of [output.formatted, output.unformatted]) {

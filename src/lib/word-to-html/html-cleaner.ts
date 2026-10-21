@@ -354,10 +354,19 @@ function keepSeparatorOutsideAnchor(anchor: Element, padding: string, side: 'bef
 
 /**
  * Whitespace that HTML collapses: space, tab, line feed, form feed, carriage
- * return. Deliberately excludes U+00A0 (&nbsp;), which carries intentional
- * spacing and must be preserved.
+ * return. It excludes U+00A0 (&nbsp;), which keeps a blank spacer block such
+ * as <p>&nbsp;</p> open.
  */
 const TRAILING_HTML_WHITESPACE = /[\t\n\r\f\v ]+$/;
+
+/**
+ * Collapsible whitespace plus the invisible spaces Word and Google Docs emit
+ * for a space typed at the end of a paragraph: U+00A0 (&nbsp;), U+2000–U+200A,
+ * U+200B, U+3000 and U+FEFF.
+ */
+const BLOCK_END_SPACES = '\\t\\n\\r\\f\\v \\u00A0\\u2000-\\u200B\\u3000\\uFEFF';
+const TRAILING_BLOCK_END_SPACES = new RegExp(`[${BLOCK_END_SPACES}]+$`);
+const VISIBLE_CHARACTER = new RegExp(`[^${BLOCK_END_SPACES}]`);
 
 /** Elements whose interior whitespace is data, not layout. */
 const WHITESPACE_PRESERVING_TAGS = new Set(['pre', 'code']);
@@ -371,8 +380,12 @@ const WHITESPACE_PRESERVING_TAGS = new Set(['pre', 'code']);
  * and continues past whitespace-only text and empty wrappers until it reaches
  * content, but stops at nested block boundaries, since each block is handled
  * by its own pass. Wrappers the trim leaves empty are removed. Inline
- * whitespace that separates words is never touched, and neither is &nbsp; or
- * the contents of <pre>/<code>.
+ * whitespace that separates words is never touched, and neither are the
+ * contents of <pre>/<code>.
+ *
+ * Trailing &nbsp; and invisible Unicode spaces are trimmed too when the block
+ * has visible text; a block holding only such spaces (the <p>&nbsp;</p>
+ * spacer, a blank custom spacer, an empty table cell) keeps them.
  */
 export function trimTrailingWhitespaceInBlocks(root: Element): void {
   if (!root || root.nodeType !== Node.ELEMENT_NODE) {
@@ -409,7 +422,8 @@ function isListLabelSeparator(block: Element, node: Node): boolean {
 }
 
 function trimBlockEnd(block: Element): void {
-  trimContainerEnd(block, block);
+  const trailing = VISIBLE_CHARACTER.test(block.textContent || '') ? TRAILING_BLOCK_END_SPACES : TRAILING_HTML_WHITESPACE;
+  trimContainerEnd(block, block, trailing);
 }
 
 /**
@@ -417,13 +431,13 @@ function trimBlockEnd(block: Element): void {
  * true once content ends the walk: text that keeps characters, a void element,
  * a nested block, <pre>/<code>, or the list-label separator.
  */
-function trimContainerEnd(block: Element, container: Node): boolean {
+function trimContainerEnd(block: Element, container: Node, trailing: RegExp): boolean {
   let node: Node | null = container.lastChild;
   while (node) {
     const previous: Node | null = node.previousSibling;
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent || '';
-      const trimmed = text.replace(TRAILING_HTML_WHITESPACE, '');
+      const trimmed = text.replace(trailing, '');
       if (trimmed) {
         if (trimmed !== text) node.textContent = trimmed;
         return true;
@@ -440,7 +454,7 @@ function trimContainerEnd(block: Element, container: Node): boolean {
         return true;
       }
       const hadChildren = element.hasChildNodes();
-      if (trimContainerEnd(block, element)) {
+      if (trimContainerEnd(block, element, trailing)) {
         return true;
       }
       // A wrapper that held only whitespace renders nothing once trimmed.
