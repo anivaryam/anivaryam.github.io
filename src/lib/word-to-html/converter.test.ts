@@ -420,6 +420,18 @@ describe('URL preservation', () => {
       expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')?.getAttribute('href')).toBe(href);
     }
   });
+
+  it.each([
+    ['//cdn.example.com/guide?a=1#part', '/guide?a=1#part'],
+    ['https://example.com/guide', '/guide'],
+  ])('converts %s to the relative path the validator expects', (href, expected) => {
+    const features = { relativePaths: true };
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml(`<p>See <a href="${href}">guide</a></p>`, mode, features);
+      expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')?.getAttribute('href')).toBe(expected);
+      expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'relative-paths')?.passed).toBe(true);
+    }
+  });
 });
 
 describe('source-visible link boundaries', () => {
