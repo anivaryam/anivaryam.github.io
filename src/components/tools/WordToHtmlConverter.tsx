@@ -146,6 +146,10 @@ interface ContentBlock {
   id: string;
 }
 
+// DOMPurify drops `target` by default; keep it, as the paste path does, so a
+// block link opens in a new tab instead of replacing the tool.
+const BLOCK_SANITIZE_CONFIG = { ADD_ATTR: ['target'] };
+
 const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[] => {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
@@ -2278,7 +2282,7 @@ export function WordToHtmlConverter() {
                             >
                               {block.type === 'heading' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '1.5em',
                                     fontWeight: 'bold',
@@ -2289,7 +2293,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'content' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2299,7 +2303,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'image' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2308,7 +2312,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'disclaimer' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '0.875rem',
                                     lineHeight: '1.6',
@@ -2320,7 +2324,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'sources' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2329,7 +2333,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'readmore' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2582,7 +2586,7 @@ export function WordToHtmlConverter() {
                                 {typeLabel}
                               </span>
                               <div className="text-sm leading-relaxed max-w-none" style={{ color: 'hsl(var(--foreground) / 0.9)' }}>
-                                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }} />
+                                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }} />
                               </div>
                             </div>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0 ml-2">

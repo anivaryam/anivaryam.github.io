@@ -430,6 +430,21 @@ describe('WordToHtmlConverter', () => {
     expect(block?.querySelector('code')?.textContent).toBe('sample()');
   });
 
+  it('keeps the link attributes in the Blocks view and its maximized view', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Read <a href="https://example.com/guide">our guide</a> first.</p>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    expect(screen.getByRole('checkbox', { name: 'Link Attributes' }).getAttribute('data-state')).toBe('checked');
+    fireEvent.click(screen.getByTitle('Copy blocks'));
+    const attributes = (link: Element | null | undefined) => [link?.getAttribute('target'), link?.getAttribute('rel')];
+    const block = screen.getByText('Content', { exact: true }).closest('.group');
+    expect(attributes(block?.querySelector('a'))).toEqual(['_blank', 'noopener noreferrer']);
+    fireEvent.click(screen.getByTitle('Maximize Output'));
+    const outputDialog = screen.getByRole('dialog', { name: 'Output - Blocks' });
+    expect(attributes(outputDialog.querySelector('a[href="https://example.com/guide"]'))).toEqual(['_blank', 'noopener noreferrer']);
+  });
+
   it('accepts the Regular heading toggle and resets paragraph spacing when switching modes', () => {
     render(<WordToHtmlConverter />);
     enterHtml('<h2>Title</h2><p>First</p><p>Second</p>');
