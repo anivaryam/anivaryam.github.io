@@ -8,6 +8,7 @@ import { createInertContainer } from './word-source-formatting';
 import { normalizeSources } from './mode-sources-normalize';
 import { validateMode } from './validator';
 import { normalizeLists } from './mode-list-normalize';
+import { convertOlHeaders } from './mode-ol-header-conversion';
 import { removeH1AfterKeyTakeaways } from './mode-h1-removal';
 
 describe('text preservation during structural cleanup', () => {
@@ -41,6 +42,22 @@ describe('text preservation during structural cleanup', () => {
     expect(doc.querySelector('img, [style], [class]')).toBeNull();
   });
 
+  it.each([
+    '<td class="image-cell"></td>',
+    '<td style="background-image:url(photo.png)"></td>',
+    '<td class="ImageCell"><img src="photo.png"></td>',
+  ])('keeps an empty table cell styled as an image container in its column: %s', (cell) => {
+    const input = `<table><tr class="image-row"><td>A</td>${cell}<td>C</td></tr><tr class="image-row"><td></td><td></td><td></td></tr></table>`;
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('tr')).map(row => Array.from(row.children).map(td => td.textContent))).toEqual([['A', '', 'C'], ['', '', '']]);
+        expect(doc.querySelector('img')).toBeNull();
+      }
+    }
+  });
+
   it.each(['text-decoration:underline', 'text-decoration-line:underline', 'text-decoration:underline solid red'])('preserves CSS underlining: %s', (style) => {
     const output = getUnformattedHtml(`<p><span style="${style};font-weight:bold;font-style:italic">Important</span></p>`);
     const doc = new DOMParser().parseFromString(output, 'text/html');
@@ -61,11 +78,61 @@ describe('formatted-output content parity', () => {
     }
   });
 
+  it('keeps merged table cells spanning the same columns and rows as the source', () => {
+    const input = '<table><tr><th colspan="2">Merged</th></tr><tr><td rowspan="2">x</td><td>y</td></tr><tr><td>z</td></tr></table>';
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('th, td')).map(cell => [cell.textContent, cell.getAttribute('colspan'), cell.getAttribute('rowspan')])).toEqual([
+          ['Merged', '2', null], ['x', null, '2'], ['y', null, null], ['z', null, null],
+        ]);
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
+    }
+  });
+
+  it.each([
+    '<ol><li>a</li><li></li><li>c</li></ol>',
+    '<ul><li>a</li><li><strong></strong></li><li>c</li></ul>',
+    '<ol><li>a<ul><li></li></ul></li></ol>',
+    '<p>x</p><h2></h2><p>y</p>',
+    '<p>x</p><h3><strong> </strong></h3><p>y</p>',
+  ])('keeps the empty list items and headings of the preview: %s', (input) => {
+    const items = (html: string) => Array.from(new DOMParser().parseFromString(html, 'text/html').querySelectorAll('li, h1, h2, h3, h4, h5, h6'))
+      .map(element => [element.tagName, element.textContent?.trim()]);
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      expect(items(output.formatted)).toEqual(items(output.unformatted));
+    }
+  });
+
   it.each(['first\n\nsecond  \n  third', '  \n\n  ', '&lt;literal&gt;\n\n&amp; text'])('preserves preformatted whitespace and text: %s', (content) => {
     const output = convertToHtml(`<pre><code>${content}</code></pre>`);
     const preview = new DOMParser().parseFromString(output.unformatted, 'text/html');
     const formatted = new DOMParser().parseFromString(output.formatted, 'text/html');
     expect(formatted.querySelector('code')?.textContent).toBe(preview.querySelector('code')?.textContent);
+  });
+
+  it.each([
+    ['<pre><code>first\n\nsecond  <a href="https://example.com">docs</a>\n  third</code></pre>', 'first\n\nsecond  docs\n  third'],
+    ['<p>Run <code>npm  test</code><a href="https://example.com">docs</a></p>', 'npm  test'],
+  ])('keeps code whitespace next to a link: %s', (input, code) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(new DOMParser().parseFromString(html, 'text/html').querySelector('code')?.textContent).toBe(code);
+      }
+    }
+  });
+
+  it('keeps a non-breaking space in text next to a link', () => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml('<p>Take 10&nbsp;mg <a href="https://example.com">daily</a>.</p>'), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(new DOMParser().parseFromString(html, 'text/html').querySelector('p')?.textContent).toBe('Take 10 mg daily.');
+      }
+    }
   });
 
   it('does not truncate large documents in the copied code', () => {
@@ -271,6 +338,72 @@ describe('structural and formatting regressions', () => {
     expect(Array.from(doc.querySelectorAll('h3')).map(h => h.textContent)).toEqual(['1. First', '2. Second']);
   });
 
+  it.each([
+    ['2 chained lists', ['Alpha', 'Beta'], ''],
+    ['3 chained lists', ['Alpha', 'Beta', 'Gamma'], ''],
+    ['chained lists split by blank paragraphs', ['Alpha', 'Beta', 'Gamma'], '<p>&nbsp;</p>'],
+  ])('numbers %s of headings as one sequence', (_, titles, separator) => {
+    const input = `<h2>Steps</h2>${titles.map((title, i) => `<ol start="${i + 1}"><li><h3><b>${title}</b></h3></li></ol>`).join(separator)}<p>After.</p>`;
+    for (const [mode, features] of [['regular', { headingStrong: true, olHeaderConversion: true }], ['blogs', {}], ['shoppables', {}]] as const) {
+      const output = getUnformattedHtml(input, mode, features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('ol')).toBeNull();
+      expect(Array.from(doc.querySelectorAll('h3')).map(h => h.textContent)).toEqual(titles.map((title, i) => `${i + 1}. ${title}`));
+      expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'ol-header-conversion')?.passed).toBe(true);
+    }
+  });
+
+  it.each([
+    ['text after the heading', '<li><h3><b>Prepare</b></h3>Wash your hands first.</li><li><h3><b>Apply</b></h3><p>Use a thin layer.</p></li>'],
+    ['text after the bold-wrapped heading', '<li><b><h3>Prepare</h3></b>Wash your hands first.</li><li><b><h3>Apply</h3></b><p>Use a thin layer.</p></li>'],
+    ['text inside the bold wrapper', '<li><b><h3>Prepare</h3>Wash your hands first.</b></li><li><b><h3>Apply</h3><p>Use a thin layer.</p></b></li>'],
+    ['a second heading', '<li><h3><b>Prepare</b></h3><h3><b>Wash your hands first.</b></h3></li><li><h3><b>Apply</b></h3><ul><li>Use a thin layer.</li></ul></li>'],
+  ])('keeps heading lists with %s as lists instead of dropping the body', (_, items) => {
+    const input = `<h2>Steps</h2><ol>${items}</ol>`;
+    for (const [mode, features] of [['regular', { headingStrong: true, olHeaderConversion: true }], ['blogs', {}], ['shoppables', {}]] as const) {
+      const output = getUnformattedHtml(input, mode, features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('ol')?.textContent).toContain('Wash your hands first.');
+      expect(doc.querySelector('ol')?.textContent).toContain('Use a thin layer.');
+      expect(Array.from(doc.querySelectorAll('h3')).some(h => /^\d+\./.test(h.textContent || ''))).toBe(false);
+      expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'ol-header-conversion')?.passed).toBe(true);
+    }
+  });
+
+  it('still numbers heading lists whose items hold only blank Word paragraphs besides the heading', () => {
+    const output = convertOlHeaders('<ol><li><p>&nbsp;</p><h3><strong>First</strong></h3><br> </li><li><strong><h3>Second</h3><p></p></strong></li></ol>');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('ol')).toBeNull();
+    expect(Array.from(doc.querySelectorAll('h3')).map(h => h.textContent)).toEqual(['1. First', '2. Second']);
+  });
+
+  it.each<[OutputMode, { headingStrong?: boolean }, string]>([
+    ['regular', {}, '<h2>Part one two</h2>'],
+    ['blogs', {}, '<h2><strong>Part one two</strong></h2>'],
+    ['blogs', { headingStrong: false }, '<h2>Part one two</h2>'],
+  ])('handles every bold run of a heading in %s %o', (mode, features, expected) => {
+    const output = getUnformattedHtml('<h2><b>Part</b> one <b>two</b></h2><p>Body.</p>', mode, features);
+    expect(output).toContain(expected);
+    expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'heading-strong')?.passed).toBe(true);
+  });
+
+  it.each([
+    [{ headingStrong: false }, '<h2>Key Takeaways:</h2>'],
+    [{}, '<h2><strong>Key Takeaways:</strong></h2>'],
+  ])('does not duplicate a Key Takeaways heading split into bold runs (%o)', (features, expected) => {
+    const input = '<h2><b><span>Key</span></b><span> </span><b><span>Takeaways</span></b></h2><ul><li>One</li></ul>';
+    const output = getUnformattedHtml(input, 'blogs', features);
+    expect(output).toContain(expected);
+    expect(validateMode(output, 'blogs', features).summary.failed).toBe(0);
+  });
+
+  it('keeps the inline markup of a Key Takeaways heading when adding its colon', () => {
+    const output = getUnformattedHtml('<h2>Key <a href="https://example.com/takeaways">Takeaways</a></h2><ul><li>One</li></ul>', 'blogs', { headingStrong: false });
+    const heading = new DOMParser().parseFromString(output, 'text/html').querySelector('h2');
+    expect(heading?.textContent).toBe('Key Takeaways:');
+    expect(heading?.querySelector('a')?.getAttribute('href')).toBe('https://example.com/takeaways');
+  });
+
   it('preserves table structure and cell emphasis without orphan formatting wrappers', () => {
     const output = getUnformattedHtml('<table style="font-weight:bold"><tbody><tr style="font-style:italic"><td><em>Cell A</em></td><td>Cell B</td></tr></tbody></table>', 'shoppables');
     const doc = new DOMParser().parseFromString(output, 'text/html');
@@ -278,6 +411,43 @@ describe('structural and formatting regressions', () => {
     expect(doc.querySelectorAll('table > tbody > tr > td')).toHaveLength(2);
     expect(doc.querySelector('td > em')?.textContent).toBe('Cell A');
     expect(doc.querySelector('table > strong, tbody > em, tr > em')).toBeNull();
+  });
+
+  it.each([
+    ['<table><tr><td style="font-weight:bold"><p>a</p><p>b</p></td></tr></table>', 'td > p > strong', ['a', 'b']],
+    ['<table><tr><td style="font-weight:bold">a<p>b</p></td></tr></table>', 'td > strong, td > p > strong', ['a', 'b']],
+    ['<blockquote style="font-style:italic"><p>Quote</p></blockquote>', 'blockquote > p > em', ['Quote']],
+    ['<blockquote style="font-weight:bold;text-decoration:underline"><p>One</p><ul><li>Two</li></ul></blockquote>', 'blockquote > p > u > strong, blockquote li > u > strong', ['One', 'Two']],
+  ])('applies block container formatting inside each child block: %s', (input, selector, texts) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll(selector)).map(wrapper => wrapper.textContent)).toEqual(texts);
+        expect(doc.querySelector(':is(strong, em, u) :is(p, ul, ol, li, blockquote, table)')).toBeNull();
+      }
+    }
+  });
+
+  it.each([
+    ['<table><caption>Table 1: Prices</caption><tr><td>a</td></tr></table>', null],
+    ['<p>Intro.</p><table><caption style="font-style:italic">Table 1: <strong>Prices</strong></caption><tr><td>a</td></tr></table>', 'em'],
+    ['<table><caption><p>Table 1:</p> Prices</caption><tr><td>a</td></tr></table>', null],
+  ])('keeps table caption text as a paragraph directly before its table: %s', (input, emphasis) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const table = doc.querySelector('table')!;
+        const captions = Array.from(doc.body.children).slice(0, Array.from(doc.body.children).indexOf(table)).filter(p => p.textContent !== 'Intro.');
+        expect(captions.map(p => p.tagName).every(tag => tag === 'P')).toBe(true);
+        expect(captions.map(p => p.textContent).join(' ').replace(/\s+/g, ' ')).toBe('Table 1: Prices');
+        expect(table.textContent?.trim()).toBe('a');
+        expect(Array.from(doc.body.childNodes).some(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())).toBe(false);
+        if (emphasis) expect(captions[0].querySelector(emphasis)?.textContent).toBe('Table 1: Prices');
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
+    }
   });
 
   it.each(['b', 'i', 'span'])('preserves superscript/subscript on <%s>', (tag) => {
@@ -307,6 +477,23 @@ describe('structural and formatting regressions', () => {
     const output = convertToHtml('Hello <strong>world</strong> today.', 'shoppables');
     for (const html of [output.formatted, output.unformatted]) {
       expect(new DOMParser().parseFromString(html, 'text/html').body.textContent).toBe('Hello world today.');
+    }
+  });
+
+  it.each([
+    ['Just a typed line', ['Just a typed line']],
+    ['First<br>Second', ['First Second']],
+    ['First line<div>Second line</div>', ['First line', 'Second line']],
+    ['Hello <strong>world</strong> today.<h2>Heading</h2>Tail', ['Hello world today.', 'Tail']],
+  ])('wraps top-level inline content in paragraphs: %s', (input, paragraphs) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.body.childNodes).some(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())).toBe(false);
+        expect(Array.from(doc.querySelectorAll('body > p')).map(p => p.textContent).filter(text => text?.trim())).toEqual(paragraphs);
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'basic-structure')?.passed).toBe(true);
     }
   });
 
@@ -345,6 +532,137 @@ describe('structural and formatting regressions', () => {
   });
 });
 
+describe('Word desktop list paragraphs', () => {
+  // Trimmed Chrome `inputArea.innerHTML` captures. Both paths drop `mso-list`;
+  // native paste keeps the class, margin and text indent, while the
+  // prepareWordSource snapshot keeps the class and text indent only.
+  const spacer = (count: number) => `<span style="font-size: 7pt; line-height: normal; font-family: &quot;Times New Roman&quot;;">${'&nbsp;'.repeat(count)} </span>`;
+  const NATIVE_CAPTURE = [
+    '<p class="MsoNormal">Intro paragraph.<o:p></o:p></p>',
+    `<p class="MsoListParagraphCxSpFirst" style="margin: 0in 0in 0in 0.5in; text-indent: -0.25in;">1.${spacer(5)}First item<o:p></o:p></p>`,
+    `<p class="MsoListParagraphCxSpLast" style="margin: 0in 0in 8pt 0.5in; text-indent: -0.25in;">2.${spacer(5)}Second item<o:p></o:p></p>`,
+    `<p class="MsoListParagraphCxSpFirst" style="margin: 0in 0in 0in 0.5in; text-indent: -0.25in;"><span style="font-family: Symbol;">·${spacer(8)}</span>Bullet one<o:p></o:p></p>`,
+    `<p class="MsoListParagraphCxSpLast" style="margin: 0in 0in 8pt 0.5in; text-indent: -0.25in;"><span style="font-family: Symbol;">·${spacer(8)}</span>Bullet two<o:p></o:p></p>`,
+  ].join('');
+  const snapshot = 'color: rgb(0, 0, 0); text-decoration: none; font-weight: 400; font-style: normal; font-size: 16px; vertical-align: baseline;';
+  const preparedItem = (cls: string, marker: string, text: string, markerStyle = '') =>
+    `<p class="MsoListParagraph${cls}" style="text-indent: -0.25in; ${snapshot}"><span style="${markerStyle}${snapshot}"><span style="${snapshot}">${marker}<span style="font: 400 9.33333px &quot;Times New Roman&quot;; color: rgb(0, 0, 0);">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; </span></span></span>${text}</p>`;
+  const PREPARED_CAPTURE = [
+    `<p class="MsoNormal" style="${snapshot}">Consult our article first.</p>`,
+    preparedItem('CxSpFirst', '1.', 'First item'),
+    preparedItem('CxSpLast', '2.', 'Second item'),
+    preparedItem('CxSpFirst', '·', 'Bullet one', 'font-family: Symbol; '),
+    preparedItem('CxSpLast', '·', 'Bullet two', 'font-family: Symbol; '),
+  ].join('\n');
+  const item = (cls: string, marker: string, body: string, style = 'margin: 0in 0in 0in 0.5in; text-indent: -0.25in;') =>
+    `<p class="MsoListParagraph${cls}" style="${style}">${marker}${spacer(5)}${body}<o:p></o:p></p>`;
+  const modes = ['regular', 'blogs', 'shoppables'] as const;
+  /** Non-spacer top-level blocks, with each list reduced to its items. */
+  const blocks = (html: string) => Array.from(new DOMParser().parseFromString(html, 'text/html').body.children)
+    .filter(element => element.textContent?.trim())
+    .map(element => {
+      const tag = element.tagName.toLowerCase();
+      if (!element.matches('ol, ul')) return `${tag}: ${element.textContent?.trim()}`;
+      const start = element.getAttribute('start');
+      return `${tag}${start ? `[${start}]` : ''}: ${Array.from(element.children).map(li => li.textContent?.trim()).join(' | ')}`;
+    });
+
+  it.each([
+    ['native paste', NATIVE_CAPTURE, 'Intro paragraph.'],
+    ['prepareWordSource', PREPARED_CAPTURE, 'Consult our article first.'],
+  ])('turns %s list paragraphs into lists in every mode', (_path, input, intro) => {
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual([`p: ${intro}`, 'ol: First item | Second item', 'ul: Bullet one | Bullet two']);
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.filter(r => !r.passed).map(r => r.ruleId)).toEqual([]);
+    }
+  });
+
+  it('keeps the inline formatting and links of bulleted items', () => {
+    const input = item('CxSpFirst', '·', 'See <a href="https://example.com/guide">the guide</a> now') +
+      item('CxSpLast', '<span style="font-family: Symbol;">·</span>', '<b>Bold</b> lead');
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['ul: See the guide now | Bold lead']);
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.querySelector('ul > li:first-child > a')?.getAttribute('href')).toBe('https://example.com/guide');
+        expect(doc.querySelector('ul > li:last-child > strong')?.textContent).toBe('Bold');
+      }
+    }
+  });
+
+  it.each([
+    ['3.', '4.', '3'],
+    ['c)', 'd)', '3'],
+    ['iv.', 'v.', '4'],
+  ])('starts an ordered list at the Word number %s', (first, second, start) => {
+    const input = item('CxSpFirst', first, 'One') + item('CxSpLast', second, 'Two');
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual([`ol[${start}]: One | Two`]);
+      }
+    }
+  });
+
+  it('keeps list-like text outside Word list paragraphs as paragraphs', () => {
+    const input = `<p class="MsoNormal">1.${spacer(3)}Not a list</p><p>· Plain bullet text</p>` +
+      '<p class="MsoListParagraph" style="margin-left: 0.5in">Indented note without a marker</p>';
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['p: 1.    Not a list', 'p: · Plain bullet text', 'p: Indented note without a marker']);
+      }
+    }
+  });
+
+  it('keeps two lists separated by a normal paragraph apart', () => {
+    const input = item('CxSpFirst', '1.', 'One') + item('CxSpLast', '2.', 'Two') +
+      '<p class="MsoNormal">Between</p>' + item('', '1.', 'Again');
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['ol: One | Two', 'p: Between', 'ol: Again']);
+      }
+    }
+  });
+
+  it.each([
+    ['indent steps', (level: number) => `margin: 0in 0in 0in ${level * 0.5}in; text-indent: -0.25in;`],
+    ['resumed outer numbering', () => 'text-indent: -0.25in;'],
+  ])('nests a Word sub-list detected by %s', (_signal, style) => {
+    // The last sub-list ends the run, so only the earlier nesting identifies it.
+    const input = item('CxSpFirst', '1.', 'One', style(1)) + item('CxSpMiddle', 'a.', 'Sub one', style(2)) +
+      item('CxSpMiddle', 'b.', 'Sub two', style(2)) + item('CxSpMiddle', '2.', 'Two', style(1)) +
+      item('CxSpLast', 'a.', 'Last sub', style(2));
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('body > ol > li')).map(li => li.firstChild?.textContent?.trim())).toEqual(['One', 'Two']);
+        expect(Array.from(doc.querySelectorAll('body > ol > li > ol')).map(ol => Array.from(ol.children).map(li => li.textContent)))
+          .toEqual([['Sub one', 'Sub two'], ['Last sub']]);
+        expect(doc.querySelectorAll('body > ol')).toHaveLength(1);
+      }
+    }
+  });
+
+  it('starts a new list for a different marker family without indent evidence', () => {
+    const style = 'text-indent: -0.25in;';
+    const input = item('CxSpFirst', '1.', 'One', style) + item('CxSpMiddle', '2.', 'Two', style) +
+      item('CxSpMiddle', '·', 'Dot', style) + item('CxSpLast', '·', 'Dot two', style);
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['ol: One | Two', 'ul: Dot | Dot two']);
+      }
+    }
+  });
+});
+
 describe('URL preservation', () => {
   it.each([
     'https://example.com/docs--v2?key=a--b#part--two',
@@ -357,6 +675,18 @@ describe('URL preservation', () => {
     for (const style of ['', ' style="font-weight:bold"']) {
       const output = getUnformattedHtml(`<p${style}><a href="${href}">Link</a></p>`, 'shoppables');
       expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')?.getAttribute('href')).toBe(href);
+    }
+  });
+
+  it.each([
+    ['//cdn.example.com/guide?a=1#part', '/guide?a=1#part'],
+    ['https://example.com/guide', '/guide'],
+  ])('converts %s to the relative path the validator expects', (href, expected) => {
+    const features = { relativePaths: true };
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml(`<p>See <a href="${href}">guide</a></p>`, mode, features);
+      expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')?.getAttribute('href')).toBe(expected);
+      expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'relative-paths')?.passed).toBe(true);
     }
   });
 });
@@ -513,6 +843,37 @@ describe('spacing within formatted links', () => {
     }
   });
 
+  it.each([
+    '<p><a href="https://example.com/a">Twitter</a> <a href="https://example.com/b">Facebook</a></p>',
+    '<p><strong>Note</strong> <a href="https://example.com/a">Twitter</a> <em>Facebook</em></p>',
+  ])('keeps an existing separator outside neighboring links and formatting: %s', (input) => {
+    const source = new DOMParser().parseFromString(input, 'text/html');
+    const texts = (doc: Document) => Array.from(doc.querySelectorAll('a, strong, em')).map(el => el.textContent);
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.body.textContent).toBe(source.body.textContent);
+        expect(texts(doc)).toEqual(texts(source));
+      }
+    }
+  });
+
+  it.each([
+    ['<p>The <a href="https://example.com/fda">FDA</a>-approved drug<a href="#fn1"><sup>1</sup></a> per <a href="https://example.com/study">study</a><sup>2</sup>.</p>', 'The FDA-approved drug1 per study2.'],
+    ['<p>All <a href="https://example.com/fda">FDA</a>s agree.</p>', 'All FDAs agree.'],
+    ['<p>See <a href="https://example.com/a">our article </a>today.</p>', 'See our article today.'],
+    ['<p><span>See </span><a href="https://example.com/a"><span style="color:blue">our article </span></a><span>today.</span></p>', 'See our article today.'],
+  ])('keeps the source word boundaries around a link: %s', (input, text) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(new DOMParser().parseFromString(html, 'text/html').body.textContent).toBe(text);
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'link-spacing')?.passed).toBe(true);
+    }
+  });
+
   it('trims only outer anchor padding while keeping inner separators', () => {
     const input = '<p><a href="/how-it-works">  <strong>How</strong> It <em>Works</em>  </a></p>';
     const output = cleanHtml(input);
@@ -565,6 +926,22 @@ describe('Word-to-HTML pipeline regressions', () => {
   });
 
   it.each([
+    '<p>See <a href="https://example.com" target="_self">link</a></p>',
+    '<p>See <a href="https://example.com" rel="noopener,noreferrer">link</a></p>',
+    '<p>See <a href="https://example.com" target="_blank" rel="noopener,noreferrer">link</a></p>',
+  ])('gives every link the Link Attributes target and rel tokens: %s', (input) => {
+    for (const mode of ['blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml(input, mode);
+      const link = new DOMParser().parseFromString(output, 'text/html').querySelector('a');
+      expect(link?.getAttribute('target')).toBe('_blank');
+      expect(link?.getAttribute('rel')?.split(/\s+/)).toEqual(expect.arrayContaining(['noopener', 'noreferrer']));
+      const results = validateMode(output, mode, {}).results;
+      expect(results.find(r => r.ruleId === 'link-attributes')?.passed).toBe(true);
+      expect(results.find(r => r.ruleId === 'link-safety')?.passed).toBe(true);
+    }
+  });
+
+  it.each([
     ['abc', null], [' 4 ', '4'], ['007', '7'], ['+3', '3'], ['2.5', '2'], ['0', '0'], ['-2', '-2'],
     ['99999999999', null], ['', null], ['3abc', '3'], ['1e3', null], ['0x10', '0'],
     ['2147483647', '2147483647'], ['2147483648', null], ['-2147483648', '-2147483648'], ['-2147483649', null],
@@ -593,11 +970,59 @@ describe('Word-to-HTML pipeline regressions', () => {
     expect(sanitizeHtml(input)).toBe(expected);
   });
 
+  it.each([
+    ['colspan', '2', '2'], ['colspan', ' 3 ', '3'], ['colspan', '02', '2'], ['colspan', '2.5', '2'], ['colspan', '+4', '4'],
+    ['colspan', '1', null], ['colspan', '0', null], ['colspan', '-2', null], ['colspan', 'abc', null], ['colspan', '', null],
+    ['colspan', '1001', '1000'], ['rowspan', '3', '3'], ['rowspan', '0', '0'], ['rowspan', '1', null], ['rowspan', '-1', null],
+    ['rowspan', '65535', '65534'],
+  ])('reduces <td %s="%s"> to the browser-rendered span', (name, value, expected) => {
+    for (const tag of ['td', 'th']) {
+      const cell = new DOMParser().parseFromString(sanitizeHtml(`<table><tr><${tag} ${name}="${value}">x</${tag}></tr></table>`), 'text/html').querySelector(tag);
+      expect(cell?.textContent).toBe('x');
+      expect(cell?.getAttribute(name)).toBe(expected);
+    }
+  });
+
+  it.each([
+    ['<p colspan="2" rowspan="2">x</p>', '<p>x</p>'],
+    ['<table><tbody><tr colspan="2" rowspan="2"><td>x</td></tr></tbody></table>', '<table><tbody><tr><td>x</td></tr></tbody></table>'],
+  ])('removes table span attributes outside cells: %s', (input, expected) => {
+    expect(sanitizeHtml(input)).toBe(expected);
+  });
+
   it('preserves combined bold and italic Word formatting', () => {
     const output = getUnformattedHtml('<p><span style="font-weight: bold; font-style: italic">Both</span></p>');
     const doc = new DOMParser().parseFromString(output, 'text/html');
     expect(doc.querySelector('strong')?.textContent).toBe('Both');
     expect(doc.querySelector('em')?.textContent).toBe('Both');
+  });
+
+  it.each([
+    ['<p style="font-style:italic">Book <span style="font-style:normal">Title</span> here</p>', 'Book Title here', [], ['Book', 'here']],
+    ['<p><b>Bold <span style="font-weight:normal">plain</span> end</b></p>', 'Bold plain end', ['Bold', 'end'], []],
+    ['<p><span style="font-weight:700">Bold <a href="/x"><span style="font-weight:400">plain</span></a> end</span></p>', 'Bold plain end', ['Bold', 'end'], []],
+    ['<p><strong><em>Both <span style="font-style:normal;font-weight:normal">plain</span></em></strong></p>', 'Both plain', ['Both'], ['Both']],
+    ['<table><tr><td style="font-weight:bold"><p>Head <span style="font-weight:normal">note</span></p><p>Next</p></td></tr></table>', 'Head noteNext', ['Head', 'Next'], []],
+    ['<b style="font-weight:normal"><p>Docs paragraph</p><p><span style="font-weight:700">Bold</span> text</p></b>', 'Docs paragraphBold text', ['Bold'], []],
+    ['<p><i style="font-style:normal">Upright</i> and <em style="font-style:normal">plain</em></p>', 'Upright and plain', [], []],
+    ['<p><b>Bold <span style="font-weight:600">semibold</span></b></p>', 'Bold semibold', ['Bold semibold'], []],
+    ['<p><b>Bold <span style="font-style:normal">still</span></b></p>', 'Bold still', ['Bold still'], []],
+  ])('keeps an explicit normal weight or style inside bold or italic: %s', (input, text, strong, em) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('p, td')).filter(block => !block.querySelector('p')).map(block => block.textContent?.trim()).join('')).toBe(text);
+        expect(Array.from(doc.querySelectorAll('strong')).map(wrapper => wrapper.textContent?.trim())).toEqual(strong);
+        expect(Array.from(doc.querySelectorAll('em')).map(wrapper => wrapper.textContent?.trim())).toEqual(em);
+        expect(doc.querySelector(':is(strong, em) :is(p, a), a :is(strong, em)')).toBeNull();
+      }
+    }
+  });
+
+  it('keeps an explicit normal weight inside bold in direct sanitizer input', () => {
+    expect(sanitizeHtml('<p><b>Bold <span style="font-weight:normal">plain</span></b></p>')).toBe('<p><strong>Bold </strong>plain</p>');
+    expect(sanitizeHtml('<b style="font-weight:normal"><p>Docs paragraph</p></b>')).toBe('<p>Docs paragraph</p>');
   });
 
   it.each(['-35%', '-0.6em', 'sub'])('keeps %s vertical alignment as subscript', (alignment) => {
@@ -687,6 +1112,26 @@ describe('Sources content preservation', () => {
     expect(doc.querySelector('h2')?.previousElementSibling?.innerHTML).toBe('<br>');
     expect(doc.querySelector('a')).toBeNull();
     expect(validateMode(output, 'shoppables', features).summary.failed).toBe(0);
+  });
+
+  it('keeps a single space between adjacent source links once they are removed', () => {
+    const input = '<p>Sources:</p><ol><li><a href="https://example.com/a">A</a> <a href="https://example.com/b">B</a></li></ol>';
+    for (const mode of ['blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml(input, mode);
+      expect(new DOMParser().parseFromString(output, 'text/html').querySelector('li')?.textContent).toBe('A B');
+    }
+  });
+
+  it('leaves no link styling on Sources citations when links are wrapped', () => {
+    const input = '<p>Read the <a href="https://example.com/body">guide</a>.</p><p>Sources:</p><ol><li><a href="https://example.com/nih">NIH article</a></li></ol>';
+    const features = { wrapLinksStrongUnderline: true };
+    for (const mode of ['blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml(input, mode, features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('li')?.innerHTML).toBe('<em>NIH article</em>');
+      expect(doc.querySelector('a > strong > u')?.textContent).toBe('guide');
+      expect(validateMode(output, mode, features).summary.failed).toBe(0);
+    }
   });
 
   it('preserves source links when removal is disabled', () => {

@@ -9,13 +9,25 @@
 
 const LABEL_PATTERN = /^\s*Disclaimer\s*:/i;
 const LABEL_TEXT = 'Disclaimer:';
+// A label on its own line may omit the colon; it still opens the section.
+const SECTION_START_PATTERN = /^\s*Disclaimer\s*(?::|$)/i;
+
+/**
+ * The paragraph this normalizer rewrites: it starts with the "Disclaimer:"
+ * label. Shared with validation and preview highlighting, so a body sentence
+ * such as "Disclaimers vary by state." is never treated as the label.
+ */
+export function isDisclaimerParagraph(element: Element | null): boolean {
+  return element?.tagName.toLowerCase() === 'p' && LABEL_PATTERN.test(element.textContent || '');
+}
+
+/** The paragraph that opens a Disclaimer section, which spacing separates. */
+export function isDisclaimerSectionStart(element: Element | null): boolean {
+  return element?.tagName.toLowerCase() === 'p' && SECTION_START_PATTERN.test(element.textContent || '');
+}
 
 function findDisclaimerParagraphs(doc: Document): Element[] {
-  const paragraphs = Array.from(doc.querySelectorAll('p'));
-  return paragraphs.filter((p) => {
-    const text = (p.textContent || '').trim().toLowerCase();
-    return text.startsWith('disclaimer');
-  });
+  return Array.from(doc.querySelectorAll('p')).filter(isDisclaimerParagraph);
 }
 
 function isAlreadyNormalized(paragraph: Element, labelText: string): boolean {

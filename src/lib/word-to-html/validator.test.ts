@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateMode, type ValidationResults } from './validator';
+import { getLinkSpacingIssues, getOlBoldLabelItems, getSectionSpacingIssues, validateMode, type ValidationResults } from './validator';
 import type { FeatureFlags, OutputMode } from './converter';
 
 function getResult(results: ValidationResults, ruleId: string) {
@@ -103,6 +103,11 @@ describe('validateSanitizedStructure', () => {
 
   it('allows list numbering attributes on <ol>', () => {
     const results = validateMode('<ol start="2" reversed><li>x</li></ol>', 'blogs', defaultFeatures);
+    expectPass(results, 'sanitized-structure');
+  });
+
+  it('allows span attributes on table cells', () => {
+    const results = validateMode('<table><tbody><tr><th colspan="2">x</th></tr><tr><td rowspan="2">y</td></tr></tbody></table>', 'blogs', defaultFeatures);
     expectPass(results, 'sanitized-structure');
   });
 
@@ -212,6 +217,14 @@ describe('validateLinkSafety', () => {
     const r = getResult(results, 'link-safety');
     expect(r.passed).toBe(false);
     expect(r.details?.some((d) => d.includes('sponsored'))).toBe(true);
+  });
+
+  it('flags a comma-joined rel value, which browsers read as one unknown token', () => {
+    const html = '<a href="https://example.com" target="_blank" rel="noopener,noreferrer">x</a>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    const r = getResult(results, 'link-safety');
+    expect(r.passed).toBe(false);
+    expect(r.details?.some((d) => d.includes('noopener,noreferrer'))).toBe(true);
   });
 });
 
@@ -336,6 +349,13 @@ describe('validateKeyTakeaways (D4)', () => {
     const results = validateMode(html, 'blogs', { keyTakeaways: false });
     expectPass(results, 'key-takeaways');
   });
+
+  it.each([
+    '<h2>Key Takeaways</h2><ul><li>One</li></ul>',
+    '<h2><strong><em>Key Takeaways</em></strong></h2><ul><li>One</li></ul>',
+  ])('passes the unchanged source when the feature is disabled: %s', (html) => {
+    expectSkipped(validateMode(html, 'blogs', { keyTakeaways: false }), 'key-takeaways');
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -412,6 +432,11 @@ describe('validateLinkAttributes', () => {
     const results = validateMode(html, 'blogs', { linkAttributes: false });
     expectPass(results, 'link-attributes');
   });
+
+  it('blogs disabled: passes a source link that already has target/rel', () => {
+    const html = '<p>See <a href="https://x.com" target="_blank" rel="noopener">link</a>.</p>';
+    expectSkipped(validateMode(html, 'blogs', { linkAttributes: false }), 'link-attributes');
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -468,6 +493,19 @@ describe('validateLinkSpacing (D2)', () => {
     const html = '<p>word<a href="https://x.com">link</a></p>';
     const results = validateMode(html, 'blogs', defaultFeatures);
     expectFail(results, 'link-spacing');
+  });
+
+  it('passes for a footnote link attached to the preceding word', () => {
+    const html = '<p>drug<a href="#fn1"><sup>1</sup></a> and more</p>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    expectPass(results, 'link-spacing');
+  });
+
+  it('reports the link it counts for preview highlighting', () => {
+    const doc = new DOMParser().parseFromString('<p>word<a href="https://x.com">link</a> and <a href="https://x.com/ok">ok</a></p>', 'text/html');
+    const issues = getLinkSpacingIssues(doc);
+    expect(issues.map(issue => issue.element.textContent)).toEqual(['link']);
+    expect(getResult(validateMode(doc.body.innerHTML, 'blogs', defaultFeatures), 'link-spacing').message).toContain(issues[0].message);
   });
 
   it('passes at start of paragraph', () => {
@@ -530,6 +568,11 @@ describe('validateOlBoldLabels', () => {
     expectFail(results, 'ol-bold-labels');
   });
 
+  it('reports the items it counts as missing a bold label', () => {
+    const doc = new DOMParser().parseFromString('<ol><li><strong>Foo:</strong> text</li><li><strong>Step one</strong>: preheat</li><li>No bold here:</li></ol>', 'text/html');
+    expect(getOlBoldLabelItems(doc).missingBold.map(li => li.textContent)).toEqual(['Step one: preheat', 'No bold here:']);
+  });
+
   it('excludes Sources list items', () => {
     const html = '<p>Sources:</p><ol><li>plain source</li></ol><ol><li><strong>Bolded:</strong> text</li></ol>';
     const results = validateMode(html, 'blogs', defaultFeatures);
@@ -575,9 +618,9 @@ describe('validateSourcesNormalize (D7)', () => {
     expectPass(results, 'sources-normalization');
   });
 
-  it('disabled: fails when sources ARE normalized', () => {
+  it('disabled: passes the unchanged source when it is already normalized', () => {
     const results = validateMode(normalizedSources, 'blogs', { sourcesNormalize: false });
-    expectFail(results, 'sources-normalization');
+    expectSkipped(results, 'sources-normalization');
   });
 });
 
@@ -648,10 +691,16 @@ describe('validateDisclaimerNormalize (D5)', () => {
     expectFail(results, 'disclaimer-normalization');
   });
 
-  it('D5: disabled: fails when strong><em>Disclaimer:</em> is present', () => {
+  it('D5: disabled: passes the unchanged source when strong><em>Disclaimer:</em> is present', () => {
     const html = '<p><strong><em>Disclaimer:</em></strong> Body text.</p>';
     const results = validateMode(html, 'blogs', { disclaimerNormalize: false });
-    expectFail(results, 'disclaimer-normalization');
+    expectSkipped(results, 'disclaimer-normalization');
+  });
+
+  it('checks the labeled Disclaimer, not a body sentence that starts with "Disclaimers"', () => {
+    const html = '<p>Disclaimers matter.</p><p>&nbsp;</p><p><strong><em>Disclaimer:</em></strong> Not advice.</p>';
+    expectPass(validateMode(html, 'blogs', defaultFeatures), 'disclaimer-normalization');
+    expectSkipped(validateMode('<p>Disclaimers vary by state.</p>', 'blogs', defaultFeatures), 'disclaimer-normalization');
   });
 
   it('D5: disabled: passes when label is plain', () => {
@@ -712,6 +761,21 @@ describe('validateSpacing (D9 / D11)', () => {
     const html = '<p>Content.</p><p>&nbsp;</p><h2>Heading</h2>';
     const results = validateMode(html, 'blogs', { spacing: false });
     expectFail(results, 'spacing-rules');
+  });
+
+  it('reports the elements behind its Key Takeaways and labeled-paragraph messages', () => {
+    const html = '<h2>Key Takeaways:</h2><ul><li>Point</li></ul><p>Body.</p><p>Read more: x</p><p>Disclaimer: y</p>';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const issues = getSectionSpacingIssues(doc);
+    expect(issues.map(issue => issue.element.tagName + ':' + issue.element.textContent)).toEqual(['UL:Point', 'P:Read more: x', 'P:Disclaimer: y']);
+    const details = getResult(validateMode(html, 'blogs', defaultFeatures), 'spacing-rules').details;
+    expect(issues.every(issue => details?.includes(issue.message))).toBe(true);
+  });
+
+  it('requires spacing only before labeled read-more and Disclaimer paragraphs', () => {
+    const html = '<p>Intro.</p><p>Disclaimers vary by state.</p><p>Bacteria spread more quickly.</p><p>Also, read more: details.</p>';
+    const r = getResult(validateMode(html, 'blogs', defaultFeatures), 'spacing-rules');
+    expect(r.details).toEqual(['Missing spacing before "also, read more: det..."']);
   });
 
   it('D11: alt image text exact match triggers spacing check', () => {
@@ -878,10 +942,24 @@ describe('validateOlHeaderConversion (D6 / D13)', () => {
     expectPass(results, 'ol-header-conversion');
   });
 
-  it('disabled: fails when numbered headings present', () => {
-    const html = '<h2>1. Title</h2><p>body</p>';
-    const results = validateMode(html, 'blogs', { olHeaderConversion: false });
+  it('enabled: counts every chained header list left as <ol>', () => {
+    const html = '<ol><li><h3><strong>Alpha</strong></h3></li></ol><p>&nbsp;</p><ol start="2"><li><h3><strong>Beta</strong></h3></li></ol>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
     expectFail(results, 'ol-header-conversion');
+    expect(getResult(results, 'ol-header-conversion').message).toBe('2 header list(s) should be converted but remain as <ol>');
+  });
+
+  it.each([
+    '<ol><li><h3><strong>Prepare</strong></h3>Wash your hands first.</li></ol>',
+    '<ol><li><strong><h3>Prepare</h3><em>Wash your hands first.</em></strong></li></ol>',
+  ])('enabled: does not count a list whose items hold body text besides the heading: %s', (html) => {
+    expectSkipped(validateMode(html, 'blogs', defaultFeatures), 'ol-header-conversion');
+  });
+
+  it('disabled: passes the unchanged source when it has numbered headings', () => {
+    const html = '<h2>1. Introduction</h2><p>body</p><h2>3.5 Ways to Save</h2><p>body</p>';
+    const results = validateMode(html, 'blogs', { olHeaderConversion: false });
+    expectSkipped(results, 'ol-header-conversion');
   });
 
   it('disabled: passes when header lists still present as <ol>', () => {

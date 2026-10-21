@@ -5,7 +5,7 @@
 
 import type { OutputMode, FeatureFlags } from './converter';
 import { resolveFeatures } from './mode-processor';
-import { ALLOWED_ELEMENTS as SANITIZED_ELEMENTS, getStructuralIssues, isSafeUrl } from './html-sanitizer';
+import { ALLOWED_ELEMENTS as SANITIZED_ELEMENTS, SAFE_REL_VALUES as SANITIZED_REL_VALUES, getStructuralIssues, isSafeUrl } from './html-sanitizer';
 import { isSpacingParagraph as isAnySpacingElement, isBrSpacingParagraph as isBrSpacingElement, isSpacerElement, nextNonSpacingElement } from './html-spacing';
 import { isCustomSpacerElement, isWithinInsertedSpacer, parseCustomSpacer, type CustomSpacer } from './spacer';
 import { findKeyTakeawaysSection } from './mode-key-takeaways';
@@ -13,6 +13,9 @@ import { findArticleTitleAfterKeyTakeaways } from './mode-h1-removal';
 import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
 import { getHeadingSpacingIssues } from './mode-spacing';
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
+import { isHeaderList } from './mode-ol-header-conversion';
+import { isFootnoteLink } from './mode-link-spacing';
+import { isDisclaimerParagraph, isDisclaimerSectionStart } from './mode-disclaimer-normalize';
 
 /**
  * Feature flags that toggle behavior. The custom spacer is a text setting,
@@ -48,24 +51,16 @@ const ALWAYS_BANNED_ATTRIBUTES = new Set([
 const BANNED_ATTRIBUTE_PREFIXES = ['data-', 'on'];
 
 /**
- * Allowed `rel` values on anchor tags after sanitization.
+ * Allowed `rel` tokens on anchor tags after sanitization (the sanitizer's
+ * allowlist). rel is split on whitespace, so a comma-joined value is one
+ * unknown token.
  */
-const SAFE_REL_VALUES = new Set([
-  'nofollow',
-  'noopener',
-  'noreferrer',
-  'noopener,noreferrer',
-]);
+const SAFE_REL_VALUES = new Set(SANITIZED_REL_VALUES);
 
-function findDisclaimerSection(doc: Document): { paragraph: Element } | null {
-  const paragraphs = doc.querySelectorAll('p');
-  for (const p of Array.from(paragraphs)) {
-    const text = (p.textContent || '').trim().toLowerCase();
-    if (text.startsWith('disclaimer')) {
-      return { paragraph: p };
-    }
-  }
-  return null;
+/** The first paragraph the Disclaimer normalizer rewrites; shared with preview highlights. */
+export function findDisclaimerSection(doc: Document): { paragraph: Element } | null {
+  const paragraph = Array.from(doc.querySelectorAll('p')).find(isDisclaimerParagraph);
+  return paragraph ? { paragraph } : null;
 }
 
 /**
@@ -401,6 +396,19 @@ function validateKeyTakeaways(doc: Document, mode: OutputMode, features?: Featur
     };
   }
 
+  /* Disabled — the converter leaves the section as it is in the source, so
+   * the source formatting cannot be an error. */
+  if (!isFeatureEnabled(features, 'keyTakeaways', true)) {
+    return {
+      ruleId: 'key-takeaways',
+      feature: 'Key Takeaways Formatting',
+      mode,
+      passed: true,
+      message: 'Key Takeaways left as in the source (feature disabled)',
+      severity: 'info',
+    };
+  }
+
   /* Also validate the heading itself was normalized. */
   const headingIssues: string[] = [];
   const headingText = section.heading.textContent?.trim() || '';
@@ -415,26 +423,6 @@ function validateKeyTakeaways(doc: Document, mode: OutputMode, features?: Featur
   const listItems = section.list.querySelectorAll('li');
   const itemsWithEm = Array.from(listItems).filter((li) => li.querySelector('em'));
   const hasEmTags = itemsWithEm.length > 0;
-  const isEnabled = isFeatureEnabled(features, 'keyTakeaways', true);
-
-  if (!isEnabled) {
-    const issues = [...headingIssues];
-    if (!hasEmTags) {
-      issues.push('No <em> tags in Key Takeaways list (should be present when feature is disabled)');
-    }
-    return {
-      ruleId: 'key-takeaways',
-      feature: 'Key Takeaways Formatting',
-      mode,
-      passed: issues.length === 0,
-      message:
-        issues.length === 0
-          ? 'Key Takeaways correctly preserved (feature disabled)'
-          : `${issues.length} issue(s) found`,
-      severity: issues.length === 0 ? 'info' : 'error',
-      details: issues.length > 0 ? issues : null,
-    };
-  }
 
   /* Feature enabled — <em> tags should be removed and heading should end with :. */
   const issues = [...headingIssues];
@@ -532,21 +520,16 @@ function validateLinkAttributes(doc: Document, mode: OutputMode, features?: Feat
 
   const isEnabled = isFeatureEnabled(features, 'linkAttributes', true);
 
+  /* Disabled — the converter keeps the attributes the source links have,
+   * so a source target/rel cannot be an error. */
   if (!isEnabled) {
-    const linksWithAttributes = Array.from(links).filter((link) => {
-      return link.hasAttribute('target') || link.hasAttribute('rel');
-    });
-
     return {
       ruleId: 'link-attributes',
       feature: 'Link Attributes',
       mode,
-      passed: linksWithAttributes.length === 0,
-      message:
-        linksWithAttributes.length === 0
-          ? 'Links correctly without target/rel attributes (feature disabled)'
-          : `Found ${linksWithAttributes.length} link(s) with target/rel attributes (should not have attributes)`,
-      severity: linksWithAttributes.length === 0 ? 'info' : 'error',
+      passed: true,
+      message: 'Link attributes left as in the source (feature disabled)',
+      severity: 'info',
     };
   }
 
@@ -643,16 +626,19 @@ function validateRelativePaths(doc: Document, mode: OutputMode, features?: Featu
 /**
  * Walk previous siblings (including element nodes) so images and <br> tags
  * immediately before a link are also checked for missing space.
+ * Element-level diagnostics, shared with preview highlights.
  */
-function validateLinkSpacing(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+export function getLinkSpacingIssues(doc: Document): { element: Element; message: string }[] {
   const links = doc.querySelectorAll('a[href]');
-  const issues: string[] = [];
+  const issues: { element: Element; message: string }[] = [];
   const OPENING_PUNCT = /[\("'\[\{\u201C\u2018]$/;
   const TRAILING_PUNCT = /[.,;:!?)}\]\u201D\u2019"']$/;
 
   links.forEach((link) => {
     const parent = link.parentNode;
     if (!parent) return;
+    /* Footnote markers attach to the preceding word; link spacing keeps them so. */
+    if (isFootnoteLink(link)) return;
 
     /* Walk siblings before the link and capture the closest visible text. */
     let previousText = '';
@@ -682,13 +668,20 @@ function validateLinkSpacing(doc: Document, mode: OutputMode, features?: Feature
     }
     const lastChar = previousText.slice(-1);
     if (lastChar !== ' ' && lastChar !== '\u00A0') {
-      issues.push(`Missing space before link: "${trimmedEnd.slice(-30)}..."`);
+      issues.push({ element: link, message: `Missing space before link: "${trimmedEnd.slice(-30)}..."` });
       return;
     }
     if (/^\s{2,}/.test(previousText.slice(-10))) {
-      issues.push(`Multiple spaces before link: "${trimmedEnd.slice(-30)}..."`);
+      issues.push({ element: link, message: `Multiple spaces before link: "${trimmedEnd.slice(-30)}..."` });
     }
   });
+
+  return issues;
+}
+
+function validateLinkSpacing(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  const links = doc.querySelectorAll('a[href]');
+  const issues = getLinkSpacingIssues(doc).map(issue => issue.message);
 
   return {
     ruleId: 'link-spacing',
@@ -787,6 +780,35 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
   };
 }
 
+/**
+ * Ordered-list items outside Sources whose text has a colon, and those whose
+ * first <strong> does not hold the colon. Shared with preview highlights.
+ */
+export function getOlBoldLabelItems(doc: Document): { withColon: Element[]; missingBold: Element[]; skippedSources: number } {
+  const sourcesSections = findSourcesSections(doc);
+  const withColon: Element[] = [];
+  const missingBold: Element[] = [];
+  let skippedSources = 0;
+
+  doc.querySelectorAll('ol > li').forEach((li) => {
+    if (sourcesSections.some(section => section.list?.contains(li))) {
+      skippedSources++;
+      return;
+    }
+
+    const text = li.textContent || '';
+    if (text.includes(':')) {
+      withColon.push(li);
+      const strongText = li.querySelector('strong')?.textContent || '';
+      if (!strongText.includes(':')) {
+        missingBold.push(li);
+      }
+    }
+  });
+
+  return { withColon, missingBold, skippedSources };
+}
+
 function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
   if (mode === 'regular') {
     return {
@@ -799,31 +821,9 @@ function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: Featur
     };
   }
 
-  const sourcesSections = findSourcesSections(doc);
-
-  const olItems = doc.querySelectorAll('ol > li');
-  let itemsWithColon = 0;
-  let itemsWithBold = 0;
-  let skippedSources = 0;
-
-  olItems.forEach((li) => {
-    if (sourcesSections.some(section => section.list?.contains(li))) {
-      skippedSources++;
-      return;
-    }
-
-    const text = li.textContent || '';
-    if (text.includes(':')) {
-      itemsWithColon++;
-      const strong = li.querySelector('strong');
-      if (strong) {
-        const strongText = strong.textContent || '';
-        if (strongText.includes(':')) {
-          itemsWithBold++;
-        }
-      }
-    }
-  });
+  const { withColon, missingBold, skippedSources } = getOlBoldLabelItems(doc);
+  const itemsWithColon = withColon.length;
+  const itemsWithBold = itemsWithColon - missingBold.length;
 
   if (itemsWithColon === 0) {
     return {
@@ -892,44 +892,16 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
 
   const isEnabled = isFeatureEnabled(features, 'sourcesNormalize', true);
 
+  /* Disabled — the converter leaves the section as it is in the source, so
+   * a source that already has the normalized form cannot be an error. */
   if (!isEnabled) {
-    const issues: string[] = [];
-
-    /* Label check: only look at the strong > em structure on the paragraph. */
-    sections.forEach(({ label }) => {
-      const labelEm = label.querySelector(':scope > strong > em');
-      if (labelEm?.textContent?.trim().toLowerCase() === 'sources:') {
-        issues.push('Sources paragraph is normalized (should not have <strong><em> structure)');
-      }
-    });
-
-    listItems.forEach((li, index) => {
-      const directEm = Array.from(li.children).find(
-        (c) => c.tagName.toLowerCase() === 'em'
-      );
-      if (directEm) {
-        const hasTextOutside = Array.from(li.childNodes).some(
-          (node) =>
-            node.nodeType === Node.TEXT_NODE &&
-            (node as Text).textContent?.trim()
-        );
-        if (!hasTextOutside) {
-          issues.push(`List item ${index + 1} is wrapped in <em> tag (should not be normalized)`);
-        }
-      }
-    });
-
     return {
       ruleId: 'sources-normalization',
       feature: 'Sources Normalization',
       mode,
-      passed: issues.length === 0,
-      message:
-        issues.length === 0
-          ? 'Sources section correctly not normalized (feature disabled)'
-          : `${issues.length} normalization issue(s) found: ${issues.join('; ')}`,
-      severity: issues.length === 0 ? 'info' : 'error',
-      details: issues.length > 0 ? issues : null,
+      passed: true,
+      message: 'Sources section left as in the source (feature disabled)',
+      severity: 'info',
     };
   }
 
@@ -1093,17 +1065,16 @@ function validateDisclaimerNormalize(doc: Document, mode: OutputMode, features?:
   const labelEm = labelStrong?.querySelector(':scope > em');
   const emText = labelEm?.textContent?.trim().toLowerCase() || '';
 
+  /* Disabled — the converter leaves the label as it is in the source, so a
+   * source label that is already normalized cannot be an error. */
   if (!isEnabled) {
-    const isOverNormalized = !!labelEm && emText === 'disclaimer:';
     return {
       ruleId: 'disclaimer-normalization',
       feature: 'Disclaimer Normalization',
       mode,
-      passed: !isOverNormalized,
-      message: isOverNormalized
-        ? 'Disclaimer paragraph is normalized (should not have <strong><em> structure)'
-        : 'Disclaimer section correctly not normalized (feature disabled)',
-      severity: isOverNormalized ? 'error' : 'info',
+      passed: true,
+      message: 'Disclaimer left as in the source (feature disabled)',
+      severity: 'info',
     };
   }
 
@@ -1140,12 +1111,12 @@ function validateDisclaimerNormalize(doc: Document, mode: OutputMode, features?:
 /* Spacing                                                            */
 /* ------------------------------------------------------------------ */
 
-function validateKeyTakeawaySpacing(doc: Document, issues: string[], spacer: CustomSpacer): void {
+function validateKeyTakeawaySpacing(doc: Document, issues: { element: Element; message: string }[], spacer: CustomSpacer): void {
   const section = findKeyTakeawaysSection(doc);
   if (!section) return;
   const elementAfterUl = section.list.nextElementSibling;
   if (!isSpacerElement(elementAfterUl, spacer)) {
-    issues.push('Missing spacing after Key Takeaways section');
+    issues.push({ element: section.list, message: 'Missing spacing after Key Takeaways section' });
   }
 }
 
@@ -1153,43 +1124,53 @@ function validateHeadingSpacing(doc: Document, issues: string[], customSpacer?: 
   issues.push(...getHeadingSpacingIssues(doc, customSpacer).map(issue => issue.message));
 }
 
-function validateSpecialParagraphSpacing(doc: Document, issues: string[], spacer: CustomSpacer): void {
+function validateSpecialParagraphSpacing(doc: Document, issues: { element: Element; message: string }[], spacer: CustomSpacer): void {
   const paragraphs = doc.querySelectorAll('p');
 
   paragraphs.forEach((p) => {
     const text = p.textContent?.trim().toLowerCase() || '';
 
-    /* Use exact prefix matching for "alt image text:" instead of includes(). */
-    if (text === 'read also:' || text.startsWith('read also:') ||
-        text === 'read more:' || text.startsWith('read more:') ||
-        text === 'see more:' || text.startsWith('see more:')) {
+    /* The same label detection as the spacing rules. */
+    if (isReadMoreParagraph(p)) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
-        issues.push(`Missing spacing before "${text.substring(0, 20)}..."`);
+        issues.push({ element: p, message: `Missing spacing before "${text.substring(0, 20)}..."` });
       }
     }
 
     if (isSourcesLabel(p)) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
-        issues.push('Missing spacing before "Sources:" section');
+        issues.push({ element: p, message: 'Missing spacing before "Sources:" section' });
       }
     }
 
-    if (text.startsWith('disclaimer')) {
+    if (isDisclaimerSectionStart(p)) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
-        issues.push('Missing spacing before "Disclaimer:" section');
+        issues.push({ element: p, message: 'Missing spacing before "Disclaimer:" section' });
       }
     }
 
     if (text.startsWith('alt image text:')) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
-        issues.push('Missing spacing before "Alt Image Text:" paragraph');
+        issues.push({ element: p, message: 'Missing spacing before "Alt Image Text:" paragraph' });
       }
     }
   });
+}
+
+/**
+ * Element-level diagnostics for the spacing after Key Takeaways and before
+ * the labeled paragraphs. Shared with preview highlights.
+ */
+export function getSectionSpacingIssues(doc: Document, customSpacer?: string): { element: Element; message: string }[] {
+  const spacer = parseCustomSpacer(customSpacer);
+  const issues: { element: Element; message: string }[] = [];
+  validateKeyTakeawaySpacing(doc, issues, spacer);
+  validateSpecialParagraphSpacing(doc, issues, spacer);
+  return issues;
 }
 
 /** Shared element-level diagnostics for disabled spacing and preview highlights. */
@@ -1264,11 +1245,9 @@ function validateSpacing(doc: Document, mode: OutputMode, features?: FeatureFlag
   }
 
   const issues: string[] = [];
-  const spacer = parseCustomSpacer(features?.customSpacer);
 
-  validateKeyTakeawaySpacing(doc, issues, spacer);
   validateHeadingSpacing(doc, issues, features?.customSpacer);
-  validateSpecialParagraphSpacing(doc, issues, spacer);
+  issues.push(...getSectionSpacingIssues(doc, features?.customSpacer).map(issue => issue.message));
 
   return {
     ruleId: 'spacing-rules',
@@ -1560,31 +1539,6 @@ function validateBrBeforeSources(doc: Document, mode: OutputMode, features?: Fea
 /* OL header conversion                                                */
 /* ------------------------------------------------------------------ */
 
-function isHeaderList(ol: Element): boolean {
-  const listItems = ol.querySelectorAll(':scope > li');
-  if (listItems.length === 0) return false;
-
-  return Array.from(listItems).every((li) => {
-    const strongTag = li.querySelector(':scope > strong');
-    if (strongTag) {
-      const headingChildren = Array.from(strongTag.children).filter((node) =>
-        /^h[1-6]$/i.test(node.tagName)
-      );
-      if (headingChildren.length === 1) {
-        return true;
-      }
-    }
-
-    const directHeading = li.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
-    if (directHeading) {
-      const strongInHeading = directHeading.querySelector(':scope > strong');
-      return strongInHeading !== null;
-    }
-
-    return false;
-  });
-}
-
 function validateOlHeaderConversion(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
   if (mode === 'regular') {
     return {
@@ -1601,30 +1555,16 @@ function validateOlHeaderConversion(doc: Document, mode: OutputMode, features?: 
   const headerLists = Array.from(olElements).filter(isHeaderList);
   const isEnabled = isFeatureEnabled(features, 'olHeaderConversion', true);
 
+  /* Disabled — the converter leaves lists and headings as they are in the
+   * source, so numbered headings the source already has cannot be an error. */
   if (!isEnabled) {
-    /* Disabled — check that no numbered headings exist regardless of
-     * whether <ol> elements are present (manual edits can also produce
-     * them). */
-    const allHeadings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    const numberedHeadings = Array.from(allHeadings).filter((h) => {
-      const text = h.textContent?.trim() || '';
-      return /^\d+[\.\)\-]\s/.test(text) || /^\d+[\.\)]/.test(text);
-    });
-
     return {
       ruleId: 'ol-header-conversion',
       feature: 'OL Header Conversion',
       mode,
-      passed: numberedHeadings.length === 0,
-      message:
-        numberedHeadings.length === 0
-          ? 'No numbered headings found (feature disabled, conversion not applied)'
-          : `Found ${numberedHeadings.length} numbered heading(s) (should not be converted when feature is disabled)`,
-      severity: numberedHeadings.length === 0 ? 'info' : 'error',
-      expected: 'No numbered headings present when feature is disabled',
-      actual: numberedHeadings.length === 0
-        ? 'No numbered headings found'
-        : `${numberedHeadings.length} numbered heading(s) found`,
+      passed: true,
+      message: 'Lists and headings left as in the source (feature disabled)',
+      severity: 'info',
     };
   }
 
@@ -1652,42 +1592,17 @@ function validateOlHeaderConversion(doc: Document, mode: OutputMode, features?: 
 
 
 
-  /* A header list is "correctly converted" iff there's no <ol> that still
-   * satisfies isHeaderList() — unless it's intentionally chained with
-   * another header list (which the producer preserves as the original
-   * single-level list). */
-  const unconvertedLists = headerLists.filter((ol) => {
-    let nextSibling = ol.nextElementSibling;
-    while (nextSibling) {
-      if (nextSibling.tagName.toLowerCase() === 'p') {
-        const text = nextSibling.textContent?.trim() || '';
-        if (text === '' || text === '\u00A0' || text === '&nbsp;') {
-          nextSibling = nextSibling.nextElementSibling;
-          continue;
-        }
-      }
-      if (nextSibling.tagName.toLowerCase() === 'ol' && isHeaderList(nextSibling)) {
-        return false;
-      }
-      break;
-    }
-    return true;
-  });
-
+  /* The converter numbers every header list, chained ones included, so
+   * any <ol> that still satisfies isHeaderList() was left unconverted. */
   return {
     ruleId: 'ol-header-conversion',
     feature: 'OL Header Conversion',
     mode,
-    passed: unconvertedLists.length === 0,
-    message:
-      unconvertedLists.length === 0
-        ? 'All header lists correctly converted'
-        : `${unconvertedLists.length} header list(s) should be converted but remain as <ol>`,
-    severity: unconvertedLists.length === 0 ? 'info' : 'warning',
+    passed: false,
+    message: `${headerLists.length} header list(s) should be converted but remain as <ol>`,
+    severity: 'warning',
     expected: 'All header lists converted to numbered headings',
-    actual: unconvertedLists.length === 0
-      ? `All ${headerLists.length} header list(s) converted`
-      : `${unconvertedLists.length} of ${headerLists.length} header list(s) remain unconverted`,
+    actual: `${headerLists.length} header list(s) remain unconverted`,
   };
 }
 

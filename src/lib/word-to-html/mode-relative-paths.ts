@@ -18,12 +18,15 @@ export function convertToRelativePaths(html: string): string {
       const href = link.getAttribute('href');
       if (!href) return;
       
-      if (href.startsWith('/') || href.startsWith('./') || href.startsWith('../') || !href.includes('://')) {
+      // A protocol-relative URL ("//host/path") names a host, so it is absolute
+      // although it starts with "/"; the validator treats it the same way
+      const isProtocolRelative = href.startsWith('//');
+      if (!isProtocolRelative && (href.startsWith('/') || href.startsWith('./') || href.startsWith('../') || !href.includes('://'))) {
         return;
       }
       
       try {
-        const url = new URL(href);
+        const url = new URL(isProtocolRelative ? `https:${href}` : href);
         const relativePath = url.pathname + url.search + url.hash;
         link.setAttribute('href', relativePath);
       } catch (e) {

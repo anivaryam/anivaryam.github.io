@@ -15,12 +15,9 @@ export function wrapHeadingsInStrong(html: string): string {
     const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
     
     headings.forEach(heading => {
-      // First, unwrap any existing strong tags to avoid double-wrapping
-      const existingStrong = heading.querySelector('strong');
-      if (existingStrong) {
-        const strongContent = Array.from(existingStrong.childNodes);
-        existingStrong.replaceWith(...strongContent);
-      }
+      // First, unwrap any existing strong tags to avoid double-wrapping.
+      // Word often splits bold text into several runs, so unwrap all of them.
+      unwrapStrongTags(heading);
       
       const childNodes = Array.from(heading.childNodes);
       
@@ -66,13 +63,7 @@ export function unwrapHeadingsFromStrong(html: string): string {
     
     const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
     
-    headings.forEach(heading => {
-      const strong = heading.querySelector('strong');
-      if (strong) {
-        const strongContent = Array.from(strong.childNodes);
-        strong.replaceWith(...strongContent);
-      }
-    });
+    headings.forEach(unwrapStrongTags);
     
     return doc.body.innerHTML;
   } catch (e) {
@@ -81,3 +72,9 @@ export function unwrapHeadingsFromStrong(html: string): string {
   }
 }
 
+/** Unwrap every <strong> inside the heading, keeping its content in place. */
+function unwrapStrongTags(heading: Element): void {
+  heading.querySelectorAll('strong').forEach(strong => {
+    strong.replaceWith(...Array.from(strong.childNodes));
+  });
+}

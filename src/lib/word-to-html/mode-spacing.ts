@@ -7,6 +7,8 @@ import { isSpacingParagraph as isSpacingElement, isSpacerElement } from './html-
 import { parseCustomSpacer } from './spacer';
 import { findKeyTakeawaysSection } from './mode-key-takeaways';
 import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
+import { isReadMoreParagraph } from './mode-br-spacing';
+import { isDisclaimerSectionStart } from './mode-disclaimer-normalize';
 
 function addSpacingAfterKeyTakeaways(doc: Document): void {
   const section = findKeyTakeawaysSection(doc);
@@ -69,10 +71,9 @@ function addSpacingBeforeReadSection(doc: Document): void {
   const paragraphs = doc.querySelectorAll('p');
   
   paragraphs.forEach(p => {
-    const text = p.textContent?.trim().toLowerCase() || '';
-    if (text.includes('read also') || 
-        text.includes('read more') || 
-        text.includes('see more')) {
+    // Only the labeled paragraph ("Read more:"), not body text such as
+    // "bacteria spread more quickly".
+    if (isReadMoreParagraph(p)) {
       
       const prevSibling = p.previousElementSibling;
       if (prevSibling && isSpacingElement(prevSibling)) {
@@ -131,8 +132,7 @@ function addSpacingBeforeDisclaimer(doc: Document): void {
   const paragraphs = doc.querySelectorAll('p');
   
   paragraphs.forEach(p => {
-    const text = p.textContent?.trim().toLowerCase() || '';
-    if (text.startsWith('disclaimer')) {
+    if (isDisclaimerSectionStart(p)) {
       
       const prevSibling = p.previousElementSibling;
       const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);

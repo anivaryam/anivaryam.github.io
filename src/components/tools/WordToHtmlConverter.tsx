@@ -15,10 +15,12 @@ import DOMPurify from 'dompurify';
 import { cleanWordHtml } from "@/lib/word-to-html/word-html-cleaner";
 import { createInertContainer, prepareWordSource } from "@/lib/word-to-html/word-source-formatting";
 import { findArticleTitleAfterKeyTakeaways } from "@/lib/word-to-html/mode-h1-removal";
+import { findKeyTakeawaysSection } from "@/lib/word-to-html/mode-key-takeaways";
 import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
-import { isBrSpacingParagraph } from "@/lib/word-to-html/html-spacing";
-import { getCustomSpacerWarnings, isCustomSpacerElement, parseCustomSpacer, sanitizeCustomSpacerMarkup } from "@/lib/word-to-html/spacer";
-import { validateMode, getUnexpectedSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
+import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
+import { isBrSpacingParagraph, isSpacerElement } from "@/lib/word-to-html/html-spacing";
+import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "@/lib/word-to-html/spacer";
+import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "next-themes";
@@ -157,6 +159,8 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
   const spacer = parseCustomSpacer(customSpacer);
 
   let currentContentHtml = '';
+  // Spacers before the first element; they open the first block.
+  let leadingSpacerHtml = '';
   const skipIndices = new Set<number>();
 
   children.forEach((node, index) => {
@@ -172,8 +176,16 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
 
     const tagName = element.tagName?.toLowerCase();
 
-    // Spacers are not copyable content, the same way the default spacer is not.
-    if (isCustomSpacerElement(element, spacer)) {
+    // Spacers are part of the copied output. A spacer stays with the block
+    // before it, so each spacer is copied once and no block holds spacers only.
+    if (node.nodeType === Node.ELEMENT_NODE && isSpacerElement(element, spacer)) {
+      if (currentContentHtml) {
+        currentContentHtml += element.outerHTML;
+      } else if (blocks.length > 0) {
+        blocks[blocks.length - 1].html += element.outerHTML;
+      } else {
+        leadingSpacerHtml += element.outerHTML;
+      }
       return;
     }
 
@@ -331,9 +343,6 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
       });
     }
     else if (tagName === 'p' || tagName === 'ul' || tagName === 'ol' || tagName === 'blockquote') {
-      if (tagName === 'p' && !element.textContent?.trim()) {
-        return;
-      }
       currentContentHtml += element.outerHTML;
     }
     else if (node.nodeType === Node.ELEMENT_NODE) {
@@ -351,7 +360,17 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
     });
   }
 
-  return blocks;
+  if (leadingSpacerHtml) {
+    if (blocks.length > 0) {
+      blocks[0].html = leadingSpacerHtml + blocks[0].html;
+    } else {
+      blocks.push({ type: 'content', html: leadingSpacerHtml, preview: '', id: `block-${blockId++}` });
+    }
+  }
+
+  // Blocks are copied as they are, so they carry the configured spacer markup
+  // without the converter's marker.
+  return blocks.map(block => ({ ...block, html: stripSpacerMarkers(block.html) }));
 };
 
 export function WordToHtmlConverter() {
@@ -632,8 +651,11 @@ export function WordToHtmlConverter() {
           const html = DOMPurify.sanitize(source.innerHTML, { FORBID_TAGS: ['style'], ADD_ATTR: ['target'] });
           e.preventDefault();
           // insertHTML preserves the browser's editing/undo history. Range is
-          // the fallback for environments without this editing command.
-          if (!document.execCommand?.('insertHTML', false, html)) {
+          // the fallback for environments without this editing command. Some
+          // browsers report false after inserting, so the fallback runs only
+          // when the input is unchanged; otherwise the paste would appear twice.
+          const inputBeforeInsert = inputArea.innerHTML;
+          if (!document.execCommand?.('insertHTML', false, html) && inputArea.innerHTML === inputBeforeInsert) {
             const selection = window.getSelection();
             const range = selection?.rangeCount ? selection.getRangeAt(0) : document.createRange();
             if (!inputArea.contains(range.commonAncestorContainer)) {
@@ -736,7 +758,7 @@ export function WordToHtmlConverter() {
   // only supports plain text.
   const copyOutput = async (rich: boolean) => {
     if (!outputHtml) return;
-    const html = rich ? previewHtml : getHtmlWithCSS(outputHtml);
+    const html = rich ? stripSpacerMarkers(previewHtml) : getHtmlWithCSS(outputHtml);
     try {
       let copiedRichHtml = false;
       if (rich) {
@@ -761,12 +783,16 @@ export function WordToHtmlConverter() {
     }
   };
 
-  // Function to extract all links from HTML
-  const extractLinks = (html: string): string[] => {
+  // Function to extract all links from HTML. The worker fetches each URL on
+  // its own, without a site to resolve against, so only absolute web URLs
+  // can be checked; relative links (for example after Relative Paths) are
+  // returned separately and reported as not checkable.
+  const extractLinks = (html: string): { links: string[]; relativeLinks: string[] } => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     const anchors = doc.querySelectorAll('a[href]');
     const links: string[] = [];
+    const relativeLinks: string[] = [];
     anchors.forEach((anchor) => {
       const href = anchor.getAttribute('href');
       // Filter out dangerous URL protocols that could lead to XSS attacks
@@ -775,10 +801,11 @@ export function WordToHtmlConverter() {
         href.startsWith('data:') ||
         href.startsWith('vbscript:');
       if (href && !href.startsWith('#') && !href.startsWith('mailto:') && !isUnsafeProtocol) {
-        links.push(href);
+        (/^https?:\/\//i.test(href) ? links : relativeLinks).push(href);
       }
     });
-    return [...new Set(links)]; // Remove duplicates
+    // Remove duplicates
+    return { links: [...new Set(links)], relativeLinks: [...new Set(relativeLinks)] };
   };
 
   // Function to check links using Cloudflare Worker API
@@ -786,13 +813,20 @@ export function WordToHtmlConverter() {
     if (!previewHtml) return;
     linkCheckTriggerRef.current = event.currentTarget;
     
-    const links = extractLinks(previewHtml);
+    const { links, relativeLinks } = extractLinks(previewHtml);
+    const relativeDescription = `${relativeLinks.length} relative link(s) cannot be checked without the site address`;
     if (links.length === 0) {
-      toast({
+      toast(relativeLinks.length > 0 ? {
+        title: "No checkable links",
+        description: relativeDescription,
+      } : {
         title: "No links found",
         description: "There are no links to check in the output",
       });
       return;
+    }
+    if (relativeLinks.length > 0) {
+      toast({ title: "Relative links not checked", description: relativeDescription });
     }
 
     setCheckingLinks(true);
@@ -901,19 +935,9 @@ export function WordToHtmlConverter() {
           }
         }
         
-        // OL bold labels - flag all li with colon but no strong EXCEPT Sources section
+        // OL bold labels - flag the items the validator counts as missing a bold label
         if (result.ruleId === 'ol-bold-labels') {
-          const olItems = doc.querySelectorAll('ol > li');
-          olItems.forEach(li => {
-            // Skip list items in the Sources section
-            if (isInSourcesList(li)) {
-              return;
-            }
-            const text = li.textContent || '';
-            if (text.includes(':') && !li.querySelector('strong')) {
-              li.setAttribute('data-warning', 'Missing bold label before colon');
-            }
-          });
+          getOlBoldLabelItems(doc).missingBold.forEach(li => li.setAttribute('data-warning', 'Missing bold label before colon'));
         }
         
         // Remove sources links - flag all links in sources
@@ -953,20 +977,9 @@ export function WordToHtmlConverter() {
         
         // Key takeaways - flag key takeaways heading AND the list below it (only if failed)
         if (result.ruleId === 'key-takeaways' && !result.passed) {
-          const headings = doc.querySelectorAll('h2, h3');
-          headings.forEach(h => {
-            const text = h.textContent?.toLowerCase() || '';
-            if (text.includes('key takeaways')) {
-              h.setAttribute('data-warning', result.message);
-              let next = h.nextElementSibling;
-              while (next && next.tagName.toLowerCase() !== 'ul' && next.tagName.toLowerCase() !== 'ol') {
-                next = next.nextElementSibling;
-              }
-              if (next) {
-                next.setAttribute('data-warning', result.message);
-              }
-            }
-          });
+          const section = findKeyTakeawaysSection(doc);
+          section?.heading.setAttribute('data-warning', result.message);
+          section?.list.setAttribute('data-warning', result.message);
         }
         
         // Link attributes - flag links missing proper attributes (only if failed)
@@ -984,74 +997,29 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // Spacing rules - parse details and highlight the target element (not spacing elements)
+        // Spacing rules - highlight the elements behind the validator messages (not spacing elements)
         if (result.ruleId === 'spacing-rules') {
           const details = result.details || [];
           if (features.spacing === false) {
             getUnexpectedSpacingIssues(doc, effectiveFeatures).forEach(issue => issue.element.setAttribute('data-warning', issue.message));
           }
-          getHeadingSpacingIssues(doc, effectiveFeatures.customSpacer).forEach(issue => {
+          [
+            ...getHeadingSpacingIssues(doc, effectiveFeatures.customSpacer),
+            ...getSectionSpacingIssues(doc, effectiveFeatures.customSpacer),
+          ].forEach(issue => {
             if (details.includes(issue.message)) issue.element.setAttribute('data-warning', issue.message);
           });
-          
-          details.forEach((message: string) => {
-            // Parse message formats:
-            // - 'Missing spacing before heading: "..."'
-            // - 'Missing spacing before Sources: section'
-            // - 'Missing spacing before Disclaimer: section'
-            // - 'Missing spacing before Alt Image Text: paragraph'
-            // - 'Missing spacing before "...'
-            
-            // Handle section/paragraph messages: 'Missing spacing before "X:" section' or 'Missing spacing before "X:" paragraph'
-            const sectionMatch = message.match(/Missing spacing before "([^"]+):?"?\s*(section|paragraph)?"?$/i);
-            if (sectionMatch) {
-              const targetText = sectionMatch[1].toLowerCase();
-              const paragraphs = doc.querySelectorAll('p');
-              paragraphs.forEach(p => {
-                const text = p.textContent?.trim().toLowerCase() || '';
-                if (text === targetText || text.startsWith(targetText + ':') || text.startsWith(targetText + ' ')) {
-                  p.setAttribute('data-warning', message);
-                }
-              });
-              return;
-            }
-            
-            // Handle read also/read more messages: 'Missing spacing before "..."'
-            const readMoreMatch = message.match(/Missing spacing before "([^"]+\.\.\.)"/);
-            if (readMoreMatch) {
-              const readMoreText = readMoreMatch[1].toLowerCase();
-              const paragraphs = doc.querySelectorAll('p');
-              paragraphs.forEach(p => {
-                const text = p.textContent?.trim().toLowerCase() || '';
-                if (text.includes(readMoreText.replace('...', ''))) {
-                  p.setAttribute('data-warning', message);
-                }
-              });
-            }
-          });
+        }
+
+        // Link spacing - flag the links the validator counts
+        if (result.ruleId === 'link-spacing') {
+          getLinkSpacingIssues(doc).forEach(issue => issue.element.setAttribute('data-warning', issue.message));
         }
         
-        // OL header conversion - only flag <ol> elements that are header lists (only if failed)
+        // OL header conversion - flag the header lists the validator counted (only if failed)
         if (result.ruleId === 'ol-header-conversion' && !result.passed) {
-          const olElements = doc.querySelectorAll('ol');
-          olElements.forEach(ol => {
-            const listItems = ol.querySelectorAll(':scope > li');
-            const isHeaderList = Array.from(listItems).every((li) => {
-              const strongTag = li.querySelector(':scope > strong');
-              if (strongTag) {
-                const headingChildren = Array.from(strongTag.children).filter((node) =>
-                  /^h[1-6]$/i.test(node.tagName)
-                );
-                return headingChildren.length === 1;
-              }
-              const directHeading = li.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
-              if (directHeading) {
-                const strongInHeading = directHeading.querySelector(':scope > strong');
-                return strongInHeading !== null;
-              }
-              return false;
-            });
-            if (isHeaderList) {
+          doc.querySelectorAll('ol').forEach(ol => {
+            if (isHeaderList(ol)) {
               ol.setAttribute('data-warning', result.message);
             }
           });
@@ -1148,14 +1116,9 @@ export function WordToHtmlConverter() {
           });
         }
 
-        // Disclaimer normalization - flag the disclaimer paragraph
+        // Disclaimer normalization - flag the disclaimer paragraph the validator checked
         if (result.ruleId === 'disclaimer-normalization' && !result.passed) {
-          doc.querySelectorAll('p').forEach((p) => {
-            const text = (p.textContent || '').trim().toLowerCase();
-            if (text.startsWith('disclaimer')) {
-              p.setAttribute('data-warning', result.message);
-            }
-          });
+          findDisclaimerSection(doc)?.paragraph.setAttribute('data-warning', result.message);
         }
 
         // Paragraph spacing - flag the second paragraph in each pair missing a spacer
@@ -1210,6 +1173,10 @@ export function WordToHtmlConverter() {
       return previewHtml;
     }
   }, [previewHtml, validationResults, showValidationWarnings, features, effectiveFeatures]);
+
+  // The rendered preview can be selected and copied, so it shows the configured
+  // spacer markup without the converter's marker.
+  const displayedPreviewHtml = useMemo(() => stripSpacerMarkers(previewHtmlWithWarnings), [previewHtmlWithWarnings]);
 
   return (
     <div className="flex flex-col gap-3 md:gap-4 w-full max-w-full">
@@ -1878,7 +1845,7 @@ export function WordToHtmlConverter() {
                 fontFamily: 'var(--font-sans)',
               }}
               dangerouslySetInnerHTML={{ 
-                __html: previewHtmlWithWarnings || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
+                __html: displayedPreviewHtml || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
               }}
             />
             <style>{`
@@ -2551,7 +2518,7 @@ export function WordToHtmlConverter() {
                   fontFamily: 'var(--font-sans)',
                 }}
                 dangerouslySetInnerHTML={{
-                  __html: previewHtmlWithWarnings || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>'
+                  __html: displayedPreviewHtml || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>'
                 }}
               />
             ) : maximizedOutputView === 'blocks' ? (

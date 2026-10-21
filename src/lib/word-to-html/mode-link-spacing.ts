@@ -17,6 +17,30 @@ const OPENING_PUNCTUATION_RE = /[\("'\[\{\u201C\u2018]$/;
 // Regex pattern for checking if text starts with closing punctuation that doesn't need a space before it
 const CLOSING_PUNCTUATION_RE = /^[.,;:!?)}\]'"'\u201D\u2019]/;
 
+// Text that continues the link's word: a suffix ("FDAs") or a hyphen/dash
+// compound ("FDA-approved"). No space is added before it.
+const WORD_CONTINUATION_RE = /^[\p{L}\p{N}\u2010-\u2015-]/u;
+
+// Whitespace that HTML collapses (the set html-cleaner trims). U+00A0 (&nbsp;)
+// is intentional spacing and must survive normalization.
+const COLLAPSIBLE_WHITESPACE_RE = /[\t\n\r\f\v ]+/g;
+
+/**
+ * A link whose visible text is all superscript/subscript is a footnote marker
+ * that attaches to the preceding word ("drug<sup>1</sup>"). Shared with the
+ * validator's link-spacing rule.
+ */
+export function isFootnoteLink(anchor: Element): boolean {
+  const walker = anchor.ownerDocument.createTreeWalker(anchor, NodeFilter.SHOW_TEXT);
+  let hasText = false;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.textContent?.trim()) continue;
+    if (!node.parentElement?.closest('sup, sub')) return false;
+    hasText = true;
+  }
+  return hasText;
+}
+
 export function addLinkSpacing(html: string): string {
   if (!html || typeof html !== 'string') {
     return '';
@@ -60,30 +84,15 @@ export function addLinkSpacing(html: string): string {
       return node ? (node as Text) : null;
     };
 
-    // Helper function to find the previous meaningful sibling (skips empty text nodes)
-    const findPreviousMeaningfulSibling = (node: Node | null): Node | null => {
-      let current = node;
-      while (
-        current &&
-        current.nodeType === Node.TEXT_NODE &&
-        !(current as Text).textContent?.trim()
-      ) {
-        current = current.previousSibling;
-      }
-      return current;
+    // Text inside <pre>/<code> is data, not prose: never rewrite it
+    const isCodeText = (node: Text): boolean => {
+      return !!node.parentElement?.closest('pre, code');
     };
 
-    // Helper function to find the next meaningful sibling (skips empty text nodes)
-    const findNextMeaningfulSibling = (node: Node | null): Node | null => {
-      let current = node;
-      while (
-        current &&
-        current.nodeType === Node.TEXT_NODE &&
-        !(current as Text).textContent?.trim()
-      ) {
-        current = current.nextSibling;
-      }
-      return current;
+    // A whitespace-only text node beside a link is already its separator; the
+    // neighboring link, label, or formatting must not absorb another space
+    const isWhitespaceText = (node: Node): boolean => {
+      return node.nodeType === Node.TEXT_NODE && !node.textContent?.trim();
     };
     
     const allAnchors = doc.querySelectorAll('a');
@@ -94,30 +103,22 @@ export function addLinkSpacing(html: string): string {
         return;
       }
 
+      // Links inside code keep the code's exact whitespace
+      if (anchor.closest('pre, code')) {
+        return;
+      }
+
       const prevSibling = anchor.previousSibling;
 
       // Find the last meaningful text node before the anchor
       let textNodeToModify: Text | null = null;
       let textContent = '';
 
-      if (prevSibling) {
+      if (prevSibling && !isWhitespaceText(prevSibling) && !isFootnoteLink(anchor)) {
         if (prevSibling.nodeType === Node.TEXT_NODE) {
-          const text = (prevSibling as Text).textContent || '';
-          if (text.trim()) {
-            // Found a text node with content
-            textNodeToModify = prevSibling as Text;
-            textContent = text;
-          } else {
-            // Empty text node - look for previous element's last text
-            const prevElement = findPreviousMeaningfulSibling(prevSibling.previousSibling);
-            if (prevElement && prevElement.nodeType === Node.ELEMENT_NODE) {
-              const lastText = getLastTextNodeFromElement(prevElement as Element);
-              if (lastText) {
-                textNodeToModify = lastText;
-                textContent = lastText.textContent || '';
-              }
-            }
-          }
+          // Found a text node with content
+          textNodeToModify = prevSibling as Text;
+          textContent = (prevSibling as Text).textContent || '';
         } else if (prevSibling.nodeType === Node.ELEMENT_NODE) {
           // Previous sibling is an element - get its last text node
           const lastText = getLastTextNodeFromElement(prevSibling as Element);
@@ -127,14 +128,17 @@ export function addLinkSpacing(html: string): string {
           }
         }
 
+        // Code text next to the link stays exactly as written
+        const isCodeNeighbor = textNodeToModify !== null && isCodeText(textNodeToModify);
+
         // ALWAYS normalize multiple spaces to single space first (before any other logic)
-        if (textNodeToModify) {
-          textNodeToModify.textContent = textContent.replace(/\s+/g, ' ');
+        if (textNodeToModify && !isCodeNeighbor) {
+          textNodeToModify.textContent = textContent.replace(COLLAPSIBLE_WHITESPACE_RE, ' ');
           textContent = textNodeToModify.textContent || '';
         }
 
         // Add space before if needed (after normalization)
-        if (textNodeToModify && textContent.trim() && !endsWithWhitespace(textContent) && !endsWithOpeningPunctuation(textContent)) {
+        if (textNodeToModify && !isCodeNeighbor && textContent.trim() && !endsWithWhitespace(textContent) && !endsWithOpeningPunctuation(textContent)) {
           textNodeToModify.textContent = textContent + ' ';
         } else if (!textNodeToModify) {
           // No text node found - insert a space node before the anchor
@@ -147,26 +151,13 @@ export function addLinkSpacing(html: string): string {
       // --- Space AFTER the link ---
       const nextSibling = anchor.nextSibling;
 
-      if (nextSibling) {
+      if (nextSibling && !isWhitespaceText(nextSibling)) {
         let nextTextNode: Text | null = null;
         let nextText = '';
 
         if (nextSibling.nodeType === Node.TEXT_NODE) {
-          const text = (nextSibling as Text).textContent || '';
-          if (text.trim()) {
-            nextTextNode = nextSibling as Text;
-            nextText = text;
-          } else {
-            // Empty text node - look for next element's first text
-            const nextElement = findNextMeaningfulSibling(nextSibling.nextSibling);
-            if (nextElement && nextElement.nodeType === Node.ELEMENT_NODE) {
-              const firstText = getFirstTextNodeFromElement(nextElement as Element);
-              if (firstText) {
-                nextTextNode = firstText;
-                nextText = firstText.textContent || '';
-              }
-            }
-          }
+          nextTextNode = nextSibling as Text;
+          nextText = nextSibling.textContent || '';
         } else if (nextSibling.nodeType === Node.ELEMENT_NODE) {
           // Next sibling is an element - get its first text node
           const firstText = getFirstTextNodeFromElement(nextSibling as Element);
@@ -176,14 +167,18 @@ export function addLinkSpacing(html: string): string {
           }
         }
 
+        const isCodeNeighbor = nextTextNode !== null && isCodeText(nextTextNode);
+
         // Normalize multiple spaces
-        if (nextTextNode) {
-          nextTextNode.textContent = nextText.replace(/\s+/g, ' ');
+        if (nextTextNode && !isCodeNeighbor) {
+          nextTextNode.textContent = nextText.replace(COLLAPSIBLE_WHITESPACE_RE, ' ');
           nextText = nextTextNode.textContent || '';
         }
 
-        // Add space after if needed
-        if (nextTextNode && nextText.trim() && !WHITESPACE_START_RE.test(nextText) && !CLOSING_PUNCTUATION_RE.test(nextText)) {
+        // Add space after if needed; a word continuation or a footnote marker
+        // in <sup>/<sub> stays attached to the link
+        if (nextTextNode && !isCodeNeighbor && nextText.trim() && !WHITESPACE_START_RE.test(nextText) && !CLOSING_PUNCTUATION_RE.test(nextText) &&
+            !WORD_CONTINUATION_RE.test(nextText) && !nextTextNode.parentElement?.closest('sup, sub')) {
           nextTextNode.textContent = ' ' + nextText;
         } else if (!nextTextNode) {
           // No text node found - insert a space node after the anchor

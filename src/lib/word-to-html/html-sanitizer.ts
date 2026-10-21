@@ -34,11 +34,14 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   'a': ['href', 'target', 'rel'],
   'img': ['src', 'alt'],
   'ol': ['start', 'reversed'],
+  'th': ['colspan', 'rowspan'],
+  'td': ['colspan', 'rowspan'],
   '*': []
 };
 
 const SAFE_PROTOCOLS = ['http:', 'https:', 'mailto:'];
-const SAFE_REL_VALUES = ['nofollow', 'noopener', 'noreferrer', 'noopener,noreferrer'];
+// rel is a space-separated token list; "noopener,noreferrer" is one unknown token
+export const SAFE_REL_VALUES = ['nofollow', 'noopener', 'noreferrer'];
 const NOOPENER_REGEX = /\bnoopener\b/i;
 
 // These containers cannot accept an inline formatting wrapper around their children.
@@ -86,9 +89,7 @@ interface FormattingInfo {
   isUnderline: boolean;
 }
 
-function extractFormatting(style: string): FormattingInfo | null {
-  if (!style) return null;
-  
+function parseStyle(style: string): Record<string, string> {
   const styleObj: Record<string, string> = {};
   style.split(';').forEach(rule => {
     const parts = rule.split(':').map(s => s.trim());
@@ -96,6 +97,13 @@ function extractFormatting(style: string): FormattingInfo | null {
       styleObj[parts[0].toLowerCase()] = parts[1];
     }
   });
+  return styleObj;
+}
+
+function extractFormatting(style: string): FormattingInfo | null {
+  if (!style) return null;
+
+  const styleObj = parseStyle(style);
   
   const isItalic = styleObj['font-style']?.toLowerCase().includes('italic') || false;
   const isBold = styleObj['font-weight'] && (
@@ -196,9 +204,10 @@ function convertFormattingToSemanticTags(
 /**
  * Wraps consecutive inline nodes without reordering text or enclosing structural
  * blocks or optional feature-specific boundaries. Used by Sources formatting,
- * underline cleanup, and block-copy paragraph grouping.
+ * underline cleanup, and block-copy paragraph grouping. Returns the wrappers.
  */
-export function wrapInlineContent(element: Element, tagName: string, isBoundary?: (child: Element) => boolean): void {
+export function wrapInlineContent(element: Element, tagName: string, isBoundary?: (child: Element) => boolean): Element[] {
+  const wrappers: Element[] = [];
   let wrapper: Element | null = null;
   for (const child of Array.from(element.childNodes)) {
     if (child.nodeType === Node.ELEMENT_NODE) {
@@ -213,20 +222,101 @@ export function wrapInlineContent(element: Element, tagName: string, isBoundary?
       if (child.nodeType === Node.TEXT_NODE && !child.textContent?.trim()) continue;
       wrapper = element.ownerDocument.createElement(tagName);
       element.insertBefore(wrapper, child);
+      wrappers.push(wrapper);
     }
     wrapper.appendChild(child);
   }
+  return wrappers;
+}
+
+/**
+ * Wraps the inline runs of an element and of its block descendants, so no
+ * wrapper encloses a block. Excluded elements stay outside every wrapper: runs
+ * are split around them, and elements containing them are wrapped inside.
+ * Returns the wrappers.
+ */
+function wrapInlineRuns(element: Element, tagName: string, isExcluded: (child: Element) => boolean = () => false): Element[] {
+  const containsExcluded = (child: Element) => isExcluded(child) || Array.from(child.querySelectorAll('*')).some(isExcluded);
+  const wrappers: Element[] = [];
+  for (const child of Array.from(element.children)) {
+    if (!isExcluded(child) && (containsExcluded(child) || BLOCK_ELEMENT_SET.has(child.tagName.toLowerCase()))) {
+      wrappers.push(...wrapInlineRuns(child, tagName, isExcluded));
+    }
+  }
+  return [...wrappers, ...wrapInlineContent(element, tagName, containsExcluded)];
 }
 
 /** Preserve non-link underlining when a source <u> also surrounds links. */
 function underlineNonLinkContent(element: Element): void {
-  const containsLink = (child: Element) => child.matches('a[href]') || !!child.querySelector('a[href]');
-  for (const child of Array.from(element.children)) {
-    if (!child.matches('a[href]') && (containsLink(child) || BLOCK_ELEMENT_SET.has(child.tagName.toLowerCase()))) {
-      underlineNonLinkContent(child);
+  wrapInlineRuns(element, 'u', child => child.matches('a[href]'));
+}
+
+// Bold and italic are inherited; a descendant's explicit normal weight or
+// style cancels them. Semibold (500/600) is not treated as a cancellation.
+const EMPHASES = [
+  {
+    tags: ['b', 'strong'],
+    property: 'font-weight',
+    isSet: (formatting: FormattingInfo) => formatting.isBold,
+    isCancelledBy: (value: string) => value.toLowerCase() === 'normal' || parseInt(value, 10) <= 400,
+  },
+  {
+    tags: ['i', 'em'],
+    property: 'font-style',
+    isSet: (formatting: FormattingInfo) => formatting.isItalic,
+    isCancelledBy: (value: string) => value.toLowerCase() === 'normal',
+  },
+];
+
+/**
+ * Keep source emphasis exact where a descendant cancels inherited bold or
+ * italic. An emphasis tag whose own style cancels it becomes a <span>. Each
+ * emphasized ancestor of a cancelling element passes its emphasis to its
+ * inline runs as <b>/<i> instead, and the runs skip the cancelling element.
+ * Word cleanup runs this before it drops `font-style: normal` as a default.
+ */
+export function splitEmphasisOverrides(root: Element): void {
+  for (const { tags, property, isSet, isCancelledBy } of EMPHASES) {
+    const cancels = (element: Element) => {
+      const value = parseStyle(element.getAttribute('style') || '')[property];
+      return value !== undefined && isCancelledBy(value);
+    };
+    // The sanitizer ignores formatting on list items and table/list containers.
+    const provides = (element: Element) => {
+      const tag = element.tagName.toLowerCase();
+      if (cancels(element)) return false;
+      if (tags.includes(tag)) return true;
+      const formatting = extractFormatting(element.getAttribute('style') || '');
+      return !!formatting && isSet(formatting) && tag !== 'li' && !STRUCTURAL_CHILDREN.has(tag);
+    };
+    const toSpan = (element: Element) => {
+      const span = element.ownerDocument.createElement('span');
+      Array.from(element.attributes).forEach(attr => span.setAttribute(attr.name, attr.value));
+      span.append(...Array.from(element.childNodes));
+      element.replaceWith(span);
+      return span;
+    };
+
+    root.querySelectorAll(tags.join(', ')).forEach(element => {
+      if (cancels(element)) toSpan(element);
+    });
+
+    for (const override of Array.from(root.querySelectorAll('[style]')).filter(cancels)) {
+      let ancestor = override.parentElement;
+      while (ancestor && ancestor !== root) {
+        const parent = ancestor.parentElement;
+        if (provides(ancestor)) {
+          const plain = tags.includes(ancestor.tagName.toLowerCase()) ? toSpan(ancestor) : ancestor;
+          const style = (plain.getAttribute('style') || '').split(';')
+            .filter(rule => rule.split(':')[0].trim().toLowerCase() !== property).join(';').trim();
+          if (style) plain.setAttribute('style', style);
+          else plain.removeAttribute('style');
+          wrapInlineRuns(plain, tags[0], element => cancels(element) || provides(element));
+        }
+        ancestor = parent;
+      }
     }
   }
-  wrapInlineContent(element, 'u', containsLink);
 }
 
 export function sanitizeHtml(html: string): string {
@@ -241,6 +331,20 @@ export function sanitizeHtml(html: string): string {
   tempDiv.innerHTML = DOMPurify.sanitize(html, {
     FORBID_TAGS: ['style'],
     ADD_ATTR: ['target'],
+  });
+
+  splitEmphasisOverrides(tempDiv);
+
+  // <caption> is not allowed, and its unwrapped text would be moved out of the
+  // table when the HTML is parsed again. Keep it as a layout block directly
+  // before its table, where browsers render a caption by default.
+  tempDiv.querySelectorAll('table > caption').forEach(caption => {
+    const block = document.createElement('div');
+    const style = caption.getAttribute('style');
+    if (style) block.setAttribute('style', style);
+    block.append(...Array.from(caption.childNodes));
+    caption.parentElement!.before(block);
+    caption.remove();
   });
 
   sanitizeElement(tempDiv);
@@ -269,6 +373,10 @@ export function sanitizeHtml(html: string): string {
       tempDiv.appendChild(fragment);
     }
   }
+
+  // Typed or plain-text input has no block structure. Treat the top level like
+  // a layout block, so its inline runs become paragraphs.
+  wrapInlineContent(tempDiv, 'p');
 
   return tempDiv.innerHTML;
 }
@@ -363,9 +471,14 @@ function sanitizeElement(element: Element): void {
       
       // Always clean descendants, including beneath styled semantic elements.
       sanitizeElement(node);
-      if (formatting && !STRUCTURAL_CHILDREN.has(tagName) && tagName !== 'blockquote') {
-        const wrapper = convertFormattingToSemanticTags(node, formatting);
-        if (wrapper) node.appendChild(wrapper);
+      if (formatting && !STRUCTURAL_CHILDREN.has(tagName)) {
+        // Format each inline run, including those in child blocks: a single
+        // wrapper would enclose blocks such as the paragraphs of a cell or quote.
+        for (const run of wrapInlineRuns(node, 'span')) {
+          const wrapper = convertFormattingToSemanticTags(run, formatting);
+          if (wrapper) run.replaceWith(wrapper);
+          else unwrapElement(run);
+        }
       }
 
       // Extract formatting before removing style/class/unsafe attributes.
@@ -437,6 +550,19 @@ function sanitizeAttributes(element: Element, tagName: string): void {
 
     if (tagName === 'ol' && attrName === 'reversed' && attr.value !== '') {
       element.setAttribute(attr.name, '');
+    }
+
+    if ((tagName === 'td' || tagName === 'th') && (attrName === 'colspan' || attrName === 'rowspan')) {
+      // Keep the span browsers render: the integer prefix, clamped to the HTML
+      // maximum. NaN, negative values and colspan="0" fall back to the default
+      // 1, which is dropped so unmerged cells stay byte-identical. rowspan="0"
+      // is valid: the cell spans the rest of its row group.
+      const span = Math.min(parseInt(attr.value, 10), attrName === 'colspan' ? 1000 : 65534);
+      if (!(span >= (attrName === 'colspan' ? 1 : 0)) || span === 1) {
+        attrsToRemove.push(attr.name);
+      } else if (String(span) !== attr.value) {
+        element.setAttribute(attr.name, String(span));
+      }
     }
   });
 

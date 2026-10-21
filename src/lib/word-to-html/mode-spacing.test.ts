@@ -29,6 +29,13 @@ describe("spacing pipeline parity", () => {
     expect(addSpacing(output)).toBe(output);
   });
 
+  it('adds spacing only before labeled read-more and Disclaimer paragraphs', () => {
+    const body = '<p>Intro.</p><p>Bacteria spread more quickly.</p><p>You will see more results.</p><p>Read more about it later.</p><p>Disclaimers vary by state.</p>';
+    const output = getUnformattedHtml(body + '<p>Read more: Details.</p>', 'blogs');
+    expect(output).toBe(body + '<p>&nbsp;</p><p>Read more: Details.</p>');
+    expect(validateMode(output, 'blogs', {}).summary.failed).toBe(0);
+  });
+
   it("fills every paragraph gap even when the preceding gap already has spacing", () => {
     const doc = new DOMParser().parseFromString('<p>A</p><p>&nbsp;</p><p>B</p><p>C</p>', 'text/html');
     addSpacingBetweenParagraphs(doc);
@@ -112,15 +119,16 @@ describe("addSpacing — Disclaimer section", () => {
 
 describe("custom spacer", () => {
   const CUSTOM_SPACER = '<div style="height:10px;"></div>';
-  // The converter marks every spacer it inserts, so the emitted markup
-  // carries the marker attribute.
+  // The converter marks every spacer it inserts in the unformatted output it
+  // validates. The formatted output carries the configured markup only.
   const MARKED_SPACER = '<div style="height:10px;" data-w2h-spacer="1"></div>';
   const SOURCE_HTML = '<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>';
 
   it("replaces the default spacer with the configured markup", () => {
     const output = convertWordToHtml(SOURCE_HTML, "blogs", { customSpacer: CUSTOM_SPACER });
 
-    expect(output).toContain(MARKED_SPACER);
+    expect(output).toContain(CUSTOM_SPACER);
+    expect(output).not.toContain("data-w2h-spacer");
     expect(output).not.toContain("<p>&nbsp;</p>");
   });
 
@@ -145,7 +153,8 @@ describe("custom spacer", () => {
       paragraphSpacing: true,
     });
 
-    expect(output).toContain(MARKED_SPACER);
+    expect(output).toContain(CUSTOM_SPACER);
+    expect(output).not.toContain("data-w2h-spacer");
     expect(output).not.toContain("<p>&nbsp;</p>");
   });
 
@@ -212,8 +221,8 @@ describe("custom spacer", () => {
   it("keeps a custom spacer nested inside a block element", () => {
     const formatted = formatCompact(`<div>${MARKED_SPACER}</div>`, CUSTOM_SPACER);
 
-    expect(formatted).toContain("height:10px");
-    expect(formatted).toContain('data-w2h-spacer="1"');
+    expect(formatted).toContain(CUSTOM_SPACER);
+    expect(formatted).not.toContain("data-w2h-spacer");
   });
 
   it("warns about dangerous spacer markup only", () => {
