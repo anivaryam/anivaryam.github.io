@@ -66,7 +66,12 @@ function mergeAdjacentUl(doc: Document): void {
   }
 }
 
-export function normalizeLists(html: string): string {
+/**
+ * `mergeLists` is for the first pass only: lists that become adjacent later,
+ * because a mode step removed what separated them (the article title), are
+ * separate lists in the source and must stay apart.
+ */
+export function normalizeLists(html: string, mergeLists: boolean = true): string {
   if (!html || typeof html !== 'string') {
     return '';
   }
@@ -78,7 +83,7 @@ export function normalizeLists(html: string): string {
     nestSubListsInItems(doc);
 
     // Merge adjacent ul elements first
-    mergeAdjacentUl(doc);
+    if (mergeLists) mergeAdjacentUl(doc);
     
     // List item normalization: just clean up spacing, don't wrap with EM
     // (style attribute will be removed elsewhere in the pipeline)

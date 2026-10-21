@@ -270,6 +270,24 @@ describe('article titles after Key Takeaways', () => {
     });
   });
 
+  it.each<[OutputMode, { spacing?: boolean; keyTakeaways?: boolean; h1Removal?: boolean }]>([
+    ['blogs', { spacing: false }],
+    ['regular', { keyTakeaways: true, h1Removal: true }],
+  ])('does not merge the list after a removed title into the Takeaways list in %s %o', (mode, features) => {
+    // A Takeaways list pasted as one <ul> per item (Word Online) still merges.
+    for (const [list, heading] of [
+      ['<ul><li>One</li><li>Two</li></ul>', `<p class="MsoTitle">${title}</p>`],
+      ['<ul><li>One</li></ul><ul><li>Two</li></ul>', `<h1>${title}</h1>`],
+    ]) {
+      const output = getUnformattedHtml(`<h2>Key Takeaways</h2>${list}${heading}<ul><li>Body <i>item</i></li></ul>${intro}`, mode, features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.body.textContent).not.toContain(title);
+      expect(Array.from(doc.querySelectorAll('ul')).map(ul => Array.from(ul.children).map(li => li.textContent))).toEqual([['One', 'Two'], ['Body item']]);
+      expect(doc.querySelectorAll('ul')[1].querySelector('em')?.textContent).toBe('item');
+      expect(validateMode(output, mode, features).summary.failed).toBe(0);
+    }
+  });
+
   it('honors explicit removal in Regular/Blogs and works independently of Takeaways formatting', () => {
     for (const mode of ['regular', 'blogs'] as const) {
       const features = { h1Removal: true, keyTakeaways: false };
