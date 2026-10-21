@@ -532,6 +532,137 @@ describe('structural and formatting regressions', () => {
   });
 });
 
+describe('Word desktop list paragraphs', () => {
+  // Trimmed Chrome `inputArea.innerHTML` captures. Both paths drop `mso-list`;
+  // native paste keeps the class, margin and text indent, while the
+  // prepareWordSource snapshot keeps the class and text indent only.
+  const spacer = (count: number) => `<span style="font-size: 7pt; line-height: normal; font-family: &quot;Times New Roman&quot;;">${'&nbsp;'.repeat(count)} </span>`;
+  const NATIVE_CAPTURE = [
+    '<p class="MsoNormal">Intro paragraph.<o:p></o:p></p>',
+    `<p class="MsoListParagraphCxSpFirst" style="margin: 0in 0in 0in 0.5in; text-indent: -0.25in;">1.${spacer(5)}First item<o:p></o:p></p>`,
+    `<p class="MsoListParagraphCxSpLast" style="margin: 0in 0in 8pt 0.5in; text-indent: -0.25in;">2.${spacer(5)}Second item<o:p></o:p></p>`,
+    `<p class="MsoListParagraphCxSpFirst" style="margin: 0in 0in 0in 0.5in; text-indent: -0.25in;"><span style="font-family: Symbol;">·${spacer(8)}</span>Bullet one<o:p></o:p></p>`,
+    `<p class="MsoListParagraphCxSpLast" style="margin: 0in 0in 8pt 0.5in; text-indent: -0.25in;"><span style="font-family: Symbol;">·${spacer(8)}</span>Bullet two<o:p></o:p></p>`,
+  ].join('');
+  const snapshot = 'color: rgb(0, 0, 0); text-decoration: none; font-weight: 400; font-style: normal; font-size: 16px; vertical-align: baseline;';
+  const preparedItem = (cls: string, marker: string, text: string, markerStyle = '') =>
+    `<p class="MsoListParagraph${cls}" style="text-indent: -0.25in; ${snapshot}"><span style="${markerStyle}${snapshot}"><span style="${snapshot}">${marker}<span style="font: 400 9.33333px &quot;Times New Roman&quot;; color: rgb(0, 0, 0);">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; </span></span></span>${text}</p>`;
+  const PREPARED_CAPTURE = [
+    `<p class="MsoNormal" style="${snapshot}">Consult our article first.</p>`,
+    preparedItem('CxSpFirst', '1.', 'First item'),
+    preparedItem('CxSpLast', '2.', 'Second item'),
+    preparedItem('CxSpFirst', '·', 'Bullet one', 'font-family: Symbol; '),
+    preparedItem('CxSpLast', '·', 'Bullet two', 'font-family: Symbol; '),
+  ].join('\n');
+  const item = (cls: string, marker: string, body: string, style = 'margin: 0in 0in 0in 0.5in; text-indent: -0.25in;') =>
+    `<p class="MsoListParagraph${cls}" style="${style}">${marker}${spacer(5)}${body}<o:p></o:p></p>`;
+  const modes = ['regular', 'blogs', 'shoppables'] as const;
+  /** Non-spacer top-level blocks, with each list reduced to its items. */
+  const blocks = (html: string) => Array.from(new DOMParser().parseFromString(html, 'text/html').body.children)
+    .filter(element => element.textContent?.trim())
+    .map(element => {
+      const tag = element.tagName.toLowerCase();
+      if (!element.matches('ol, ul')) return `${tag}: ${element.textContent?.trim()}`;
+      const start = element.getAttribute('start');
+      return `${tag}${start ? `[${start}]` : ''}: ${Array.from(element.children).map(li => li.textContent?.trim()).join(' | ')}`;
+    });
+
+  it.each([
+    ['native paste', NATIVE_CAPTURE, 'Intro paragraph.'],
+    ['prepareWordSource', PREPARED_CAPTURE, 'Consult our article first.'],
+  ])('turns %s list paragraphs into lists in every mode', (_path, input, intro) => {
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual([`p: ${intro}`, 'ol: First item | Second item', 'ul: Bullet one | Bullet two']);
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.filter(r => !r.passed).map(r => r.ruleId)).toEqual([]);
+    }
+  });
+
+  it('keeps the inline formatting and links of bulleted items', () => {
+    const input = item('CxSpFirst', '·', 'See <a href="https://example.com/guide">the guide</a> now') +
+      item('CxSpLast', '<span style="font-family: Symbol;">·</span>', '<b>Bold</b> lead');
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['ul: See the guide now | Bold lead']);
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.querySelector('ul > li:first-child > a')?.getAttribute('href')).toBe('https://example.com/guide');
+        expect(doc.querySelector('ul > li:last-child > strong')?.textContent).toBe('Bold');
+      }
+    }
+  });
+
+  it.each([
+    ['3.', '4.', '3'],
+    ['c)', 'd)', '3'],
+    ['iv.', 'v.', '4'],
+  ])('starts an ordered list at the Word number %s', (first, second, start) => {
+    const input = item('CxSpFirst', first, 'One') + item('CxSpLast', second, 'Two');
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual([`ol[${start}]: One | Two`]);
+      }
+    }
+  });
+
+  it('keeps list-like text outside Word list paragraphs as paragraphs', () => {
+    const input = `<p class="MsoNormal">1.${spacer(3)}Not a list</p><p>· Plain bullet text</p>` +
+      '<p class="MsoListParagraph" style="margin-left: 0.5in">Indented note without a marker</p>';
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['p: 1.    Not a list', 'p: · Plain bullet text', 'p: Indented note without a marker']);
+      }
+    }
+  });
+
+  it('keeps two lists separated by a normal paragraph apart', () => {
+    const input = item('CxSpFirst', '1.', 'One') + item('CxSpLast', '2.', 'Two') +
+      '<p class="MsoNormal">Between</p>' + item('', '1.', 'Again');
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['ol: One | Two', 'p: Between', 'ol: Again']);
+      }
+    }
+  });
+
+  it.each([
+    ['indent steps', (level: number) => `margin: 0in 0in 0in ${level * 0.5}in; text-indent: -0.25in;`],
+    ['resumed outer numbering', () => 'text-indent: -0.25in;'],
+  ])('nests a Word sub-list detected by %s', (_signal, style) => {
+    // The last sub-list ends the run, so only the earlier nesting identifies it.
+    const input = item('CxSpFirst', '1.', 'One', style(1)) + item('CxSpMiddle', 'a.', 'Sub one', style(2)) +
+      item('CxSpMiddle', 'b.', 'Sub two', style(2)) + item('CxSpMiddle', '2.', 'Two', style(1)) +
+      item('CxSpLast', 'a.', 'Last sub', style(2));
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('body > ol > li')).map(li => li.firstChild?.textContent?.trim())).toEqual(['One', 'Two']);
+        expect(Array.from(doc.querySelectorAll('body > ol > li > ol')).map(ol => Array.from(ol.children).map(li => li.textContent)))
+          .toEqual([['Sub one', 'Sub two'], ['Last sub']]);
+        expect(doc.querySelectorAll('body > ol')).toHaveLength(1);
+      }
+    }
+  });
+
+  it('starts a new list for a different marker family without indent evidence', () => {
+    const style = 'text-indent: -0.25in;';
+    const input = item('CxSpFirst', '1.', 'One', style) + item('CxSpMiddle', '2.', 'Two', style) +
+      item('CxSpMiddle', '·', 'Dot', style) + item('CxSpLast', '·', 'Dot two', style);
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['ol: One | Two', 'ul: Dot | Dot two']);
+      }
+    }
+  });
+});
+
 describe('URL preservation', () => {
   it.each([
     'https://example.com/docs--v2?key=a--b#part--two',

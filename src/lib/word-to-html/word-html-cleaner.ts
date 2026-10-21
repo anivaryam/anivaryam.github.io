@@ -5,7 +5,7 @@
  */
 
 import { splitEmphasisOverrides } from './html-sanitizer';
-import { removeSpacingParagraphs, removeLayoutBreaks } from './html-spacing';
+import { nextNonSpacingElement, removeSpacingParagraphs, removeLayoutBreaks } from './html-spacing';
 import { createInertContainer, prepareWordSource } from './word-source-formatting';
 
 function escapeHtml(text: string): string {
@@ -473,6 +473,171 @@ function getLastTextNode(element: Element): Text | null {
   return lastTextNode;
 }
 
+interface WordListMarker {
+  tag: 'ul' | 'ol';
+  /** The bullet glyph, or the numbering type with its punctuation, e.g. `a)`. */
+  family: string;
+  value: number;
+}
+
+interface WordListItem {
+  paragraph: HTMLElement;
+  /** Length of the marker text plus its spacer at the start of the paragraph. */
+  markerLength: number;
+  /** Most likely reading first; `i`, `v` and `x` can be roman or alphabetic. */
+  markers: WordListMarker[];
+  /** Left margin in points, when the paste kept it. */
+  indent: number | null;
+}
+
+// Bullets: Word's library glyphs as pasted text (Symbol ·, Courier New o,
+// Wingdings § Ø ü v) and typed ones. Numbers: decimal, alphabetic, or roman,
+// followed by `.` or `)`. Word always separates the marker with a spacer.
+const WORD_LIST_MARKER = /^\s*(?:([·•◦▪▫■□●○◆◇♦❖➢➤►✓✔o§Øüv*\-–—])|(\(?)(\d{1,4}|[a-z]+|[A-Z]+)([.)]))\s+/;
+const ROMAN_NUMERAL = /^x{0,3}(?:ix|iv|v?i{0,3})$/;
+const ROMAN_DIGITS: Record<string, number> = { i: 1, v: 5, x: 10 };
+const POINTS_PER_UNIT: Record<string, number> = { in: 72, pt: 1, px: 0.75, cm: 72 / 2.54, mm: 72 / 25.4 };
+const INDENT_TOLERANCE = 1;
+
+function isWordListParagraph(paragraph: Element): boolean {
+  return Array.from(paragraph.classList).some(name => /^MsoListParagraph/.test(name)) ||
+    /mso-list\s*:\s*l\d/i.test(paragraph.getAttribute('style') || '');
+}
+
+function parseWordListMarker(text: string): Pick<WordListItem, 'markerLength' | 'markers'> | null {
+  const match = WORD_LIST_MARKER.exec(text);
+  if (!match) return null;
+  const [prefix, bullet, open, token, close] = match;
+  if (bullet) return { markerLength: prefix.length, markers: [{ tag: 'ul', family: bullet, value: 0 }] };
+
+  const markers: WordListMarker[] = [];
+  const family = (type: string) => `${open}${type}${close}`;
+  if (/^\d+$/.test(token)) {
+    markers.push({ tag: 'ol', family: family('1'), value: parseInt(token, 10) });
+  } else {
+    const lower = token.toLowerCase();
+    const upper = lower !== token;
+    if (ROMAN_NUMERAL.test(lower)) {
+      const digits = Array.from(lower, digit => ROMAN_DIGITS[digit]);
+      const value = digits.reduce((sum, digit, index) => sum + (digit < (digits[index + 1] || 0) ? -digit : digit), 0);
+      markers.push({ tag: 'ol', family: family(upper ? 'I' : 'i'), value });
+    }
+    // Word continues alphabetic numbering past z as aa, bb, ...
+    if (/^([a-z])\1*$/.test(lower)) {
+      markers.push({ tag: 'ol', family: family(upper ? 'A' : 'a'), value: (lower.length - 1) * 26 + lower.charCodeAt(0) - 96 });
+    }
+    // A lone v or x more likely continues an alphabetic list; i starts a roman one.
+    if (markers.length > 1 && /^[vx]$/.test(lower)) markers.reverse();
+  }
+  return markers.length ? { markerLength: prefix.length, markers } : null;
+}
+
+function lengthInPoints(value: string): number | null {
+  const match = /^(-?\d*\.?\d+)([a-z]*)$/.exec(value.trim());
+  if (!match) return null;
+  const amount = parseFloat(match[1]);
+  return amount === 0 ? 0 : match[2] in POINTS_PER_UNIT ? amount * POINTS_PER_UNIT[match[2]] : null;
+}
+
+/** Remove a text prefix that may span several nodes, with the wrappers it empties. */
+function removeLeadingText(element: Element, length: number): void {
+  const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const emptied: Text[] = [];
+  for (let node = walker.nextNode() as Text | null; node && length > 0; node = walker.nextNode() as Text | null) {
+    const removed = Math.min(length, node.data.length);
+    node.data = node.data.slice(removed);
+    length -= removed;
+    if (!node.data) emptied.push(node);
+  }
+  for (const node of emptied) {
+    let parent = node.parentElement;
+    node.remove();
+    while (parent && parent !== element && !parent.hasChildNodes()) {
+      const next = parent.parentElement;
+      parent.remove();
+      parent = next;
+    }
+  }
+}
+
+/**
+ * Build the lists for one run of consecutive Word list paragraphs. Levels come
+ * from left margins when every item kept one. Otherwise a new marker family
+ * nests only if an enclosing list resumes after it, or if it was nested earlier
+ * in the run; else it starts a new list at the same level.
+ */
+function buildWordLists(items: WordListItem[]): void {
+  const byIndent = items.every(item => item.indent !== null);
+  const open: { list: HTMLElement; family: string; last: number; indent: number }[] = [];
+  const familyDepths = new Map<string, number>();
+
+  items.forEach((item, index) => {
+    const marker = item.markers.find(candidate =>
+      open.some(level => level.family === candidate.family && level.last + 1 === candidate.value)
+    ) || item.markers[0];
+    let depth: number;
+    if (byIndent) {
+      depth = open.length - 1;
+      while (depth > 0 && open[depth].indent > item.indent! + INDENT_TOLERANCE) depth--;
+      if (depth >= 0 && item.indent! > open[depth].indent + INDENT_TOLERANCE) depth++;
+      depth = Math.max(depth, 0);
+    } else {
+      depth = open.map(level => level.family).lastIndexOf(marker.family);
+      if (depth < 0) {
+        const resumes = items.slice(index + 1).some(next =>
+          next.markers.some(candidate => open.some(level => level.family === candidate.family))
+        );
+        const earlier = familyDepths.get(marker.family);
+        depth = earlier !== undefined ? Math.min(earlier, open.length)
+          : resumes ? open.length : Math.max(open.length - 1, 0);
+      }
+    }
+    open.length = Math.min(open.length, depth + 1);
+    familyDepths.set(marker.family, depth);
+
+    const doc = item.paragraph.ownerDocument;
+    let level = open[depth];
+    if (!level || level.family !== marker.family || (marker.tag === 'ol' && marker.value !== level.last + 1)) {
+      const list = doc.createElement(marker.tag);
+      if (marker.tag === 'ol' && marker.value !== 1) list.setAttribute('start', String(marker.value));
+      if (level) level.list.after(list);
+      else if (depth === 0) item.paragraph.before(list);
+      else open[depth - 1].list.lastElementChild!.append(list);
+      level = open[depth] = { list, family: marker.family, last: 0, indent: item.indent ?? 0 };
+    }
+    level.last = marker.value;
+
+    const listItem = doc.createElement('li');
+    for (const attr of Array.from(item.paragraph.attributes)) listItem.setAttribute(attr.name, attr.value);
+    removeLeadingText(item.paragraph, item.markerLength);
+    listItem.append(...Array.from(item.paragraph.childNodes));
+    item.paragraph.remove();
+    level.list.append(listItem);
+  });
+}
+
+/**
+ * Word list paragraphs reach the cleaner as paragraphs with the marker as text:
+ * paste drops `mso-list`, but keeps the MsoListParagraph class and the marker.
+ * Without that class (or a surviving `mso-list`), a paragraph is never
+ * converted, whatever its text.
+ */
+function convertWordListParagraphs(root: HTMLElement): void {
+  let run: WordListItem[] = [];
+  for (const paragraph of Array.from(root.querySelectorAll<HTMLElement>('p'))) {
+    if (!isWordListParagraph(paragraph) || paragraph.closest('li')) continue;
+    const marker = parseWordListMarker(paragraph.textContent || '');
+    if (!marker) continue;
+    const previous = run[run.length - 1];
+    if (previous && (paragraph.classList.contains('MsoListParagraphCxSpFirst') || nextNonSpacingElement(previous.paragraph) !== paragraph)) {
+      buildWordLists(run);
+      run = [];
+    }
+    run.push({ paragraph, ...marker, indent: lengthInPoints(paragraph.style.marginLeft) });
+  }
+  if (run.length) buildWordLists(run);
+}
+
 export function cleanWordHtml(html: string): string {
   if (!html || typeof html !== 'string') return '';
 
@@ -480,6 +645,9 @@ export function cleanWordHtml(html: string): string {
   tempDiv.innerHTML = html;
 
   removeImages(tempDiv);
+  // Before cleanup drops the classes, and before title detection looks for a
+  // Key Takeaways list.
+  convertWordListParagraphs(tempDiv);
   prepareWordSource(tempDiv);
   // Style cleanup drops `font-style: normal`; resolve the overrides it marks first.
   splitEmphasisOverrides(tempDiv);
