@@ -97,14 +97,16 @@ function removeImages(element: Element): void {
   const images = element.querySelectorAll('img');
   images.forEach(img => img.remove());
   
+  // Empty image wrappers are removed, but empty rows and cells stay: removing
+  // them shifts the remaining cells into the wrong columns.
   const imageClassElements = element.querySelectorAll('[class*="image"], [class*="Image"]');
   imageClassElements.forEach(el => {
-    if (!el.textContent?.trim()) el.remove();
+    if (!el.textContent?.trim() && !el.matches('tr, th, td')) el.remove();
   });
   
   const bgImageElements = element.querySelectorAll('[style*="background-image"]');
   bgImageElements.forEach(el => {
-    if (!el.textContent?.trim()) el.remove();
+    if (!el.textContent?.trim() && !el.matches('tr, th, td')) el.remove();
   });
   
   const allElements = element.querySelectorAll('*');

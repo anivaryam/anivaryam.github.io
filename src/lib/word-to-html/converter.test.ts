@@ -42,6 +42,22 @@ describe('text preservation during structural cleanup', () => {
     expect(doc.querySelector('img, [style], [class]')).toBeNull();
   });
 
+  it.each([
+    '<td class="image-cell"></td>',
+    '<td style="background-image:url(photo.png)"></td>',
+    '<td class="ImageCell"><img src="photo.png"></td>',
+  ])('keeps an empty table cell styled as an image container in its column: %s', (cell) => {
+    const input = `<table><tr class="image-row"><td>A</td>${cell}<td>C</td></tr><tr class="image-row"><td></td><td></td><td></td></tr></table>`;
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('tr')).map(row => Array.from(row.children).map(td => td.textContent))).toEqual([['A', '', 'C'], ['', '', '']]);
+        expect(doc.querySelector('img')).toBeNull();
+      }
+    }
+  });
+
   it.each(['text-decoration:underline', 'text-decoration-line:underline', 'text-decoration:underline solid red'])('preserves CSS underlining: %s', (style) => {
     const output = getUnformattedHtml(`<p><span style="${style};font-weight:bold;font-style:italic">Important</span></p>`);
     const doc = new DOMParser().parseFromString(output, 'text/html');
