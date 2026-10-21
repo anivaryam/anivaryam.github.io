@@ -389,6 +389,67 @@ describe('structural and formatting regressions', () => {
     expect(doc.querySelector('li strong')?.textContent).toBe('Label:');
   });
 
+  // Word puts the list marker's formatting on the <li>: its bold stays
+  // ignored (list-label bolding handles labels), but italic and sup/sub apply.
+  it.each([
+    ['font-style:italic', 'em'],
+    ['font-weight:bold;font-style:italic', 'em'],
+    ['vertical-align:super', 'sup'],
+    ['vertical-align:sub', 'sub'],
+    ['font-weight:bold', null],
+  ])('keeps italic and superscript/subscript set on a list item, but not bold: %s', (style, tag) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(`<ul><li style="${style}">Styled item</li><li>Plain item</li></ul>`), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const items = Array.from(new DOMParser().parseFromString(html, 'text/html').querySelectorAll('li'));
+        expect(items.map(li => li.textContent?.trim())).toEqual(['Styled item', 'Plain item']);
+        expect(items.map(li => li.innerHTML.trim())).toEqual([tag ? `<${tag}>Styled item</${tag}>` : 'Styled item', 'Plain item']);
+      }
+      const results = validateMode(output.unformatted, mode, {}).results;
+      expect(results.filter(r => r.ruleId === 'sanitized-structure' || r.ruleId === 'list-normalization').every(r => r.passed)).toBe(true);
+    }
+  });
+
+  it('removes the restored list item italic from Key Takeaways in Blogs', () => {
+    const output = getUnformattedHtml('<h2>Key Takeaways</h2><ul><li style="font-style:italic">Act fast.</li></ul><p>Intro.</p>', 'blogs');
+    expect(output).toContain('<li>Act fast.</li>');
+  });
+
+  it('keeps a nested list outside the italic of its parent list item', () => {
+    const input = '<ul><li style="font-style:italic">Parent<ul><li>Child</li></ul></li><li style="font-style:italic">Next <span style="font-style:normal">plain</span><ol><li>Nested</li></ol></li></ul>';
+    for (const html of [sanitizeHtml(input), ...['regular', 'blogs', 'shoppables'].map(mode => getUnformattedHtml(input, mode as OutputMode))]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(Array.from(doc.querySelectorAll('em')).map(em => em.textContent?.trim())).toEqual(['Parent', 'Next']);
+      expect(doc.querySelector('ul > li > ul > li')?.textContent).toBe('Child');
+      expect(doc.querySelector('ul > li > ol > li')?.textContent).toBe('Nested');
+      expect(doc.querySelector(':is(em, i) :is(ul, ol, li)')).toBeNull();
+    }
+  });
+
+  it.each([
+    ['<li style="font-style:italic">Book <span style="font-style:normal">Title</span> here</li>', ['Book', 'here']],
+    ['<li style="font-style:italic"><span style="font-style:normal">Upright</span> then italic</li>', ['then italic']],
+    ['<li style="font-style:italic"><em>Italic</em> item</li>', ['Italic item']],
+    ['<li style="font-style:italic"><i>Italic item</i></li>', ['Italic item']],
+    ['<li style="font-style:italic"><b>Label:</b> <i>text</i></li>', ['Label: text']],
+  ])('keeps inside-out emphasis in an italic list item without double wrapping: %s', (item, em) => {
+    const input = `<ol>${item}</ol>`;
+    for (const html of [sanitizeHtml(input), ...['regular', 'blogs', 'shoppables'].map(mode => getUnformattedHtml(input, mode as OutputMode))]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(Array.from(doc.querySelectorAll('em')).map(wrapper => wrapper.textContent?.trim())).toEqual(em);
+      expect(doc.querySelector('em em, i')).toBeNull();
+    }
+  });
+
+  it('italicizes a Sources item with list item italic exactly once', () => {
+    for (const mode of ['blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml('<p>Sources:</p><ol><li style="font-style:italic">Study <em>by</em> Author</li></ol>', mode);
+      expect(output).toContain('<li style="font-style: italic"><em>Study by Author</em></li>');
+      const results = validateMode(output, mode, {}).results;
+      expect(results.filter(r => ['sanitized-structure', 'sources-normalization', 'sources-italic'].includes(r.ruleId)).every(r => r.passed)).toBe(true);
+    }
+  });
+
   it.each([
     '<b>Tip: </b>Try the <i>blue</i> one',
     '<b>Tip:</b>Try the <i>blue</i> one',
