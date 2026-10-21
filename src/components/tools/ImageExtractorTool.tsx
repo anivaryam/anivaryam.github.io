@@ -1,4 +1,5 @@
 ﻿import { useEffect, useRef, useState } from "react";
+import DOMPurify from "dompurify";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,17 @@ import { ImageCombinerModal } from "./ImageCombinerModal";
 import { ImageExtractorZipDrop } from "./ImageExtractorZipDrop";
 
 const ENABLE_ZIP_UPLOAD = true;
+
+// Pasted and zip markup is written into the live editor, where inline handlers
+// would run in this origin. A separate instance keeps the blob: image URLs that
+// loadZipAsHtml creates (the default URI allowlist drops them) without changing
+// the shared DOMPurify instance that other tools use.
+const inputPurifier = DOMPurify();
+inputPurifier.addHook("uponSanitizeAttribute", (node, data) => {
+  if (node.nodeName === "IMG" && data.attrName === "src" && /^blob:/i.test(data.attrValue)) {
+    data.forceKeepAttr = true;
+  }
+});
 
 export function ImageExtractorTool() {
   const { toast } = useToast();
@@ -30,14 +42,14 @@ export function ImageExtractorTool() {
       const html = e.clipboardData?.getData("text/html");
       if (html) {
         e.preventDefault();
-        target.innerHTML = html;
+        target.innerHTML = inputPurifier.sanitize(html);
         setInputHtml(target.innerHTML);
         return;
       }
       const text = e.clipboardData?.getData("text/plain");
       if (text) {
         e.preventDefault();
-        target.innerHTML = text;
+        target.innerHTML = inputPurifier.sanitize(text);
         setInputHtml(target.innerHTML);
         return;
       }
@@ -93,7 +105,7 @@ export function ImageExtractorTool() {
   useEffect(() => {
     const el = inputAreaRef.current;
     if (el && el.innerHTML !== inputHtml) {
-      el.innerHTML = inputHtml;
+      el.innerHTML = inputPurifier.sanitize(inputHtml);
     }
   }, [inputHtml]);
 
