@@ -107,6 +107,30 @@ describe('WordToHtmlConverter', () => {
     expect(signal.aborted).toBe(true);
   });
 
+  it('sends only absolute links to the link checker and reports relative ones', () => {
+    const fetchMock = vi.fn().mockReturnValue(new Promise(() => {}));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<WordToHtmlConverter />);
+    enterHtml('<p><a href="/products/a">A</a> and <a href="https://example.com/b">B</a></p>');
+    fireEvent.click(screen.getByTitle('Check Links'));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ links: ['https://example.com/b'] });
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Relative links not checked' }));
+  });
+
+  it('does not send links made relative by Relative Paths to the link checker', () => {
+    const fetchMock = vi.fn().mockReturnValue(new Promise(() => {}));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<WordToHtmlConverter />);
+    enterHtml('<p><a href="https://shop.example.com/products/a">Product</a></p>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Relative Paths' }));
+    expect(document.querySelector('.output-preview a')?.getAttribute('href')).toBe('/products/a');
+    fireEvent.click(screen.getByTitle('Check Links'));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'No checkable links' }));
+  });
+
   it('clears a completed link-check status when document content changes', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,

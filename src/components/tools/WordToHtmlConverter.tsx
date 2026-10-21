@@ -778,12 +778,16 @@ export function WordToHtmlConverter() {
     }
   };
 
-  // Function to extract all links from HTML
-  const extractLinks = (html: string): string[] => {
+  // Function to extract all links from HTML. The worker fetches each URL on
+  // its own, without a site to resolve against, so only absolute web URLs
+  // can be checked; relative links (for example after Relative Paths) are
+  // returned separately and reported as not checkable.
+  const extractLinks = (html: string): { links: string[]; relativeLinks: string[] } => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     const anchors = doc.querySelectorAll('a[href]');
     const links: string[] = [];
+    const relativeLinks: string[] = [];
     anchors.forEach((anchor) => {
       const href = anchor.getAttribute('href');
       // Filter out dangerous URL protocols that could lead to XSS attacks
@@ -792,10 +796,11 @@ export function WordToHtmlConverter() {
         href.startsWith('data:') ||
         href.startsWith('vbscript:');
       if (href && !href.startsWith('#') && !href.startsWith('mailto:') && !isUnsafeProtocol) {
-        links.push(href);
+        (/^https?:\/\//i.test(href) ? links : relativeLinks).push(href);
       }
     });
-    return [...new Set(links)]; // Remove duplicates
+    // Remove duplicates
+    return { links: [...new Set(links)], relativeLinks: [...new Set(relativeLinks)] };
   };
 
   // Function to check links using Cloudflare Worker API
@@ -803,13 +808,20 @@ export function WordToHtmlConverter() {
     if (!previewHtml) return;
     linkCheckTriggerRef.current = event.currentTarget;
     
-    const links = extractLinks(previewHtml);
+    const { links, relativeLinks } = extractLinks(previewHtml);
+    const relativeDescription = `${relativeLinks.length} relative link(s) cannot be checked without the site address`;
     if (links.length === 0) {
-      toast({
+      toast(relativeLinks.length > 0 ? {
+        title: "No checkable links",
+        description: relativeDescription,
+      } : {
         title: "No links found",
         description: "There are no links to check in the output",
       });
       return;
+    }
+    if (relativeLinks.length > 0) {
+      toast({ title: "Relative links not checked", description: relativeDescription });
     }
 
     setCheckingLinks(true);
