@@ -1652,42 +1652,17 @@ function validateOlHeaderConversion(doc: Document, mode: OutputMode, features?: 
 
 
 
-  /* A header list is "correctly converted" iff there's no <ol> that still
-   * satisfies isHeaderList() — unless it's intentionally chained with
-   * another header list (which the producer preserves as the original
-   * single-level list). */
-  const unconvertedLists = headerLists.filter((ol) => {
-    let nextSibling = ol.nextElementSibling;
-    while (nextSibling) {
-      if (nextSibling.tagName.toLowerCase() === 'p') {
-        const text = nextSibling.textContent?.trim() || '';
-        if (text === '' || text === '\u00A0' || text === '&nbsp;') {
-          nextSibling = nextSibling.nextElementSibling;
-          continue;
-        }
-      }
-      if (nextSibling.tagName.toLowerCase() === 'ol' && isHeaderList(nextSibling)) {
-        return false;
-      }
-      break;
-    }
-    return true;
-  });
-
+  /* The converter numbers every header list, chained ones included, so
+   * any <ol> that still satisfies isHeaderList() was left unconverted. */
   return {
     ruleId: 'ol-header-conversion',
     feature: 'OL Header Conversion',
     mode,
-    passed: unconvertedLists.length === 0,
-    message:
-      unconvertedLists.length === 0
-        ? 'All header lists correctly converted'
-        : `${unconvertedLists.length} header list(s) should be converted but remain as <ol>`,
-    severity: unconvertedLists.length === 0 ? 'info' : 'warning',
+    passed: false,
+    message: `${headerLists.length} header list(s) should be converted but remain as <ol>`,
+    severity: 'warning',
     expected: 'All header lists converted to numbered headings',
-    actual: unconvertedLists.length === 0
-      ? `All ${headerLists.length} header list(s) converted`
-      : `${unconvertedLists.length} of ${headerLists.length} header list(s) remain unconverted`,
+    actual: `${headerLists.length} header list(s) remain unconverted`,
   };
 }
 

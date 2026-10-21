@@ -5,7 +5,7 @@
  * Rules:
  * - Lists must be fully header-only; mixed lists (containing both headers and regular content) are ignored
  * - Preserves original heading levels (h1-h6) - does not normalize to a single level
- * - Numbering resets per <h2> section and stops at <h1> boundaries
+ * - Numbering resets per <h2> section and stops at <h1> boundaries; adjacent header lists continue it
  * - Supports both Word-style structures: <li><strong><hX>...</hX></strong></li> and <li><hX><strong>...</strong></hX></li>
  * - Non-heading content inside list items is discarded (only headings are extracted and numbered)
  */
@@ -68,29 +68,6 @@ function isHeaderList(olElement: Element): boolean {
   return true;
 }
 
-function isFollowedByHeaderList(element: Element): boolean {
-  let nextSibling = element.nextElementSibling;
-  
-  while (nextSibling) {
-    if (nextSibling.tagName.toLowerCase() === 'p') {
-      const text = nextSibling.textContent?.trim() || '';
-      // textContent returns decoded \u00A0, not the entity string '&nbsp;'
-      if (text === '' || text === '\u00A0') {
-        nextSibling = nextSibling.nextElementSibling;
-        continue;
-      }
-    }
-    
-    if (nextSibling.tagName.toLowerCase() === 'ol' && isHeaderList(nextSibling)) {
-      return true;
-    }
-    
-    break;
-  }
-  
-  return false;
-}
-
 export function convertOlHeaders(html: string): string {
   if (!html || typeof html !== 'string') {
     return '';
@@ -100,14 +77,9 @@ export function convertOlHeaders(html: string): string {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    const olElements = Array.from(doc.querySelectorAll('ol'));
-    const olsToProcess: Element[] = [];
-
-    olElements.forEach(ol => {
-      if (isHeaderList(ol) && !isFollowedByHeaderList(ol)) {
-        olsToProcess.push(ol);
-      }
-    });
+    // Chained header lists (Word Online emits one <ol> per item) all convert;
+    // the shared section counter keeps their numbering continuous.
+    const olsToProcess = Array.from(doc.querySelectorAll('ol')).filter(isHeaderList);
 
     const bodyChildren = Array.from(doc.body.children);
     const sectionCounters = new Map<Element | null, number>();

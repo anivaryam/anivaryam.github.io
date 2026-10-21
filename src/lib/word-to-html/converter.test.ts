@@ -271,6 +271,21 @@ describe('structural and formatting regressions', () => {
     expect(Array.from(doc.querySelectorAll('h3')).map(h => h.textContent)).toEqual(['1. First', '2. Second']);
   });
 
+  it.each([
+    ['2 chained lists', ['Alpha', 'Beta'], ''],
+    ['3 chained lists', ['Alpha', 'Beta', 'Gamma'], ''],
+    ['chained lists split by blank paragraphs', ['Alpha', 'Beta', 'Gamma'], '<p>&nbsp;</p>'],
+  ])('numbers %s of headings as one sequence', (_, titles, separator) => {
+    const input = `<h2>Steps</h2>${titles.map((title, i) => `<ol start="${i + 1}"><li><h3><b>${title}</b></h3></li></ol>`).join(separator)}<p>After.</p>`;
+    for (const [mode, features] of [['regular', { headingStrong: true, olHeaderConversion: true }], ['blogs', {}], ['shoppables', {}]] as const) {
+      const output = getUnformattedHtml(input, mode, features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('ol')).toBeNull();
+      expect(Array.from(doc.querySelectorAll('h3')).map(h => h.textContent)).toEqual(titles.map((title, i) => `${i + 1}. ${title}`));
+      expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'ol-header-conversion')?.passed).toBe(true);
+    }
+  });
+
   it('preserves table structure and cell emphasis without orphan formatting wrappers', () => {
     const output = getUnformattedHtml('<table style="font-weight:bold"><tbody><tr style="font-style:italic"><td><em>Cell A</em></td><td>Cell B</td></tr></tbody></table>', 'shoppables');
     const doc = new DOMParser().parseFromString(output, 'text/html');

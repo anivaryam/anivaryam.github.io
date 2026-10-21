@@ -878,6 +878,13 @@ describe('validateOlHeaderConversion (D6 / D13)', () => {
     expectPass(results, 'ol-header-conversion');
   });
 
+  it('enabled: counts every chained header list left as <ol>', () => {
+    const html = '<ol><li><h3><strong>Alpha</strong></h3></li></ol><p>&nbsp;</p><ol start="2"><li><h3><strong>Beta</strong></h3></li></ol>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    expectFail(results, 'ol-header-conversion');
+    expect(getResult(results, 'ol-header-conversion').message).toBe('2 header list(s) should be converted but remain as <ol>');
+  });
+
   it('disabled: fails when numbered headings present', () => {
     const html = '<h2>1. Title</h2><p>body</p>';
     const results = validateMode(html, 'blogs', { olHeaderConversion: false });
