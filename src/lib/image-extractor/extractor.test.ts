@@ -56,7 +56,8 @@ describe("extractImages", () => {
   });
 
   it("extracts a blob: URL by fetching it (used by the zip loader rewrite)", async () => {
-    const fakeFetch = vi.fn(async () => new Response(new Blob([])));
+    // Node's Response cannot read jsdom's Blob (no stream()), so use a buffer body.
+    const fakeFetch = vi.fn(async () => new Response(new ArrayBuffer(0)));
     const originalFetch = globalThis.fetch;
     globalThis.fetch = fakeFetch as typeof fetch;
     try {
