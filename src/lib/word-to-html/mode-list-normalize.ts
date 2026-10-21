@@ -90,19 +90,22 @@ export function normalizeLists(html: string): string {
           if (nextSibling?.nodeType === Node.TEXT_NODE) {
             const text = (nextSibling as Text).textContent || '';
             const trimmed = text.trim();
-            
+
             if (trimmed) {
               // Text node contains actual content
               // Check for leading whitespace (spaces or tabs)
               const leadingWhitespaceMatch = text.match(/^(\s+)/);
               const leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[1] : '';
-              
+              // Only the separator after the label changes; trailing
+              // whitespace still separates this text from the next element.
+              const separated = text.replace(/^\s*/, ' ');
+
               if (!leadingWhitespace) {
                 // No leading space - add one
-                (nextSibling as Text).textContent = ' ' + trimmed;
+                (nextSibling as Text).textContent = separated;
               } else if (leadingWhitespace.length > 1 || leadingWhitespace !== ' ') {
                 // Multiple leading spaces or non-space whitespace - normalize to single space
-                (nextSibling as Text).textContent = ' ' + trimmed;
+                (nextSibling as Text).textContent = separated;
               }
               // If exactly one leading space, content is already correct - no mutation needed
             } else {

@@ -355,6 +355,25 @@ describe('structural and formatting regressions', () => {
     expect(doc.querySelector('li strong')?.textContent).toBe('Label:');
   });
 
+  it.each([
+    '<b>Tip: </b>Try the <i>blue</i> one',
+    '<b>Tip:</b>Try the <i>blue</i> one',
+    '<b>Tip:</b>&nbsp;Try the <i>blue</i> one',
+    '<b>Tip:</b>  Try the <i>blue</i> one',
+  ])('keeps the space before inline formatting after a list label: %s', (item) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(`<ul><li>${item}</li></ul>`), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const li = new DOMParser().parseFromString(html, 'text/html').querySelector('li');
+        expect(li?.textContent).toBe('Tip: Try the blue one');
+        expect(li?.querySelector('strong')?.textContent).toBe('Tip:');
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'list-normalization')?.passed).toBe(true);
+    }
+    const takeaways = getUnformattedHtml(`<h2>Key Takeaways</h2><ul><li>${item.replace('blue', 'fresh')}</li></ul><p>Intro.</p>`, 'blogs');
+    expect(new DOMParser().parseFromString(takeaways, 'text/html').querySelector('li')?.textContent).toBe('Tip: Try the fresh one');
+  });
+
   it('does not discard content when merging a pre-existing malformed list', () => {
     const output = normalizeLists('<ul><li>First</li></ul><ul><strong><li>Second</li></strong></ul>');
     expect(new DOMParser().parseFromString(output, 'text/html').body.textContent).toBe('FirstSecond');
