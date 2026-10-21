@@ -333,4 +333,134 @@ describe('WordToHtmlConverter', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Shoppables Features:' }));
     expect(screen.getByRole('checkbox', { name: 'Paragraph Spacing' }).getAttribute('data-state')).toBe('unchecked');
   });
+
+  it('uses the configured custom spacer instead of the default blank paragraph', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+
+    const preview = document.querySelector('.output-preview')!;
+    expect(preview.querySelector('p[style]')).toBeNull();
+    expect(preview.innerHTML).toContain('&nbsp;');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), {
+      target: { value: '<div style="height:10px;"></div>' },
+    });
+
+    expect(preview.querySelector('div[style="height:10px;"]')).not.toBeNull();
+    expect(preview.innerHTML).not.toContain('&nbsp;');
+    expect(screen.queryByText(/^Failed:/)).toBeNull();
+  });
+
+  it('keeps the custom spacer out of the copyable content blocks', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      render(<WordToHtmlConverter />);
+      enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+      fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), {
+        target: { value: '<div style="height:10px;"></div>' },
+      });
+
+      fireEvent.click(screen.getByTitle('Copy blocks'));
+      const copyButtons = [
+        ...screen.getAllByTitle('Copy as formatted HTML'),
+        ...screen.getAllByTitle('Copy as HTML code with CSS'),
+      ];
+      expect(copyButtons.length).toBeGreaterThan(0);
+      copyButtons.forEach(button => fireEvent.click(button));
+
+      await waitFor(() => expect(writeText).toHaveBeenCalled());
+      const payloads = writeText.mock.calls.map(call => String(call[0]));
+      expect(payloads.length).toBeGreaterThan(0);
+      expect(payloads.some(payload => payload.includes('height:10px'))).toBe(false);
+      expect(payloads.some(payload => payload.includes('&nbsp;'))).toBe(false);
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
+  it('keeps the default spacer out of the copyable content blocks', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      render(<WordToHtmlConverter />);
+      enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+
+      fireEvent.click(screen.getByTitle('Copy blocks'));
+      const copyButtons = [
+        ...screen.getAllByTitle('Copy as formatted HTML'),
+        ...screen.getAllByTitle('Copy as HTML code with CSS'),
+      ];
+      expect(copyButtons.length).toBeGreaterThan(0);
+      copyButtons.forEach(button => fireEvent.click(button));
+
+      await waitFor(() => expect(writeText).toHaveBeenCalled());
+      const payloads = writeText.mock.calls.map(call => String(call[0]));
+      expect(payloads.length).toBeGreaterThan(0);
+      expect(payloads.some(payload => payload.includes('&nbsp;'))).toBe(false);
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
+  it('keeps the configured custom spacer across a mode switch', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Body text.</p>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), {
+      target: { value: '<div style="height:10px;"></div>' },
+    });
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Regular' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+
+    if (!screen.queryByRole('textbox', { name: 'Custom Spacer' })) {
+      fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    }
+    expect((screen.getByRole('textbox', { name: 'Custom Spacer' }) as HTMLInputElement).value)
+      .toBe('<div style="height:10px;"></div>');
+  });
+
+  it('warns about dangerous custom spacer markup', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Body text.</p>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+
+    const input = screen.getByRole('textbox', { name: 'Custom Spacer' });
+    fireEvent.change(input, { target: { value: '<div style="height:10px;"></div>' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    fireEvent.change(input, { target: { value: '<img src="x" onerror="window.__XSS=1">' } });
+    const warning = screen.getByRole('alert');
+    expect(warning.textContent).toContain('onerror');
+    expect(warning.textContent).toContain('verbatim');
+  });
+
+  it('sanitizes the custom spacer markup when the opt-in is enabled', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+
+    const preview = document.querySelector('.output-preview')!;
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), {
+      target: { value: '<img src="x" onerror="window.__XSS=1">' },
+    });
+    expect(preview.querySelector('img')?.getAttribute('onerror')).toBe('window.__XSS=1');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Sanitize the spacer markup' }));
+    expect(preview.querySelector('img')?.getAttribute('onerror')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });

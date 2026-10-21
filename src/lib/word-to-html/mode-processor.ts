@@ -17,6 +17,7 @@ import { addSpacing, addSpacingBetweenParagraphs } from './mode-spacing';
 import { addLinkSpacing } from './mode-link-spacing';
 import { addBrBeforeReadMore, addBrBeforeSources } from './mode-br-spacing';
 import { wrapLinksStrongUnderline } from './mode-wrap-links-strong-underline';
+import { applyCustomSpacer } from './html-spacing';
 import type { OutputMode, FeatureFlags } from './converter';
 
 /** Shared defaults for conversion, validation, and the feature controls. */
@@ -37,6 +38,7 @@ export function resolveFeatures(mode: OutputMode, features: FeatureFlags = {}): 
     brBeforeReadMore: features.brBeforeReadMore ?? false,
     brBeforeSources: features.brBeforeSources ?? false,
     wrapLinksStrongUnderline: features.wrapLinksStrongUnderline ?? false,
+    customSpacer: features.customSpacer ?? '',
   };
 }
 
@@ -50,6 +52,13 @@ function applyHeadingStrong(html: string, features: FeatureFlags): string {
 }
 
 export function processMode(html: string, mode: OutputMode, features: FeatureFlags = {}): string {
+  const processed = runModePipeline(html, mode, features);
+  // The spacing rules emit the default spacer; swap it for the configured
+  // markup once the mode run is complete so BR spacers stay untouched.
+  return applyCustomSpacer(processed, features.customSpacer);
+}
+
+function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags = {}): string {
   if (!html || typeof html !== 'string') {
     return '';
   }

@@ -17,6 +17,7 @@ import { createInertContainer, prepareWordSource } from "@/lib/word-to-html/word
 import { findArticleTitleAfterKeyTakeaways } from "@/lib/word-to-html/mode-h1-removal";
 import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isBrSpacingParagraph } from "@/lib/word-to-html/html-spacing";
+import { getCustomSpacerWarnings, isCustomSpacerElement, parseCustomSpacer, sanitizeCustomSpacerMarkup } from "@/lib/word-to-html/spacer";
 import { validateMode, getUnexpectedSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -143,7 +144,7 @@ interface ContentBlock {
   id: string;
 }
 
-const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
+const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[] => {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   const blocks: ContentBlock[] = [];
@@ -153,6 +154,7 @@ const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
   wrapInlineContent(container, 'p');
   const children = Array.from(container.childNodes);
   const sourcesSections = new Map(findSourcesSections(doc).map(section => [section.label, section]));
+  const spacer = parseCustomSpacer(customSpacer);
 
   let currentContentHtml = '';
   const skipIndices = new Set<number>();
@@ -169,6 +171,11 @@ const parseHtmlIntoBlocks = (html: string): ContentBlock[] => {
     }
 
     const tagName = element.tagName?.toLowerCase();
+
+    // Spacers are not copyable content, the same way the default spacer is not.
+    if (isCustomSpacerElement(element, spacer)) {
+      return;
+    }
 
     if (tagName === 'p' && element.textContent?.includes('Disclaimer:')) {
       if (currentContentHtml.trim()) {
@@ -371,11 +378,30 @@ export function WordToHtmlConverter() {
   const [copiedBlockId, setCopiedBlockId] = useState<string | null>(null);
 
   const [features, setFeatures] = useState<FeatureFlags>(() => resolveFeatures('regular'));
+  // The optional sanitizing of the configured spacer markup.
+  const [sanitizeSpacer, setSanitizeSpacer] = useState(false);
 
   // Use the same defaults as the conversion and validation pipelines.
+  // The custom spacer is a text setting, so it survives a mode switch.
   useEffect(() => {
-    setFeatures(resolveFeatures(outputFormat));
+    setFeatures(previous => ({ ...resolveFeatures(outputFormat), customSpacer: previous.customSpacer }));
   }, [outputFormat]);
+
+  // The spacer markup the pipeline works with. With the opt-in enabled the
+  // configured markup is sanitised once, here, so the converter, the
+  // validator and the formatter all use the same markup.
+  const effectiveFeatures = useMemo<FeatureFlags>(() => ({
+    ...features,
+    customSpacer: sanitizeSpacer
+      ? sanitizeCustomSpacerMarkup(features.customSpacer)
+      : features.customSpacer,
+  }), [features, sanitizeSpacer]);
+
+  // The dangerous constructs in the markup that actually reaches the output.
+  const spacerWarnings = useMemo(
+    () => getCustomSpacerWarnings(effectiveFeatures.customSpacer),
+    [effectiveFeatures.customSpacer]
+  );
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
   const outputPreviewRef = useRef<HTMLDivElement>(null);
@@ -672,12 +698,12 @@ export function WordToHtmlConverter() {
     }
     try {
       const cleanedHtml = cleanWordHtml(inputHtml);
-      return convertToHtml(cleanedHtml, outputFormat, features);
+      return convertToHtml(cleanedHtml, outputFormat, effectiveFeatures);
     } catch (error) {
       console.error('Conversion error:', error);
       return { formatted: '', unformatted: '' };
     }
-  }, [inputHtml, outputFormat, features]);
+  }, [inputHtml, outputFormat, effectiveFeatures]);
   const outputHtml = conversionResult.formatted;
   const previewHtml = conversionResult.unformatted;
 
@@ -703,7 +729,7 @@ export function WordToHtmlConverter() {
   };
 
 
-  const contentBlocks = useMemo(() => parseHtmlIntoBlocks(previewHtml), [previewHtml]);
+  const contentBlocks = useMemo(() => parseHtmlIntoBlocks(previewHtml, effectiveFeatures.customSpacer), [previewHtml, effectiveFeatures.customSpacer]);
 
   // The main and maximized output use the same copy behavior and error handling.
   // Rich HTML follows the existing block-copy fallback; the shared clipboard hook
@@ -830,12 +856,12 @@ export function WordToHtmlConverter() {
       return null;
     }
     try {
-      return validateMode(previewHtml, outputFormat, features);
+      return validateMode(previewHtml, outputFormat, effectiveFeatures);
     } catch (error) {
       console.error('Validation error:', error);
       return null;
     }
-  }, [previewHtml, outputFormat, features]);
+  }, [previewHtml, outputFormat, effectiveFeatures]);
 
   // Process validation results to add warning attributes to HTML elements
   const previewHtmlWithWarnings = useMemo(() => {
@@ -962,9 +988,9 @@ export function WordToHtmlConverter() {
         if (result.ruleId === 'spacing-rules') {
           const details = result.details || [];
           if (features.spacing === false) {
-            getUnexpectedSpacingIssues(doc, features).forEach(issue => issue.element.setAttribute('data-warning', issue.message));
+            getUnexpectedSpacingIssues(doc, effectiveFeatures).forEach(issue => issue.element.setAttribute('data-warning', issue.message));
           }
-          getHeadingSpacingIssues(doc).forEach(issue => {
+          getHeadingSpacingIssues(doc, effectiveFeatures.customSpacer).forEach(issue => {
             if (details.includes(issue.message)) issue.element.setAttribute('data-warning', issue.message);
           });
           
@@ -1183,7 +1209,7 @@ export function WordToHtmlConverter() {
       console.error('Error adding warning attributes:', error);
       return previewHtml;
     }
-  }, [previewHtml, validationResults, showValidationWarnings, features]);
+  }, [previewHtml, validationResults, showValidationWarnings, features, effectiveFeatures]);
 
   return (
     <div className="flex flex-col gap-3 md:gap-4 w-full max-w-full">
@@ -1470,6 +1496,74 @@ export function WordToHtmlConverter() {
                       <span className="text-sm">Add BR Before Sources</span>
                     </label>
                       </>
+                    )}
+                    {/* Custom spacer - replaces the default <p>&nbsp;</p> spacer */}
+                    {(features.spacing !== false || features.paragraphSpacing === true) && (
+                      <div className="mt-2 p-2 bg-muted/20 border border-border/50 rounded-lg">
+                        <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Custom Spacer</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setFeatures({ ...features, customSpacer: '' })}
+                            disabled={!features.customSpacer?.trim()}
+                            className="h-6 w-6 p-0"
+                            title="Reset to the default spacer"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <input
+                          type="text"
+                          data-lenisignore
+                          aria-label="Custom Spacer"
+                          value={features.customSpacer ?? ''}
+                          onChange={(e) => setFeatures({ ...features, customSpacer: e.target.value })}
+                          placeholder={'<div style="height:10px;"></div>'}
+                          spellCheck={false}
+                          className="w-full p-2 text-xs bg-background/80 border border-border/50 rounded focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono"
+                          style={{
+                            color: 'hsl(var(--foreground))',
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        />
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Replaces the default <code>&lt;p&gt;&amp;nbsp;&lt;/p&gt;</code> spacer. Leave empty to keep the default.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {sanitizeSpacer
+                            ? 'The markup is sanitised before it is used.'
+                            : 'The markup is inserted verbatim and is not sanitised. It is copied into the published HTML.'}
+                        </p>
+                        {spacerWarnings.length > 0 && (
+                          <div role="alert" className="mt-2 flex items-start gap-2 text-xs text-yellow-600 dark:text-yellow-500">
+                            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p>
+                                Warning: this spacer markup can run code when the published HTML is rendered.
+                                {sanitizeSpacer ? '' : ' It is inserted verbatim and is not sanitised.'}
+                              </p>
+                              <ul className="list-disc pl-4 mt-1">
+                                {spacerWarnings.map(warning => (
+                                  <li key={warning}>{warning}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        )}
+                        {sanitizeSpacer && (features.customSpacer ?? '').trim() !== (effectiveFeatures.customSpacer ?? '').trim() && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            The sanitizer changed the markup, so a different spacer is used than the one you entered.
+                          </p>
+                        )}
+                        <label className="flex items-center space-x-2 cursor-pointer mt-2">
+                          <Checkbox
+                            checked={sanitizeSpacer}
+                            onCheckedChange={(checked) => setSanitizeSpacer(checked as boolean)}
+                          />
+                          <span className="text-xs">Sanitize the spacer markup</span>
+                        </label>
+                      </div>
                     )}
                   </CollapsibleContent>
                 </Collapsible>

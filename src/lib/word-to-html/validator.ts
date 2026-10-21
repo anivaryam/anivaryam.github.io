@@ -6,7 +6,8 @@
 import type { OutputMode, FeatureFlags } from './converter';
 import { resolveFeatures } from './mode-processor';
 import { ALLOWED_ELEMENTS as SANITIZED_ELEMENTS, getStructuralIssues, isSafeUrl } from './html-sanitizer';
-import { isSpacingParagraph as isAnySpacingElement, isBrSpacingParagraph as isBrSpacingElement, nextNonSpacingElement } from './html-spacing';
+import { isSpacingParagraph as isAnySpacingElement, isBrSpacingParagraph as isBrSpacingElement, isSpacerElement, nextNonSpacingElement } from './html-spacing';
+import { isCustomSpacerElement, isWithinInsertedSpacer, parseCustomSpacer, type CustomSpacer } from './spacer';
 import { findKeyTakeawaysSection } from './mode-key-takeaways';
 import { findArticleTitleAfterKeyTakeaways } from './mode-h1-removal';
 import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
@@ -14,12 +15,18 @@ import { getHeadingSpacingIssues } from './mode-spacing';
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
 
 /**
+ * Feature flags that toggle behavior. The custom spacer is a text setting,
+ * so it is not part of this set.
+ */
+type BooleanFeatureKey = Exclude<keyof FeatureFlags, 'customSpacer'>;
+
+/**
  * Centralized feature flag check with explicit defaults
  * Prevents logic drift and makes behavior explicit
  */
 function isFeatureEnabled(
   features: FeatureFlags | undefined,
-  key: keyof FeatureFlags,
+  key: BooleanFeatureKey,
   defaultValue: boolean
 ): boolean {
   const value = features?.[key];
@@ -147,6 +154,11 @@ function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult
 
   const allElements = doc.body.querySelectorAll('*');
   allElements.forEach((el) => {
+    // Only the spacer the converter inserted is exempt. An element that
+    // merely matches the configured markup was not inserted by the tool and
+    // stays subject to the sanitizer allowlist.
+    if (isWithinInsertedSpacer(el)) return;
+
     const tagName = el.tagName.toLowerCase();
     if (!ALLOWED_ELEMENTS.has(tagName)) {
       issues.push(`Disallowed element <${tagName}> present`);
@@ -1128,20 +1140,20 @@ function validateDisclaimerNormalize(doc: Document, mode: OutputMode, features?:
 /* Spacing                                                            */
 /* ------------------------------------------------------------------ */
 
-function validateKeyTakeawaySpacing(doc: Document, issues: string[]): void {
+function validateKeyTakeawaySpacing(doc: Document, issues: string[], spacer: CustomSpacer): void {
   const section = findKeyTakeawaysSection(doc);
   if (!section) return;
   const elementAfterUl = section.list.nextElementSibling;
-  if (!isAnySpacingElement(elementAfterUl)) {
+  if (!isSpacerElement(elementAfterUl, spacer)) {
     issues.push('Missing spacing after Key Takeaways section');
   }
 }
 
-function validateHeadingSpacing(doc: Document, issues: string[]): void {
-  issues.push(...getHeadingSpacingIssues(doc).map(issue => issue.message));
+function validateHeadingSpacing(doc: Document, issues: string[], customSpacer?: string): void {
+  issues.push(...getHeadingSpacingIssues(doc, customSpacer).map(issue => issue.message));
 }
 
-function validateSpecialParagraphSpacing(doc: Document, issues: string[]): void {
+function validateSpecialParagraphSpacing(doc: Document, issues: string[], spacer: CustomSpacer): void {
   const paragraphs = doc.querySelectorAll('p');
 
   paragraphs.forEach((p) => {
@@ -1152,28 +1164,28 @@ function validateSpecialParagraphSpacing(doc: Document, issues: string[]): void 
         text === 'read more:' || text.startsWith('read more:') ||
         text === 'see more:' || text.startsWith('see more:')) {
       const prevSibling = p.previousElementSibling;
-      if (!isAnySpacingElement(prevSibling)) {
+      if (!isSpacerElement(prevSibling, spacer)) {
         issues.push(`Missing spacing before "${text.substring(0, 20)}..."`);
       }
     }
 
     if (isSourcesLabel(p)) {
       const prevSibling = p.previousElementSibling;
-      if (!isAnySpacingElement(prevSibling)) {
+      if (!isSpacerElement(prevSibling, spacer)) {
         issues.push('Missing spacing before "Sources:" section');
       }
     }
 
     if (text.startsWith('disclaimer')) {
       const prevSibling = p.previousElementSibling;
-      if (!isAnySpacingElement(prevSibling)) {
+      if (!isSpacerElement(prevSibling, spacer)) {
         issues.push('Missing spacing before "Disclaimer:" section');
       }
     }
 
     if (text.startsWith('alt image text:')) {
       const prevSibling = p.previousElementSibling;
-      if (!isAnySpacingElement(prevSibling)) {
+      if (!isSpacerElement(prevSibling, spacer)) {
         issues.push('Missing spacing before "Alt Image Text:" paragraph');
       }
     }
@@ -1182,8 +1194,9 @@ function validateSpecialParagraphSpacing(doc: Document, issues: string[]): void 
 
 /** Shared element-level diagnostics for disabled spacing and preview highlights. */
 export function getUnexpectedSpacingIssues(doc: Document, features?: FeatureFlags): { element: Element; message: string }[] {
-  const issues = getHeadingSpacingIssues(doc).filter(issue => issue.kind === 'unexpected');
+  const issues = getHeadingSpacingIssues(doc, features?.customSpacer).filter(issue => issue.kind === 'unexpected');
   const result: { element: Element; message: string }[] = [...issues];
+  const spacer = parseCustomSpacer(features?.customSpacer);
   doc.querySelectorAll('p').forEach(p => {
     if (!isAnySpacingElement(p)) return;
     const previous = p.previousElementSibling;
@@ -1197,6 +1210,18 @@ export function getUnexpectedSpacingIssues(doc: Document, features?: FeatureFlag
         previous.textContent?.trim() && next.textContent?.trim()) return;
     result.push({ element: p, message: 'Found blank spacing paragraph that should not be present' });
   });
+  // A custom spacer is a spacing element too, so it is reported the same way.
+  if (spacer.root) {
+    Array.from(doc.querySelectorAll('*')).forEach(el => {
+      if (!isCustomSpacerElement(el, spacer)) return;
+      const previous = el.previousElementSibling;
+      const next = el.nextElementSibling;
+      if (issues.some(issue => issue.element === next)) return;
+      if (features?.paragraphSpacing && previous?.tagName === 'P' && next?.tagName === 'P' &&
+          previous.textContent?.trim() && next.textContent?.trim()) return;
+      result.push({ element: el, message: 'Found custom spacer that should not be present' });
+    });
+  }
   return result;
 }
 
@@ -1239,10 +1264,11 @@ function validateSpacing(doc: Document, mode: OutputMode, features?: FeatureFlag
   }
 
   const issues: string[] = [];
+  const spacer = parseCustomSpacer(features?.customSpacer);
 
-  validateKeyTakeawaySpacing(doc, issues);
-  validateHeadingSpacing(doc, issues);
-  validateSpecialParagraphSpacing(doc, issues);
+  validateKeyTakeawaySpacing(doc, issues, spacer);
+  validateHeadingSpacing(doc, issues, features?.customSpacer);
+  validateSpecialParagraphSpacing(doc, issues, spacer);
 
   return {
     ruleId: 'spacing-rules',

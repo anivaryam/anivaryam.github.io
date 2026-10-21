@@ -4,6 +4,7 @@
  */
 
 import { BLOCK_ELEMENTS } from './html-cleaner';
+import { isCustomSpacerElement, parseCustomSpacer, type CustomSpacer } from './spacer';
 
 const INLINE_ELEMENTS = [
   'a', 'em', 'i', 'strong', 'b', 'span', 'code', 'sup', 'sub',
@@ -12,6 +13,7 @@ const INLINE_ELEMENTS = [
 
 const SELF_CLOSING = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'];
 const PRESERVE_EMPTY_ELEMENTS = new Set(['table', 'thead', 'tbody', 'tr', 'th', 'td']);
+const NO_SPACER: CustomSpacer = { html: '', root: null };
 
 function isInlineElement(node: Node | null): boolean {
   return node?.nodeType === Node.ELEMENT_NODE && !BLOCK_ELEMENTS.includes((node as Element).tagName.toLowerCase());
@@ -38,12 +40,20 @@ function isSpacingParagraph(node: Element): boolean {
          text.trim() === '\u00A0';
 }
 
-function formatElement(element: Element, insideLi = false, indentLevel = 0): string {
+function formatElement(element: Element, insideLi = false, indentLevel = 0, spacer: CustomSpacer = NO_SPACER): string {
   const tagName = element.tagName.toLowerCase();
   const isBlock = BLOCK_ELEMENTS.includes(tagName);
   const isSelfClosing = SELF_CLOSING.includes(tagName);
   const isLi = tagName === 'li';
   
+  // A custom spacer is emitted verbatim so its markup reaches the output.
+  // It is checked first so a spacer shaped like a blank paragraph keeps its
+  // own markup instead of the canonical spacer.
+  if (isCustomSpacerElement(element, spacer)) {
+    const indent = '  '.repeat(indentLevel);
+    return '\n' + indent + element.outerHTML;
+  }
+
   if (isSpacingParagraph(element)) {
     const indent = '  '.repeat(indentLevel);
     return '\n' + indent + '<p>&nbsp;</p>';
@@ -95,7 +105,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
     if (node.nodeType === Node.ELEMENT_NODE) {
       const childTag = (node as Element).tagName.toLowerCase();
       
-      const isSpacingElement = isSpacingParagraph(node as Element);
+      const isSpacingElement = isSpacingParagraph(node as Element) || isCustomSpacerElement(node as Element, spacer);
       if (BLOCK_ELEMENTS.includes(childTag) && !PRESERVE_EMPTY_ELEMENTS.has(childTag) && !['pre', 'code'].includes(childTag) && !(node as Element).textContent?.trim() && (node as Element).children.length === 0 && !isSpacingElement) {
         continue;
       }
@@ -108,7 +118,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
       
       const childInsideLi = isLi || insideLi;
       const childIndentLevel = BLOCK_ELEMENTS.includes(childTag) ? indentLevel + 1 : indentLevel;
-      const formattedChild = formatElement(node as Element, childInsideLi, childIndentLevel);
+      const formattedChild = formatElement(node as Element, childInsideLi, childIndentLevel, spacer);
       if (formattedChild) {
         if (BLOCK_ELEMENTS.includes(childTag) && isBlock) {
           content += formattedChild;
@@ -170,7 +180,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0): str
   }
 }
 
-export function formatCompact(html: string): string {
+export function formatCompact(html: string, customSpacer?: string | null): string {
   if (!html || typeof html !== 'string') {
     return '';
   }
@@ -178,12 +188,13 @@ export function formatCompact(html: string): string {
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
+    const spacer = parseCustomSpacer(customSpacer);
     
     let result = '';
     for (let i = 0; i < doc.body.childNodes.length; i++) {
       const node = doc.body.childNodes[i];
       if (node.nodeType === Node.ELEMENT_NODE) {
-        const formatted = formatElement(node as Element, false, 0);
+        const formatted = formatElement(node as Element, false, 0, spacer);
         result += formatted;
       } else if (node.nodeType === Node.TEXT_NODE) {
         // Keep separators between top-level inline nodes intact.

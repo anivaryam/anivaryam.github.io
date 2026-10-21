@@ -3,7 +3,8 @@
  * Adds <p>&nbsp;</p> spacing elements in specific locations
  */
 
-import { isSpacingParagraph as isSpacingElement } from './html-spacing';
+import { isSpacingParagraph as isSpacingElement, isSpacerElement } from './html-spacing';
+import { parseCustomSpacer } from './spacer';
 import { findKeyTakeawaysSection } from './mode-key-takeaways';
 import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
 
@@ -16,12 +17,13 @@ function addSpacingAfterKeyTakeaways(doc: Document): void {
 }
 
 /** One rule source for conversion, validation, and preview highlighting. */
-export function getHeadingSpacingIssues(doc: Document): {
+export function getHeadingSpacingIssues(doc: Document, customSpacer?: string): {
   element: Element;
   kind: 'missing' | 'unexpected';
   message: string;
 }[] {
   const issues: ReturnType<typeof getHeadingSpacingIssues> = [];
+  const spacer = parseCustomSpacer(customSpacer);
   let awaitingFirstFaqQuestion = false;
   for (const heading of Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, h6'))) {
     const text = heading.textContent?.trim() || '';
@@ -33,13 +35,13 @@ export function getHeadingSpacingIssues(doc: Document): {
     const previous = heading.previousElementSibling;
     if (awaitingFirstFaqQuestion && tag === 'h3') {
       awaitingFirstFaqQuestion = false;
-      if (isSpacingElement(previous) || previous?.tagName === 'BR') {
+      if (isSpacerElement(previous, spacer) || previous?.tagName === 'BR') {
         issues.push({ element: heading, kind: 'unexpected', message: `Unexpected spacing before first FAQ question: "${text.substring(0, 30)}..."` });
       }
       continue;
     }
     if (lowerText.includes('key takeaways') || !previous) continue;
-    if (!isSpacingElement(previous)) {
+    if (!isSpacerElement(previous, spacer)) {
       issues.push({ element: heading, kind: 'missing', message: `Missing spacing before heading: "${text.substring(0, 30)}..."` });
     }
   }

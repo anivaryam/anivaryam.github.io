@@ -38,6 +38,8 @@ export interface FeatureFlags {
   brBeforeReadMore?: boolean;
   brBeforeSources?: boolean;
   wrapLinksStrongUnderline?: boolean;
+  /** Custom spacer markup replacing the default `<p>&nbsp;</p>` spacer. */
+  customSpacer?: string;
 }
 
 /**
@@ -80,7 +82,7 @@ export function convertToHtml(
     }
 
     // Step 5: Format HTML for display
-    const formatted = formatCompact(trimmed);
+    const formatted = formatCompact(trimmed, features.customSpacer);
     if (!formatted) {
       return { formatted: '', unformatted: '' };
     }
