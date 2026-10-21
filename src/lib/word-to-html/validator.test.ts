@@ -349,6 +349,13 @@ describe('validateKeyTakeaways (D4)', () => {
     const results = validateMode(html, 'blogs', { keyTakeaways: false });
     expectPass(results, 'key-takeaways');
   });
+
+  it.each([
+    '<h2>Key Takeaways</h2><ul><li>One</li></ul>',
+    '<h2><strong><em>Key Takeaways</em></strong></h2><ul><li>One</li></ul>',
+  ])('passes the unchanged source when the feature is disabled: %s', (html) => {
+    expectSkipped(validateMode(html, 'blogs', { keyTakeaways: false }), 'key-takeaways');
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -424,6 +431,11 @@ describe('validateLinkAttributes', () => {
     const html = '<a href="https://x.com">link</a>';
     const results = validateMode(html, 'blogs', { linkAttributes: false });
     expectPass(results, 'link-attributes');
+  });
+
+  it('blogs disabled: passes a source link that already has target/rel', () => {
+    const html = '<p>See <a href="https://x.com" target="_blank" rel="noopener">link</a>.</p>';
+    expectSkipped(validateMode(html, 'blogs', { linkAttributes: false }), 'link-attributes');
   });
 });
 

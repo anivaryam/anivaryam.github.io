@@ -396,6 +396,19 @@ function validateKeyTakeaways(doc: Document, mode: OutputMode, features?: Featur
     };
   }
 
+  /* Disabled — the converter leaves the section as it is in the source, so
+   * the source formatting cannot be an error. */
+  if (!isFeatureEnabled(features, 'keyTakeaways', true)) {
+    return {
+      ruleId: 'key-takeaways',
+      feature: 'Key Takeaways Formatting',
+      mode,
+      passed: true,
+      message: 'Key Takeaways left as in the source (feature disabled)',
+      severity: 'info',
+    };
+  }
+
   /* Also validate the heading itself was normalized. */
   const headingIssues: string[] = [];
   const headingText = section.heading.textContent?.trim() || '';
@@ -410,26 +423,6 @@ function validateKeyTakeaways(doc: Document, mode: OutputMode, features?: Featur
   const listItems = section.list.querySelectorAll('li');
   const itemsWithEm = Array.from(listItems).filter((li) => li.querySelector('em'));
   const hasEmTags = itemsWithEm.length > 0;
-  const isEnabled = isFeatureEnabled(features, 'keyTakeaways', true);
-
-  if (!isEnabled) {
-    const issues = [...headingIssues];
-    if (!hasEmTags) {
-      issues.push('No <em> tags in Key Takeaways list (should be present when feature is disabled)');
-    }
-    return {
-      ruleId: 'key-takeaways',
-      feature: 'Key Takeaways Formatting',
-      mode,
-      passed: issues.length === 0,
-      message:
-        issues.length === 0
-          ? 'Key Takeaways correctly preserved (feature disabled)'
-          : `${issues.length} issue(s) found`,
-      severity: issues.length === 0 ? 'info' : 'error',
-      details: issues.length > 0 ? issues : null,
-    };
-  }
 
   /* Feature enabled — <em> tags should be removed and heading should end with :. */
   const issues = [...headingIssues];
@@ -527,21 +520,16 @@ function validateLinkAttributes(doc: Document, mode: OutputMode, features?: Feat
 
   const isEnabled = isFeatureEnabled(features, 'linkAttributes', true);
 
+  /* Disabled — the converter keeps the attributes the source links have,
+   * so a source target/rel cannot be an error. */
   if (!isEnabled) {
-    const linksWithAttributes = Array.from(links).filter((link) => {
-      return link.hasAttribute('target') || link.hasAttribute('rel');
-    });
-
     return {
       ruleId: 'link-attributes',
       feature: 'Link Attributes',
       mode,
-      passed: linksWithAttributes.length === 0,
-      message:
-        linksWithAttributes.length === 0
-          ? 'Links correctly without target/rel attributes (feature disabled)'
-          : `Found ${linksWithAttributes.length} link(s) with target/rel attributes (should not have attributes)`,
-      severity: linksWithAttributes.length === 0 ? 'info' : 'error',
+      passed: true,
+      message: 'Link attributes left as in the source (feature disabled)',
+      severity: 'info',
     };
   }
 
