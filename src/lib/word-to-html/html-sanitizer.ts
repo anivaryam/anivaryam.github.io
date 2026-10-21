@@ -34,6 +34,8 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   'a': ['href', 'target', 'rel'],
   'img': ['src', 'alt'],
   'ol': ['start', 'reversed'],
+  'th': ['colspan', 'rowspan'],
+  'td': ['colspan', 'rowspan'],
   '*': []
 };
 
@@ -438,6 +440,19 @@ function sanitizeAttributes(element: Element, tagName: string): void {
 
     if (tagName === 'ol' && attrName === 'reversed' && attr.value !== '') {
       element.setAttribute(attr.name, '');
+    }
+
+    if ((tagName === 'td' || tagName === 'th') && (attrName === 'colspan' || attrName === 'rowspan')) {
+      // Keep the span browsers render: the integer prefix, clamped to the HTML
+      // maximum. NaN, negative values and colspan="0" fall back to the default
+      // 1, which is dropped so unmerged cells stay byte-identical. rowspan="0"
+      // is valid: the cell spans the rest of its row group.
+      const span = Math.min(parseInt(attr.value, 10), attrName === 'colspan' ? 1000 : 65534);
+      if (!(span >= (attrName === 'colspan' ? 1 : 0)) || span === 1) {
+        attrsToRemove.push(attr.name);
+      } else if (String(span) !== attr.value) {
+        element.setAttribute(attr.name, String(span));
+      }
     }
   });
 

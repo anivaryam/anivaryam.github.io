@@ -106,6 +106,11 @@ describe('validateSanitizedStructure', () => {
     expectPass(results, 'sanitized-structure');
   });
 
+  it('allows span attributes on table cells', () => {
+    const results = validateMode('<table><tbody><tr><th colspan="2">x</th></tr><tr><td rowspan="2">y</td></tr></tbody></table>', 'blogs', defaultFeatures);
+    expectPass(results, 'sanitized-structure');
+  });
+
   it('flags disallowed elements that share prefix (<unknown>)', () => {
     const html = '<p><unknown>x</unknown></p>';
     const results = validateMode(html, 'blogs', defaultFeatures);

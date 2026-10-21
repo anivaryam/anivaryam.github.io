@@ -62,6 +62,20 @@ describe('formatted-output content parity', () => {
     }
   });
 
+  it('keeps merged table cells spanning the same columns and rows as the source', () => {
+    const input = '<table><tr><th colspan="2">Merged</th></tr><tr><td rowspan="2">x</td><td>y</td></tr><tr><td>z</td></tr></table>';
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('th, td')).map(cell => [cell.textContent, cell.getAttribute('colspan'), cell.getAttribute('rowspan')])).toEqual([
+          ['Merged', '2', null], ['x', null, '2'], ['y', null, null], ['z', null, null],
+        ]);
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
+    }
+  });
+
   it.each(['first\n\nsecond  \n  third', '  \n\n  ', '&lt;literal&gt;\n\n&amp; text'])('preserves preformatted whitespace and text: %s', (content) => {
     const output = convertToHtml(`<pre><code>${content}</code></pre>`);
     const preview = new DOMParser().parseFromString(output.unformatted, 'text/html');
@@ -710,6 +724,26 @@ describe('Word-to-HTML pipeline regressions', () => {
     ['<ol><li start="2" reversed>x</li></ol>', '<ol><li>x</li></ol>'],
     ['<p start="2" reversed>x</p>', '<p>x</p>'],
   ])('removes list numbering attributes outside <ol>: %s', (input, expected) => {
+    expect(sanitizeHtml(input)).toBe(expected);
+  });
+
+  it.each([
+    ['colspan', '2', '2'], ['colspan', ' 3 ', '3'], ['colspan', '02', '2'], ['colspan', '2.5', '2'], ['colspan', '+4', '4'],
+    ['colspan', '1', null], ['colspan', '0', null], ['colspan', '-2', null], ['colspan', 'abc', null], ['colspan', '', null],
+    ['colspan', '1001', '1000'], ['rowspan', '3', '3'], ['rowspan', '0', '0'], ['rowspan', '1', null], ['rowspan', '-1', null],
+    ['rowspan', '65535', '65534'],
+  ])('reduces <td %s="%s"> to the browser-rendered span', (name, value, expected) => {
+    for (const tag of ['td', 'th']) {
+      const cell = new DOMParser().parseFromString(sanitizeHtml(`<table><tr><${tag} ${name}="${value}">x</${tag}></tr></table>`), 'text/html').querySelector(tag);
+      expect(cell?.textContent).toBe('x');
+      expect(cell?.getAttribute(name)).toBe(expected);
+    }
+  });
+
+  it.each([
+    ['<p colspan="2" rowspan="2">x</p>', '<p>x</p>'],
+    ['<table><tbody><tr colspan="2" rowspan="2"><td>x</td></tr></tbody></table>', '<table><tbody><tr><td>x</td></tr></tbody></table>'],
+  ])('removes table span attributes outside cells: %s', (input, expected) => {
     expect(sanitizeHtml(input)).toBe(expected);
   });
 
