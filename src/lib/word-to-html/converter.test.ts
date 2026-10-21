@@ -362,6 +362,33 @@ describe('structural and formatting regressions', () => {
     expect(Array.from(doc.querySelectorAll('h3')).map(h => h.textContent)).toEqual(['1. First', '2. Second']);
   });
 
+  it.each<[OutputMode, { headingStrong?: boolean }, string]>([
+    ['regular', {}, '<h2>Part one two</h2>'],
+    ['blogs', {}, '<h2><strong>Part one two</strong></h2>'],
+    ['blogs', { headingStrong: false }, '<h2>Part one two</h2>'],
+  ])('handles every bold run of a heading in %s %o', (mode, features, expected) => {
+    const output = getUnformattedHtml('<h2><b>Part</b> one <b>two</b></h2><p>Body.</p>', mode, features);
+    expect(output).toContain(expected);
+    expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'heading-strong')?.passed).toBe(true);
+  });
+
+  it.each([
+    [{ headingStrong: false }, '<h2>Key Takeaways:</h2>'],
+    [{}, '<h2><strong>Key Takeaways:</strong></h2>'],
+  ])('does not duplicate a Key Takeaways heading split into bold runs (%o)', (features, expected) => {
+    const input = '<h2><b><span>Key</span></b><span> </span><b><span>Takeaways</span></b></h2><ul><li>One</li></ul>';
+    const output = getUnformattedHtml(input, 'blogs', features);
+    expect(output).toContain(expected);
+    expect(validateMode(output, 'blogs', features).summary.failed).toBe(0);
+  });
+
+  it('keeps the inline markup of a Key Takeaways heading when adding its colon', () => {
+    const output = getUnformattedHtml('<h2>Key <a href="https://example.com/takeaways">Takeaways</a></h2><ul><li>One</li></ul>', 'blogs', { headingStrong: false });
+    const heading = new DOMParser().parseFromString(output, 'text/html').querySelector('h2');
+    expect(heading?.textContent).toBe('Key Takeaways:');
+    expect(heading?.querySelector('a')?.getAttribute('href')).toBe('https://example.com/takeaways');
+  });
+
   it('preserves table structure and cell emphasis without orphan formatting wrappers', () => {
     const output = getUnformattedHtml('<table style="font-weight:bold"><tbody><tr style="font-style:italic"><td><em>Cell A</em></td><td>Cell B</td></tr></tbody></table>', 'shoppables');
     const doc = new DOMParser().parseFromString(output, 'text/html');

@@ -44,13 +44,23 @@ function formatKeyTakeawaysHeading(heading: Element): void {
   const text = heading.textContent?.trim() || '';
   
   if (!text.endsWith(':')) {
-    const strongTag = heading.querySelector('strong');
-    if (strongTag) {
-      strongTag.textContent = text + ':';
-    } else {
-      heading.textContent = text + ':';
+    // Append the colon to the last visible text so the heading keeps its
+    // markup; the text may be split over several runs.
+    const lastText = findLastTextNode(heading);
+    if (lastText) {
+      lastText.textContent = (lastText.textContent || '').replace(/\s*$/, ':');
     }
   }
+}
+
+/** The last text node with visible text; whitespace-only runs are skipped. */
+function findLastTextNode(element: Element): Text | null {
+  const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let last: Text | null = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.textContent?.trim()) last = node as Text;
+  }
+  return last;
 }
 
 function removeEmTags(element: Element): void {
