@@ -213,6 +213,14 @@ describe('validateLinkSafety', () => {
     expect(r.passed).toBe(false);
     expect(r.details?.some((d) => d.includes('sponsored'))).toBe(true);
   });
+
+  it('flags a comma-joined rel value, which browsers read as one unknown token', () => {
+    const html = '<a href="https://example.com" target="_blank" rel="noopener,noreferrer">x</a>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    const r = getResult(results, 'link-safety');
+    expect(r.passed).toBe(false);
+    expect(r.details?.some((d) => d.includes('noopener,noreferrer'))).toBe(true);
+  });
 });
 
 /* ------------------------------------------------------------------ */

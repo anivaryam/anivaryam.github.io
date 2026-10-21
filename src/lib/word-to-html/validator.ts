@@ -5,7 +5,7 @@
 
 import type { OutputMode, FeatureFlags } from './converter';
 import { resolveFeatures } from './mode-processor';
-import { ALLOWED_ELEMENTS as SANITIZED_ELEMENTS, getStructuralIssues, isSafeUrl } from './html-sanitizer';
+import { ALLOWED_ELEMENTS as SANITIZED_ELEMENTS, SAFE_REL_VALUES as SANITIZED_REL_VALUES, getStructuralIssues, isSafeUrl } from './html-sanitizer';
 import { isSpacingParagraph as isAnySpacingElement, isBrSpacingParagraph as isBrSpacingElement, isSpacerElement, nextNonSpacingElement } from './html-spacing';
 import { isCustomSpacerElement, isWithinInsertedSpacer, parseCustomSpacer, type CustomSpacer } from './spacer';
 import { findKeyTakeawaysSection } from './mode-key-takeaways';
@@ -50,14 +50,11 @@ const ALWAYS_BANNED_ATTRIBUTES = new Set([
 const BANNED_ATTRIBUTE_PREFIXES = ['data-', 'on'];
 
 /**
- * Allowed `rel` values on anchor tags after sanitization.
+ * Allowed `rel` tokens on anchor tags after sanitization (the sanitizer's
+ * allowlist). rel is split on whitespace, so a comma-joined value is one
+ * unknown token.
  */
-const SAFE_REL_VALUES = new Set([
-  'nofollow',
-  'noopener',
-  'noreferrer',
-  'noopener,noreferrer',
-]);
+const SAFE_REL_VALUES = new Set(SANITIZED_REL_VALUES);
 
 function findDisclaimerSection(doc: Document): { paragraph: Element } | null {
   const paragraphs = doc.querySelectorAll('p');

@@ -657,6 +657,22 @@ describe('Word-to-HTML pipeline regressions', () => {
   });
 
   it.each([
+    '<p>See <a href="https://example.com" target="_self">link</a></p>',
+    '<p>See <a href="https://example.com" rel="noopener,noreferrer">link</a></p>',
+    '<p>See <a href="https://example.com" target="_blank" rel="noopener,noreferrer">link</a></p>',
+  ])('gives every link the Link Attributes target and rel tokens: %s', (input) => {
+    for (const mode of ['blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml(input, mode);
+      const link = new DOMParser().parseFromString(output, 'text/html').querySelector('a');
+      expect(link?.getAttribute('target')).toBe('_blank');
+      expect(link?.getAttribute('rel')?.split(/\s+/)).toEqual(expect.arrayContaining(['noopener', 'noreferrer']));
+      const results = validateMode(output, mode, {}).results;
+      expect(results.find(r => r.ruleId === 'link-attributes')?.passed).toBe(true);
+      expect(results.find(r => r.ruleId === 'link-safety')?.passed).toBe(true);
+    }
+  });
+
+  it.each([
     ['abc', null], [' 4 ', '4'], ['007', '7'], ['+3', '3'], ['2.5', '2'], ['0', '0'], ['-2', '-2'],
     ['99999999999', null], ['', null], ['3abc', '3'], ['1e3', null], ['0x10', '0'],
     ['2147483647', '2147483647'], ['2147483648', null], ['-2147483648', '-2147483648'], ['-2147483649', null],

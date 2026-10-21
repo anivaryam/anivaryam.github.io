@@ -38,7 +38,8 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
 };
 
 const SAFE_PROTOCOLS = ['http:', 'https:', 'mailto:'];
-const SAFE_REL_VALUES = ['nofollow', 'noopener', 'noreferrer', 'noopener,noreferrer'];
+// rel is a space-separated token list; "noopener,noreferrer" is one unknown token
+export const SAFE_REL_VALUES = ['nofollow', 'noopener', 'noreferrer'];
 const NOOPENER_REGEX = /\bnoopener\b/i;
 
 // These containers cannot accept an inline formatting wrapper around their children.

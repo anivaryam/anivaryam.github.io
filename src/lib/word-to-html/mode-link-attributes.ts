@@ -15,9 +15,8 @@ export function addLinkAttributes(html: string): string {
     const links = doc.querySelectorAll('a[href]');
     
     links.forEach(link => {
-      if (!link.hasAttribute('target')) {
-        link.setAttribute('target', '_blank');
-      }
+      // The feature promises new-tab links, so a pasted target (e.g. _self) is replaced
+      link.setAttribute('target', '_blank');
       
       if (!link.hasAttribute('rel')) {
         link.setAttribute('rel', 'noopener noreferrer');
