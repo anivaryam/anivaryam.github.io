@@ -1106,6 +1106,27 @@ describe('Word-to-HTML pipeline regressions', () => {
   });
 
   it.each([
+    ['<p role="heading" aria-level="2">Steps</p>', '<h2>Steps</h2>'],
+    ['<div role="heading" aria-level="3"><span style="font-weight:bold">Bold</span> part</div>', '<h3><strong>Bold</strong> part</h3>'],
+    ['<p role="heading" aria-level="1" style="font-style:italic">Title</p>', '<h1><em>Title</em></h1>'],
+    ['<p role="heading" aria-level="7">Body</p>', '<p>Body</p>'],
+    ['<p role="heading" aria-level="two">Body</p>', '<p>Body</p>'],
+    ['<p role="heading">Body</p>', '<p>Body</p>'],
+    ['<p role="presentation" aria-level="2">Body</p>', '<p>Body</p>'],
+    ['<div role="heading" aria-level="2"><p>One</p><p>Two</p></div>', '<p>One</p><p>Two</p>'],
+  ])('maps an ARIA heading paragraph to its heading level: %s', (input, expected) => {
+    expect(sanitizeHtml(input)).toBe(expected);
+  });
+
+  it('formats an ARIA heading paragraph as a heading in mode output', () => {
+    const input = '<p role="heading" aria-level="2">Key Takeaways</p><ul><li>Point</li></ul><p role="heading" aria-level="3">Details</p><p>Body.</p>';
+    const output = getUnformattedHtml(input, 'blogs');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(Array.from(doc.querySelectorAll('h2, h3')).map(h => `${h.tagName}: ${h.textContent}`)).toEqual(['H2: Key Takeaways:', 'H3: Details']);
+    expect(validateMode(output, 'blogs', {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
+  });
+
+  it.each([
     ['colspan', '2', '2'], ['colspan', ' 3 ', '3'], ['colspan', '02', '2'], ['colspan', '2.5', '2'], ['colspan', '+4', '4'],
     ['colspan', '1', null], ['colspan', '0', null], ['colspan', '-2', null], ['colspan', 'abc', null], ['colspan', '', null],
     ['colspan', '1001', '1000'], ['rowspan', '3', '3'], ['rowspan', '0', '0'], ['rowspan', '1', null], ['rowspan', '-1', null],

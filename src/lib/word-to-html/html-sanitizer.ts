@@ -359,6 +359,19 @@ export function sanitizeHtml(html: string): string {
     caption.remove();
   });
 
+  // Word Online can mark a heading with ARIA on a paragraph instead of an
+  // <h1>-<h6>. Keep its level before attribute cleanup drops role and
+  // aria-level. A block holding other blocks is a layout wrapper, not a heading.
+  tempDiv.querySelectorAll('p[role][aria-level], div[role][aria-level]').forEach(block => {
+    const level = block.getAttribute('aria-level')!.trim();
+    if (block.getAttribute('role')!.trim().toLowerCase() !== 'heading' || !/^[1-6]$/.test(level)) return;
+    if (Array.from(block.querySelectorAll('*')).some(child => BLOCK_ELEMENT_SET.has(child.tagName.toLowerCase()))) return;
+    const heading = document.createElement(`h${level}`);
+    Array.from(block.attributes).forEach(attr => heading.setAttribute(attr.name, attr.value));
+    heading.append(...Array.from(block.childNodes));
+    block.replaceWith(heading);
+  });
+
   // Lettered and roman numbering is CSS in Google Docs paste, and styles are
   // discarded: keep it as the <ol> type. An item's own style overrides the
   // list's, and Google Docs repeats the style on every item.
