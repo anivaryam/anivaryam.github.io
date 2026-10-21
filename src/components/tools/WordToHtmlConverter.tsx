@@ -16,6 +16,7 @@ import { cleanWordHtml } from "@/lib/word-to-html/word-html-cleaner";
 import { createInertContainer, prepareWordSource } from "@/lib/word-to-html/word-source-formatting";
 import { findArticleTitleAfterKeyTakeaways } from "@/lib/word-to-html/mode-h1-removal";
 import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
+import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph } from "@/lib/word-to-html/html-spacing";
 import { getCustomSpacerWarnings, isCustomSpacerElement, parseCustomSpacer, sanitizeCustomSpacerMarkup } from "@/lib/word-to-html/spacer";
 import { validateMode, getUnexpectedSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
@@ -1031,27 +1032,10 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // OL header conversion - only flag <ol> elements that are header lists (only if failed)
+        // OL header conversion - flag the header lists the validator counted (only if failed)
         if (result.ruleId === 'ol-header-conversion' && !result.passed) {
-          const olElements = doc.querySelectorAll('ol');
-          olElements.forEach(ol => {
-            const listItems = ol.querySelectorAll(':scope > li');
-            const isHeaderList = Array.from(listItems).every((li) => {
-              const strongTag = li.querySelector(':scope > strong');
-              if (strongTag) {
-                const headingChildren = Array.from(strongTag.children).filter((node) =>
-                  /^h[1-6]$/i.test(node.tagName)
-                );
-                return headingChildren.length === 1;
-              }
-              const directHeading = li.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
-              if (directHeading) {
-                const strongInHeading = directHeading.querySelector(':scope > strong');
-                return strongInHeading !== null;
-              }
-              return false;
-            });
-            if (isHeaderList) {
+          doc.querySelectorAll('ol').forEach(ol => {
+            if (isHeaderList(ol)) {
               ol.setAttribute('data-warning', result.message);
             }
           });

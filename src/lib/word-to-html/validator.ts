@@ -13,6 +13,7 @@ import { findArticleTitleAfterKeyTakeaways } from './mode-h1-removal';
 import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
 import { getHeadingSpacingIssues } from './mode-spacing';
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
+import { isHeaderList } from './mode-ol-header-conversion';
 
 /**
  * Feature flags that toggle behavior. The custom spacer is a text setting,
@@ -1559,31 +1560,6 @@ function validateBrBeforeSources(doc: Document, mode: OutputMode, features?: Fea
 /* ------------------------------------------------------------------ */
 /* OL header conversion                                                */
 /* ------------------------------------------------------------------ */
-
-function isHeaderList(ol: Element): boolean {
-  const listItems = ol.querySelectorAll(':scope > li');
-  if (listItems.length === 0) return false;
-
-  return Array.from(listItems).every((li) => {
-    const strongTag = li.querySelector(':scope > strong');
-    if (strongTag) {
-      const headingChildren = Array.from(strongTag.children).filter((node) =>
-        /^h[1-6]$/i.test(node.tagName)
-      );
-      if (headingChildren.length === 1) {
-        return true;
-      }
-    }
-
-    const directHeading = li.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
-    if (directHeading) {
-      const strongInHeading = directHeading.querySelector(':scope > strong');
-      return strongInHeading !== null;
-    }
-
-    return false;
-  });
-}
 
 function validateOlHeaderConversion(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
   if (mode === 'regular') {

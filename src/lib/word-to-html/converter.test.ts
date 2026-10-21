@@ -8,6 +8,7 @@ import { createInertContainer } from './word-source-formatting';
 import { normalizeSources } from './mode-sources-normalize';
 import { validateMode } from './validator';
 import { normalizeLists } from './mode-list-normalize';
+import { convertOlHeaders } from './mode-ol-header-conversion';
 import { removeH1AfterKeyTakeaways } from './mode-h1-removal';
 
 describe('text preservation during structural cleanup', () => {
@@ -284,6 +285,30 @@ describe('structural and formatting regressions', () => {
       expect(Array.from(doc.querySelectorAll('h3')).map(h => h.textContent)).toEqual(titles.map((title, i) => `${i + 1}. ${title}`));
       expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'ol-header-conversion')?.passed).toBe(true);
     }
+  });
+
+  it.each([
+    ['text after the heading', '<li><h3><b>Prepare</b></h3>Wash your hands first.</li><li><h3><b>Apply</b></h3><p>Use a thin layer.</p></li>'],
+    ['text after the bold-wrapped heading', '<li><b><h3>Prepare</h3></b>Wash your hands first.</li><li><b><h3>Apply</h3></b><p>Use a thin layer.</p></li>'],
+    ['text inside the bold wrapper', '<li><b><h3>Prepare</h3>Wash your hands first.</b></li><li><b><h3>Apply</h3><p>Use a thin layer.</p></b></li>'],
+    ['a second heading', '<li><h3><b>Prepare</b></h3><h3><b>Wash your hands first.</b></h3></li><li><h3><b>Apply</b></h3><ul><li>Use a thin layer.</li></ul></li>'],
+  ])('keeps heading lists with %s as lists instead of dropping the body', (_, items) => {
+    const input = `<h2>Steps</h2><ol>${items}</ol>`;
+    for (const [mode, features] of [['regular', { headingStrong: true, olHeaderConversion: true }], ['blogs', {}], ['shoppables', {}]] as const) {
+      const output = getUnformattedHtml(input, mode, features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('ol')?.textContent).toContain('Wash your hands first.');
+      expect(doc.querySelector('ol')?.textContent).toContain('Use a thin layer.');
+      expect(Array.from(doc.querySelectorAll('h3')).some(h => /^\d+\./.test(h.textContent || ''))).toBe(false);
+      expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'ol-header-conversion')?.passed).toBe(true);
+    }
+  });
+
+  it('still numbers heading lists whose items hold only blank Word paragraphs besides the heading', () => {
+    const output = convertOlHeaders('<ol><li><p>&nbsp;</p><h3><strong>First</strong></h3><br> </li><li><strong><h3>Second</h3><p></p></strong></li></ol>');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('ol')).toBeNull();
+    expect(Array.from(doc.querySelectorAll('h3')).map(h => h.textContent)).toEqual(['1. First', '2. Second']);
   });
 
   it('preserves table structure and cell emphasis without orphan formatting wrappers', () => {

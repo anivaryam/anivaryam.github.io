@@ -885,6 +885,13 @@ describe('validateOlHeaderConversion (D6 / D13)', () => {
     expect(getResult(results, 'ol-header-conversion').message).toBe('2 header list(s) should be converted but remain as <ol>');
   });
 
+  it.each([
+    '<ol><li><h3><strong>Prepare</strong></h3>Wash your hands first.</li></ol>',
+    '<ol><li><strong><h3>Prepare</h3><em>Wash your hands first.</em></strong></li></ol>',
+  ])('enabled: does not count a list whose items hold body text besides the heading: %s', (html) => {
+    expectSkipped(validateMode(html, 'blogs', defaultFeatures), 'ol-header-conversion');
+  });
+
   it('disabled: fails when numbered headings present', () => {
     const html = '<h2>1. Title</h2><p>body</p>';
     const results = validateMode(html, 'blogs', { olHeaderConversion: false });

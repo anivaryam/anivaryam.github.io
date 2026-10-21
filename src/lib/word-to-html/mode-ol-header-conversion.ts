@@ -7,8 +7,26 @@
  * - Preserves original heading levels (h1-h6) - does not normalize to a single level
  * - Numbering resets per <h2> section and stops at <h1> boundaries; adjacent header lists continue it
  * - Supports both Word-style structures: <li><strong><hX>...</hX></strong></li> and <li><hX><strong>...</strong></hX></li>
- * - Non-heading content inside list items is discarded (only headings are extracted and numbered)
+ * - An item with anything besides its heading (body text, a second heading, a nested list) makes the
+ *   list mixed; only blank Word filler (empty paragraphs, line breaks) next to the heading is discarded
  */
+
+/**
+ * Blank Word filler (whitespace, empty paragraphs, line breaks) that the
+ * conversion can drop without losing content
+ */
+function isBlankNode(node: Node): boolean {
+  if (node.nodeType === Node.COMMENT_NODE) return true;
+  if ((node.textContent || '').trim()) return false;
+  if (node.nodeType !== Node.ELEMENT_NODE) return true;
+  const element = node as Element;
+  return !element.matches('img, hr') && !element.querySelector('img, hr');
+}
+
+/** True when `container` holds nothing but `content` and blank filler */
+function holdsOnly(container: Element, content: Element): boolean {
+  return Array.from(container.childNodes).every(node => node === content || isBlankNode(node));
+}
 
 /**
  * Checks if a list item has a <strong> tag wrapping a heading (Word-style structure)
@@ -28,12 +46,8 @@ function hasStrongWrappedHeading(li: Element): boolean {
     return false;
   }
 
-  // Ensure no text nodes (only the heading element)
-  const textNodes = Array.from(strongTag.childNodes).filter(
-    node => node.nodeType === 3 && (node as Text).textContent?.trim() !== ''
-  );
-  
-  return textNodes.length === 0;
+  // Only the heading is kept, so the item must hold nothing else
+  return holdsOnly(strongTag, headingChildren[0]) && holdsOnly(li, strongTag);
 }
 
 /**
@@ -48,10 +62,11 @@ function hasDirectStrongHeading(li: Element): boolean {
   }
   
   const strongInHeading = directHeading.querySelector(':scope > strong');
-  return strongInHeading !== null;
+  return strongInHeading !== null && holdsOnly(li, directHeading);
 }
 
-function isHeaderList(olElement: Element): boolean {
+/** Shared with the validator and the UI warnings so all three flag the same lists */
+export function isHeaderList(olElement: Element): boolean {
   const listItems = olElement.querySelectorAll(':scope > li');
   
   if (listItems.length === 0) {
