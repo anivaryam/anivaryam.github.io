@@ -199,9 +199,10 @@ function convertFormattingToSemanticTags(
 /**
  * Wraps consecutive inline nodes without reordering text or enclosing structural
  * blocks or optional feature-specific boundaries. Used by Sources formatting,
- * underline cleanup, and block-copy paragraph grouping.
+ * underline cleanup, and block-copy paragraph grouping. Returns the wrappers.
  */
-export function wrapInlineContent(element: Element, tagName: string, isBoundary?: (child: Element) => boolean): void {
+export function wrapInlineContent(element: Element, tagName: string, isBoundary?: (child: Element) => boolean): Element[] {
+  const wrappers: Element[] = [];
   let wrapper: Element | null = null;
   for (const child of Array.from(element.childNodes)) {
     if (child.nodeType === Node.ELEMENT_NODE) {
@@ -216,20 +217,33 @@ export function wrapInlineContent(element: Element, tagName: string, isBoundary?
       if (child.nodeType === Node.TEXT_NODE && !child.textContent?.trim()) continue;
       wrapper = element.ownerDocument.createElement(tagName);
       element.insertBefore(wrapper, child);
+      wrappers.push(wrapper);
     }
     wrapper.appendChild(child);
   }
+  return wrappers;
+}
+
+/**
+ * Wraps the inline runs of an element and of its block descendants, so no
+ * wrapper encloses a block. Excluded elements stay outside every wrapper: runs
+ * are split around them, and elements containing them are wrapped inside.
+ * Returns the wrappers.
+ */
+function wrapInlineRuns(element: Element, tagName: string, isExcluded: (child: Element) => boolean = () => false): Element[] {
+  const containsExcluded = (child: Element) => isExcluded(child) || Array.from(child.querySelectorAll('*')).some(isExcluded);
+  const wrappers: Element[] = [];
+  for (const child of Array.from(element.children)) {
+    if (!isExcluded(child) && (containsExcluded(child) || BLOCK_ELEMENT_SET.has(child.tagName.toLowerCase()))) {
+      wrappers.push(...wrapInlineRuns(child, tagName, isExcluded));
+    }
+  }
+  return [...wrappers, ...wrapInlineContent(element, tagName, containsExcluded)];
 }
 
 /** Preserve non-link underlining when a source <u> also surrounds links. */
 function underlineNonLinkContent(element: Element): void {
-  const containsLink = (child: Element) => child.matches('a[href]') || !!child.querySelector('a[href]');
-  for (const child of Array.from(element.children)) {
-    if (!child.matches('a[href]') && (containsLink(child) || BLOCK_ELEMENT_SET.has(child.tagName.toLowerCase()))) {
-      underlineNonLinkContent(child);
-    }
-  }
-  wrapInlineContent(element, 'u', containsLink);
+  wrapInlineRuns(element, 'u', child => child.matches('a[href]'));
 }
 
 export function sanitizeHtml(html: string): string {
@@ -382,9 +396,14 @@ function sanitizeElement(element: Element): void {
       
       // Always clean descendants, including beneath styled semantic elements.
       sanitizeElement(node);
-      if (formatting && !STRUCTURAL_CHILDREN.has(tagName) && tagName !== 'blockquote') {
-        const wrapper = convertFormattingToSemanticTags(node, formatting);
-        if (wrapper) node.appendChild(wrapper);
+      if (formatting && !STRUCTURAL_CHILDREN.has(tagName)) {
+        // Format each inline run, including those in child blocks: a single
+        // wrapper would enclose blocks such as the paragraphs of a cell or quote.
+        for (const run of wrapInlineRuns(node, 'span')) {
+          const wrapper = convertFormattingToSemanticTags(run, formatting);
+          if (wrapper) run.replaceWith(wrapper);
+          else unwrapElement(run);
+        }
       }
 
       // Extract formatting before removing style/class/unsafe attributes.

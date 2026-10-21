@@ -372,6 +372,22 @@ describe('structural and formatting regressions', () => {
   });
 
   it.each([
+    ['<table><tr><td style="font-weight:bold"><p>a</p><p>b</p></td></tr></table>', 'td > p > strong', ['a', 'b']],
+    ['<table><tr><td style="font-weight:bold">a<p>b</p></td></tr></table>', 'td > strong, td > p > strong', ['a', 'b']],
+    ['<blockquote style="font-style:italic"><p>Quote</p></blockquote>', 'blockquote > p > em', ['Quote']],
+    ['<blockquote style="font-weight:bold;text-decoration:underline"><p>One</p><ul><li>Two</li></ul></blockquote>', 'blockquote > p > u > strong, blockquote li > u > strong', ['One', 'Two']],
+  ])('applies block container formatting inside each child block: %s', (input, selector, texts) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll(selector)).map(wrapper => wrapper.textContent)).toEqual(texts);
+        expect(doc.querySelector(':is(strong, em, u) :is(p, ul, ol, li, blockquote, table)')).toBeNull();
+      }
+    }
+  });
+
+  it.each([
     ['<table><caption>Table 1: Prices</caption><tr><td>a</td></tr></table>', null],
     ['<p>Intro.</p><table><caption style="font-style:italic">Table 1: <strong>Prices</strong></caption><tr><td>a</td></tr></table>', 'em'],
     ['<table><caption><p>Table 1:</p> Prices</caption><tr><td>a</td></tr></table>', null],
