@@ -477,16 +477,20 @@ describe('validateLinkSpacing (D2)', () => {
     expectPass(results, 'link-spacing');
   });
 
-  it('passes after opening punctuation', () => {
-    const html = '<p>(<a href="https://x.com">link</a>)</p>';
+  it.each([
+    '<p>(<a href="https://x.com">link</a>)</p>',
+    '<p>"<a href="https://x.com">link</a>"</p>',
+  ])('passes after opening punctuation: %s', (html) => {
     const results = validateMode(html, 'blogs', defaultFeatures);
     expectPass(results, 'link-spacing');
   });
 
-  it('passes after closing punctuation', () => {
-    const html = '<p>End.<a href="https://x.com">More</a></p>';
+  it.each([
+    '<p>End word.<a href="https://x.com">More</a></p>',
+    '<p>Note:<a href="https://x.com">More</a></p>',
+  ])('fails with no space after closing punctuation, which link spacing adds: %s', (html) => {
     const results = validateMode(html, 'blogs', defaultFeatures);
-    expectPass(results, 'link-spacing');
+    expectFail(results, 'link-spacing');
   });
 
   it('fails with no space and no punctuation', () => {

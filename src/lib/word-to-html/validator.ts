@@ -626,7 +626,6 @@ export function getLinkSpacingIssues(doc: Document): { element: Element; message
   const links = doc.querySelectorAll('a[href]');
   const issues: { element: Element; message: string }[] = [];
   const OPENING_PUNCT = /[\("'\[\{\u201C\u2018]$/;
-  const TRAILING_PUNCT = /[.,;:!?)}\]\u201D\u2019"']$/;
 
   links.forEach((link) => {
     const parent = link.parentNode;
@@ -654,10 +653,8 @@ export function getLinkSpacingIssues(doc: Document): { element: Element; message
     }
 
     const trimmedEnd = previousText.replace(/\s+$/, '');
+    /* Closing punctuation ("word.<a>", "Note:<a>") is flagged: link spacing adds the space. */
     if (OPENING_PUNCT.test(trimmedEnd)) {
-      return;
-    }
-    if (TRAILING_PUNCT.test(trimmedEnd)) {
       return;
     }
     /* A link that continues a compound or amount ("non-<a>", "$<a>") needs no space. */
@@ -690,7 +687,7 @@ function validateLinkSpacing(doc: Document, mode: OutputMode, features?: Feature
       ? `Link spacing correctly applied (${links.length} link(s) checked)`
       : `${issues.length} spacing issue(s): ${issues.join('; ')}`,
     severity: issues.length === 0 ? 'info' : 'warning',
-    expected: 'Links preceded by space (except after opening/closing punctuation, a hyphen, dash, slash or currency sign)',
+    expected: 'Links preceded by space (except after opening punctuation, a hyphen, dash, slash or currency sign)',
     actual: issues.length === 0
       ? `All ${links.length} link(s) have proper spacing`
       : `${issues.length} link(s) have spacing issues`,
