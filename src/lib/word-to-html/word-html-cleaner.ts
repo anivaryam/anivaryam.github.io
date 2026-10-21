@@ -493,21 +493,43 @@ interface WordListItem {
 // Bullets: Word's library glyphs as pasted text (Symbol ·, Courier New o,
 // Wingdings § Ø ü v) and typed ones. Numbers: decimal, alphabetic, or roman,
 // followed by `.` or `)`. Word always separates the marker with a spacer.
-const WORD_LIST_MARKER = /^\s*(?:([·•◦▪▫■□●○◆◇♦❖➢➤►✓✔o§Øüv*\-–—])|(\(?)(\d{1,4}|[a-z]+|[A-Z]+)([.)]))\s+/;
+const WORD_LIST_MARKER = /^\s*(?:([·•◦▪▫■□●○◆◇♦❖➢➤►✓✔o§Øüv*\-–—])|(\(?)(\d{1,4}|[a-z]+|[A-Z]+)([.)]))(\s+)/;
 const ROMAN_NUMERAL = /^x{0,3}(?:ix|iv|v?i{0,3})$/;
 const ROMAN_DIGITS: Record<string, number> = { i: 1, v: 5, x: 10 };
 const POINTS_PER_UNIT: Record<string, number> = { in: 72, pt: 1, px: 0.75, cm: 72 / 2.54, mm: 72 / 25.4 };
 const INDENT_TOLERANCE = 1;
 
+// List Paragraph, and the built-in List Bullet and List Number styles (with
+// their numbered levels, e.g. MsoListBullet2).
 function isWordListParagraph(paragraph: Element): boolean {
-  return Array.from(paragraph.classList).some(name => /^MsoListParagraph/.test(name)) ||
+  return Array.from(paragraph.classList).some(name => /^MsoList(?:Paragraph|Bullet|Number)/.test(name)) ||
     /mso-list\s*:\s*l\d/i.test(paragraph.getAttribute('style') || '');
 }
 
-function parseWordListMarker(text: string): Pick<WordListItem, 'markerLength' | 'markers'> | null {
-  const match = WORD_LIST_MARKER.exec(text);
+/**
+ * Word's spacer after a marker is a run of spaces, a tab, a separate
+ * whitespace-only span, or part of the marker's `mso-list:Ignore` span. A
+ * single typed space is ordinary text, as in "A. Smith wrote".
+ */
+function hasWordMarkerSpacer(block: Element, spacerStart: number, spacer: string): boolean {
+  if (spacer.length > 1 || spacer.includes('\t')) return true;
+  if (Array.from(block.querySelectorAll('span[style]')).some(span => /mso-list\s*:\s*ignore/i.test(span.getAttribute('style')!))) return true;
+  const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  let offset = 0;
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    if (offset + node.data.length > spacerStart) {
+      return offset === spacerStart && !node.data.trim() && node.parentElement !== block && node.parentElement?.tagName === 'SPAN';
+    }
+    offset += node.data.length;
+  }
+  return false;
+}
+
+function parseWordListMarker(block: Element): Pick<WordListItem, 'markerLength' | 'markers'> | null {
+  const match = WORD_LIST_MARKER.exec(block.textContent || '');
   if (!match) return null;
-  const [prefix, bullet, open, token, close] = match;
+  const [prefix, bullet, open, token, close, spacer] = match;
+  if (!hasWordMarkerSpacer(block, prefix.length - spacer.length, spacer)) return null;
   if (bullet) return { markerLength: prefix.length, markers: [{ tag: 'ul', family: bullet, value: 0 }] };
 
   const markers: WordListMarker[] = [];
@@ -539,15 +561,24 @@ function lengthInPoints(value: string): number | null {
   return amount === 0 ? 0 : match[2] in POINTS_PER_UNIT ? amount * POINTS_PER_UNIT[match[2]] : null;
 }
 
-/** Remove a text prefix that may span several nodes, with the wrappers it empties. */
-function removeLeadingText(element: Element, length: number): void {
+/**
+ * Replace a text range that may span several nodes, removing the wrappers it
+ * empties. The replacement goes into the first node of the range.
+ */
+function replaceTextRange(element: Element, start: number, end: number, replacement = ''): void {
   const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
   const emptied: Text[] = [];
-  for (let node = walker.nextNode() as Text | null; node && length > 0; node = walker.nextNode() as Text | null) {
-    const removed = Math.min(length, node.data.length);
-    node.data = node.data.slice(removed);
-    length -= removed;
-    if (!node.data) emptied.push(node);
+  let offset = 0;
+  for (let node = walker.nextNode() as Text | null; node && offset < end; node = walker.nextNode() as Text | null) {
+    const length = node.data.length;
+    const from = Math.max(start - offset, 0);
+    const to = Math.min(end - offset, length);
+    if (from < to) {
+      node.data = node.data.slice(0, from) + replacement + node.data.slice(to);
+      replacement = '';
+      if (!node.data) emptied.push(node);
+    }
+    offset += length;
   }
   for (const node of emptied) {
     let parent = node.parentElement;
@@ -562,12 +593,15 @@ function removeLeadingText(element: Element, length: number): void {
 
 /**
  * Build the lists for one run of consecutive Word list paragraphs. Levels come
- * from left margins when every item kept one. Otherwise a new marker family
- * nests only if an enclosing list resumes after it, or if it was nested earlier
- * in the run; else it starts a new list at the same level.
+ * from left margins when any item kept one: an item without one sits at its
+ * paragraph style's indent, the base level, because the prepareWordSource
+ * snapshot keeps only the margins Word writes inline for deeper levels.
+ * Otherwise a new marker family nests only if an enclosing list resumes after
+ * it, or if it was nested earlier in the run; else it starts a new list at the
+ * same level.
  */
 function buildWordLists(items: WordListItem[]): void {
-  const byIndent = items.every(item => item.indent !== null);
+  const byIndent = items.some(item => item.indent !== null);
   const open: { list: HTMLElement; family: string; last: number; indent: number }[] = [];
   const familyDepths = new Map<string, number>();
 
@@ -575,11 +609,12 @@ function buildWordLists(items: WordListItem[]): void {
     const marker = item.markers.find(candidate =>
       open.some(level => level.family === candidate.family && level.last + 1 === candidate.value)
     ) || item.markers[0];
+    const indent = item.indent ?? 0;
     let depth: number;
     if (byIndent) {
       depth = open.length - 1;
-      while (depth > 0 && open[depth].indent > item.indent! + INDENT_TOLERANCE) depth--;
-      if (depth >= 0 && item.indent! > open[depth].indent + INDENT_TOLERANCE) depth++;
+      while (depth > 0 && open[depth].indent > indent + INDENT_TOLERANCE) depth--;
+      if (depth >= 0 && indent > open[depth].indent + INDENT_TOLERANCE) depth++;
       depth = Math.max(depth, 0);
     } else {
       depth = open.map(level => level.family).lastIndexOf(marker.family);
@@ -600,16 +635,19 @@ function buildWordLists(items: WordListItem[]): void {
     if (!level || level.family !== marker.family || (marker.tag === 'ol' && marker.value !== level.last + 1)) {
       const list = doc.createElement(marker.tag);
       if (marker.tag === 'ol' && marker.value !== 1) list.setAttribute('start', String(marker.value));
+      // The numbering type is the family without its punctuation: a, A, i or I.
+      const type = marker.family.replace(/[().]/g, '');
+      if (marker.tag === 'ol' && type !== '1') list.setAttribute('type', type);
       if (level) level.list.after(list);
       else if (depth === 0) item.paragraph.before(list);
       else open[depth - 1].list.lastElementChild!.append(list);
-      level = open[depth] = { list, family: marker.family, last: 0, indent: item.indent ?? 0 };
+      level = open[depth] = { list, family: marker.family, last: 0, indent };
     }
     level.last = marker.value;
 
     const listItem = doc.createElement('li');
     for (const attr of Array.from(item.paragraph.attributes)) listItem.setAttribute(attr.name, attr.value);
-    removeLeadingText(item.paragraph, item.markerLength);
+    replaceTextRange(item.paragraph, 0, item.markerLength);
     listItem.append(...Array.from(item.paragraph.childNodes));
     item.paragraph.remove();
     level.list.append(listItem);
@@ -626,7 +664,7 @@ function convertWordListParagraphs(root: HTMLElement): void {
   let run: WordListItem[] = [];
   for (const paragraph of Array.from(root.querySelectorAll<HTMLElement>('p'))) {
     if (!isWordListParagraph(paragraph) || paragraph.closest('li')) continue;
-    const marker = parseWordListMarker(paragraph.textContent || '');
+    const marker = parseWordListMarker(paragraph);
     if (!marker) continue;
     const previous = run[run.length - 1];
     if (previous && (paragraph.classList.contains('MsoListParagraphCxSpFirst') || nextNonSpacingElement(previous.paragraph) !== paragraph)) {
@@ -636,6 +674,20 @@ function convertWordListParagraphs(root: HTMLElement): void {
     run.push({ paragraph, ...marker, indent: lengthInPoints(paragraph.style.marginLeft) });
   }
   if (run.length) buildWordLists(run);
+}
+
+/**
+ * Word numbered headings stay headings, but paste keeps their marker and its
+ * spacer as text. Keep the number with a single space after it.
+ */
+function normalizeWordHeadingNumbers(root: HTMLElement): void {
+  for (const heading of Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'))) {
+    if (heading.closest('li')) continue;
+    const marker = parseWordListMarker(heading);
+    if (marker?.markers[0].tag !== 'ol') continue;
+    const prefix = (heading.textContent || '').slice(0, marker.markerLength);
+    replaceTextRange(heading, prefix.trimEnd().length, marker.markerLength, ' ');
+  }
 }
 
 export function cleanWordHtml(html: string): string {
@@ -648,6 +700,7 @@ export function cleanWordHtml(html: string): string {
   // Before cleanup drops the classes, and before title detection looks for a
   // Key Takeaways list.
   convertWordListParagraphs(tempDiv);
+  normalizeWordHeadingNumbers(tempDiv);
   prepareWordSource(tempDiv);
   // Style cleanup drops `font-style: normal`; resolve the overrides it marks first.
   splitEmphasisOverrides(tempDiv);

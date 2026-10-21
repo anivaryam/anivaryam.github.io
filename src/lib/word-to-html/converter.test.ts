@@ -93,6 +93,22 @@ describe('formatted-output content parity', () => {
   });
 
   it.each([
+    '<p>Take 10&nbsp;kg <b>daily&nbsp;</b>now</p>',
+    '<ul><li>a</li><li>&nbsp;</li></ul>',
+    '<table><tr><td>&nbsp;</td><td>a&nbsp;b</td></tr></table>',
+    '<p>x</p><h2>&nbsp;</h2><p>y</p>',
+    '<p>First.</p><p>Second.</p><h2>Section</h2><p>Body.</p>',
+  ])('writes every non-breaking space of the preview as &nbsp; in the formatted output: %s', (input) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      const count = (html: string) => html.split('&nbsp;').length - 1;
+      expect(output.formatted).not.toContain('\u00A0');
+      expect(count(output.formatted)).toBe(count(output.unformatted));
+      expect(output.formatted).not.toMatch(/(&nbsp;|\s)+\n\s*<\//);
+    }
+  });
+
+  it.each([
     '<ol><li>a</li><li></li><li>c</li></ol>',
     '<ul><li>a</li><li><strong></strong></li><li>c</li></ul>',
     '<ol><li>a<ul><li></li></ul></li></ol>',
@@ -241,6 +257,53 @@ describe('article titles after Key Takeaways', () => {
     expect(validateMode(output, 'blogs', {}).summary.failed).toBe(0);
   });
 
+  describe('through Word Online layout wrappers', () => {
+    // Word Online wraps every block in a div, and every list item in its own list.
+    const textRun = (text: string, size: string) => `<span class="TextRun"><span class="NormalTextRun" style="font-size:${size}">${text}</span></span>`;
+    const outline = (block: string) => `<div class="OutlineElement Ltr SCXW1 BCX0">${block}</div>`;
+    const listItem = (text: string) => `<div class="ListContainerWrapper SCXW1 BCX0"><ul role="list"><li role="listitem"><p class="Paragraph">${text}</p></li></ul></div>`;
+    const paragraph = (text: string, size = '12pt') => outline(`<p class="Paragraph">${textRun(text, size)}</p>`);
+    const section = outline(`<h2 class="Paragraph">${textRun('Key Takeaways', '16pt')}</h2>`) + listItem('Point one.') + listItem('Point two.');
+
+    it.each([
+      ['an enlarged title', paragraph(title, '28pt')],
+      ['a Title style', outline(`<p class="MsoTitle">${title}</p>`)],
+    ])('removes %s', (_variant, heading) => {
+      const input = section + heading + paragraph('Intro paragraph one.') + paragraph('Intro paragraph two.');
+      const output = getUnformattedHtml(input, 'blogs');
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.body.textContent).not.toContain(title);
+      expect(Array.from(doc.querySelectorAll('ul > li')).map(li => li.textContent)).toEqual(['Point one.', 'Point two.']);
+      expect(doc.body.textContent).toContain('Intro paragraph two.');
+      expect(validateMode(output, 'blogs', {}).summary.failed).toBe(0);
+      const kept = getUnformattedHtml(input, 'blogs', { h1Removal: false });
+      expect(new DOMParser().parseFromString(kept, 'text/html').querySelector('h1')?.textContent).toBe(title);
+    });
+
+    it('does not search beyond the first wrapped content block', () => {
+      const input = section + paragraph('Ordinary content.') + paragraph(title, '28pt') + paragraph('Intro paragraph.');
+      expect(getUnformattedHtml(input, 'blogs')).toContain(title);
+    });
+  });
+
+  it.each<[OutputMode, { spacing?: boolean; keyTakeaways?: boolean; h1Removal?: boolean }]>([
+    ['blogs', { spacing: false }],
+    ['regular', { keyTakeaways: true, h1Removal: true }],
+  ])('does not merge the list after a removed title into the Takeaways list in %s %o', (mode, features) => {
+    // A Takeaways list pasted as one <ul> per item (Word Online) still merges.
+    for (const [list, heading] of [
+      ['<ul><li>One</li><li>Two</li></ul>', `<p class="MsoTitle">${title}</p>`],
+      ['<ul><li>One</li></ul><ul><li>Two</li></ul>', `<h1>${title}</h1>`],
+    ]) {
+      const output = getUnformattedHtml(`<h2>Key Takeaways</h2>${list}${heading}<ul><li>Body <i>item</i></li></ul>${intro}`, mode, features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.body.textContent).not.toContain(title);
+      expect(Array.from(doc.querySelectorAll('ul')).map(ul => Array.from(ul.children).map(li => li.textContent))).toEqual([['One', 'Two'], ['Body item']]);
+      expect(doc.querySelectorAll('ul')[1].querySelector('em')?.textContent).toBe('item');
+      expect(validateMode(output, mode, features).summary.failed).toBe(0);
+    }
+  });
+
   it('honors explicit removal in Regular/Blogs and works independently of Takeaways formatting', () => {
     for (const mode of ['regular', 'blogs'] as const) {
       const features = { h1Removal: true, keyTakeaways: false };
@@ -326,9 +389,158 @@ describe('structural and formatting regressions', () => {
     expect(doc.querySelector('li strong')?.textContent).toBe('Label:');
   });
 
+  // Word puts the list marker's formatting on the <li>: its bold stays
+  // ignored (list-label bolding handles labels), but italic and sup/sub apply.
+  it.each([
+    ['font-style:italic', 'em'],
+    ['font-weight:bold;font-style:italic', 'em'],
+    ['vertical-align:super', 'sup'],
+    ['vertical-align:sub', 'sub'],
+    ['font-weight:bold', null],
+  ])('keeps italic and superscript/subscript set on a list item, but not bold: %s', (style, tag) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(`<ul><li style="${style}">Styled item</li><li>Plain item</li></ul>`), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const items = Array.from(new DOMParser().parseFromString(html, 'text/html').querySelectorAll('li'));
+        expect(items.map(li => li.textContent?.trim())).toEqual(['Styled item', 'Plain item']);
+        expect(items.map(li => li.innerHTML.trim())).toEqual([tag ? `<${tag}>Styled item</${tag}>` : 'Styled item', 'Plain item']);
+      }
+      const results = validateMode(output.unformatted, mode, {}).results;
+      expect(results.filter(r => r.ruleId === 'sanitized-structure' || r.ruleId === 'list-normalization').every(r => r.passed)).toBe(true);
+    }
+  });
+
+  it('removes the restored list item italic from Key Takeaways in Blogs', () => {
+    const output = getUnformattedHtml('<h2>Key Takeaways</h2><ul><li style="font-style:italic">Act fast.</li></ul><p>Intro.</p>', 'blogs');
+    expect(output).toContain('<li>Act fast.</li>');
+  });
+
+  it('keeps a nested list outside the italic of its parent list item', () => {
+    const input = '<ul><li style="font-style:italic">Parent<ul><li>Child</li></ul></li><li style="font-style:italic">Next <span style="font-style:normal">plain</span><ol><li>Nested</li></ol></li></ul>';
+    for (const html of [sanitizeHtml(input), ...['regular', 'blogs', 'shoppables'].map(mode => getUnformattedHtml(input, mode as OutputMode))]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(Array.from(doc.querySelectorAll('em')).map(em => em.textContent?.trim())).toEqual(['Parent', 'Next']);
+      expect(doc.querySelector('ul > li > ul > li')?.textContent).toBe('Child');
+      expect(doc.querySelector('ul > li > ol > li')?.textContent).toBe('Nested');
+      expect(doc.querySelector(':is(em, i) :is(ul, ol, li)')).toBeNull();
+    }
+  });
+
+  it.each([
+    ['<li style="font-style:italic">Book <span style="font-style:normal">Title</span> here</li>', ['Book', 'here']],
+    ['<li style="font-style:italic"><span style="font-style:normal">Upright</span> then italic</li>', ['then italic']],
+    ['<li style="font-style:italic"><em>Italic</em> item</li>', ['Italic item']],
+    ['<li style="font-style:italic"><i>Italic item</i></li>', ['Italic item']],
+    ['<li style="font-style:italic"><b>Label:</b> <i>text</i></li>', ['Label: text']],
+  ])('keeps inside-out emphasis in an italic list item without double wrapping: %s', (item, em) => {
+    const input = `<ol>${item}</ol>`;
+    for (const html of [sanitizeHtml(input), ...['regular', 'blogs', 'shoppables'].map(mode => getUnformattedHtml(input, mode as OutputMode))]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(Array.from(doc.querySelectorAll('em')).map(wrapper => wrapper.textContent?.trim())).toEqual(em);
+      expect(doc.querySelector('em em, i')).toBeNull();
+    }
+  });
+
+  it('italicizes a Sources item with list item italic exactly once', () => {
+    for (const mode of ['blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml('<p>Sources:</p><ol><li style="font-style:italic">Study <em>by</em> Author</li></ol>', mode);
+      expect(output).toContain('<li style="font-style: italic"><em>Study by Author</em></li>');
+      const results = validateMode(output, mode, {}).results;
+      expect(results.filter(r => ['sanitized-structure', 'sources-normalization', 'sources-italic'].includes(r.ruleId)).every(r => r.passed)).toBe(true);
+    }
+  });
+
+  it.each([
+    '<b>Tip: </b>Try the <i>blue</i> one',
+    '<b>Tip:</b>Try the <i>blue</i> one',
+    '<b>Tip:</b>&nbsp;Try the <i>blue</i> one',
+    '<b>Tip:</b>  Try the <i>blue</i> one',
+  ])('keeps the space before inline formatting after a list label: %s', (item) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(`<ul><li>${item}</li></ul>`), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const li = new DOMParser().parseFromString(html, 'text/html').querySelector('li');
+        expect(li?.textContent).toBe('Tip: Try the blue one');
+        expect(li?.querySelector('strong')?.textContent).toBe('Tip:');
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'list-normalization')?.passed).toBe(true);
+    }
+    const takeaways = getUnformattedHtml(`<h2>Key Takeaways</h2><ul><li>${item.replace('blue', 'fresh')}</li></ul><p>Intro.</p>`, 'blogs');
+    expect(new DOMParser().parseFromString(takeaways, 'text/html').querySelector('li')?.textContent).toBe('Tip: Try the fresh one');
+  });
+
+  it.each(['ol', 'ul'])('bolds unbolded <%s> item labels in Blogs and Shoppables only, outside Sources', (tag) => {
+    const input = `<h2>Key Takeaways</h2><ul><li>Act fast: blot the stain.</li></ul><p>Intro.</p>` +
+      `<${tag}><li>Tip: try the <i>blue</i> one</li><li><i>Note: keep it dry</i></li><li><b>Done:</b> already bold</li></${tag}>` +
+      '<p><b>Sources:</b></p><ol><li>Smith J: Cleaning Science</li></ol>';
+    for (const [mode, labels] of [
+      ['blogs', ['Act fast:', 'Tip:', 'Note:', 'Done:', undefined]],
+      ['shoppables', ['Act fast:', 'Tip:', 'Note:', 'Done:', undefined]],
+      ['regular', [undefined, undefined, undefined, 'Done:', undefined]],
+    ] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const items = Array.from(new DOMParser().parseFromString(html, 'text/html').querySelectorAll('li'));
+        expect(items.map(li => li.querySelector('strong')?.textContent)).toEqual(labels);
+        expect(items.map(li => li.textContent?.trim())).toEqual(['Act fast: blot the stain.', 'Tip: try the blue one', 'Note: keep it dry', 'Done: already bold', 'Smith J: Cleaning Science']);
+      }
+      if (mode !== 'regular') expect(output.unformatted).toContain('<li><em><strong>Note:</strong> keep it dry</em></li>');
+      const results = validateMode(output.unformatted, mode, {}).results;
+      expect(results.filter(r => r.ruleId === 'ol-bold-labels' || r.ruleId === 'list-normalization').every(r => r.passed)).toBe(true);
+    }
+  });
+
+  it.each([
+    '<strong>Tip</strong>: Try the <i>blue</i> one',
+    '<b>Tip</b> : Try the <i>blue</i> one',
+    '<b>Tip </b>: Try the <i>blue</i> one',
+  ])('moves the colon after a bold list label inside the bold in Blogs and Shoppables: %s', (item) => {
+    for (const tag of ['ol', 'ul']) {
+      for (const mode of ['blogs', 'shoppables'] as const) {
+        const output = getUnformattedHtml(`<${tag}><li>${item}</li></${tag}>`, mode);
+        expect(output).toBe(`<${tag}><li><strong>Tip:</strong> Try the <em>blue</em> one</li></${tag}>`);
+        const results = validateMode(output, mode, {}).results;
+        expect(results.filter(r => r.ruleId === 'ol-bold-labels' || r.ruleId === 'list-normalization').every(r => r.passed)).toBe(true);
+      }
+      const regular = getUnformattedHtml(`<${tag}><li>${item}</li></${tag}>`, 'regular');
+      expect(new DOMParser().parseFromString(regular, 'text/html').querySelector('strong')?.textContent?.trim()).toBe('Tip');
+    }
+  });
+
+  it.each([
+    'Meet at 9:30 am',
+    'Mix a 1:2 ratio',
+    'Visit https://example.com today',
+    'Rinse well. Then: dry it',
+    '<em>Pro</em> tip: rinse',
+    '<b>Done:</b> already bold',
+  ])('leaves an item without an unbolded label in its first text run as it is: %s', (item) => {
+    const listItem = (mode: OutputMode) => new DOMParser().parseFromString(getUnformattedHtml(`<ul><li>${item}</li></ul>`, mode), 'text/html').querySelector('li')?.innerHTML;
+    for (const mode of ['blogs', 'shoppables'] as const) expect(listItem(mode)).toBe(listItem('regular'));
+  });
+
   it('does not discard content when merging a pre-existing malformed list', () => {
     const output = normalizeLists('<ul><li>First</li></ul><ul><strong><li>Second</li></strong></ul>');
     expect(new DOMParser().parseFromString(output, 'text/html').body.textContent).toBe('FirstSecond');
+  });
+
+  it.each([
+    ['<ul><li>Parent</li><ul><li>Child</li></ul><li>Next</li></ul>', ['Parent', 'Next']],
+    ['<ol><li>Parent</li><ol><li>Child</li></ol><li>Next</li></ol>', ['Parent', 'Next']],
+    ['<ul><li dir="ltr"><p dir="ltr"><span>Parent</span></p></li><ul><li dir="ltr"><p dir="ltr"><span>Child</span></p></li></ul></ul>', ['Parent']],
+    ['<ul><ul><li>Child</li></ul><li>Next</li></ul>', ['', 'Next']],
+  ])('moves a sub-list placed directly in its parent list into an item: %s', (input, items) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const list = new DOMParser().parseFromString(html, 'text/html').body.firstElementChild!;
+        expect(Array.from(list.children).map(li => li.tagName)).toEqual(items.map(() => 'LI'));
+        expect(Array.from(list.children).map(li => Array.from(li.childNodes)
+          .filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent?.trim()).join(''))).toEqual(items);
+        expect(list.querySelector(':scope > li > :is(ul, ol) > li')?.textContent?.trim()).toBe('Child');
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
+    }
   });
 
   it('converts styled heading lists to numbered headings', () => {
@@ -350,6 +562,24 @@ describe('structural and formatting regressions', () => {
       expect(doc.querySelector('ol')).toBeNull();
       expect(Array.from(doc.querySelectorAll('h3')).map(h => h.textContent)).toEqual(titles.map((title, i) => `${i + 1}. ${title}`));
       expect(validateMode(output, mode, features).results.find(r => r.ruleId === 'ol-header-conversion')?.passed).toBe(true);
+    }
+  });
+
+  it.each<[OutputMode, { headingStrong?: boolean; olHeaderConversion?: boolean }, string[]]>([
+    ['regular', { olHeaderConversion: true }, ['1. Alpha', '2. Beta']],
+    ['blogs', { headingStrong: false }, ['1. Alpha', '2. Beta']],
+    ['shoppables', { headingStrong: false }, ['1. Alpha', '2. Beta']],
+    ['regular', { headingStrong: true, olHeaderConversion: true }, ['<strong>1. Alpha</strong>', '<strong>2. Beta</strong>']],
+    ['blogs', {}, ['<strong>1. Alpha</strong>', '<strong>2. Beta</strong>']],
+  ])('numbers heading lists in %s %o whether or not Heading Strong adds bold', (mode, features, headings) => {
+    for (const item of ['<h3><b>$</b></h3>', '<h3>$</h3>']) {
+      const items = ['Alpha', 'Beta'].map(title => `<li>${item.replace('$', title)}</li>`).join('');
+      const output = getUnformattedHtml(`<h2>Steps</h2><ol>${items}</ol><p>After.</p>`, mode, features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('ol')).toBeNull();
+      expect(Array.from(doc.querySelectorAll('h3')).map(h => h.innerHTML)).toEqual(headings);
+      const results = validateMode(output, mode, features).results;
+      expect(results.filter(r => r.ruleId === 'ol-header-conversion' || r.ruleId === 'heading-strong').every(r => r.passed)).toBe(true);
     }
   });
 
@@ -580,6 +810,34 @@ describe('Word desktop list paragraphs', () => {
     }
   });
 
+  it.each([
+    ['MsoListBullet', '<span style="font-family: Symbol;">·</span>', '<span style="font-family: Symbol;">·</span>', 'ul'],
+    ['MsoListNumber', '1.', '2.', 'ol'],
+    ['MsoListBullet2', 'o', 'o', 'ul'],
+  ])('turns Word %s style paragraphs into lists', (cls, first, second, tag) => {
+    const style = 'margin: 0in 0in 0in 0.25in; text-indent: -0.25in;';
+    const input = `<p class="${cls}" style="${style}">${first}${spacer(7)}First</p><p class="${cls}" style="${style}">${second}${spacer(7)}Second</p>` +
+      `<p class="${cls}" style="${style}">A. Smith, without a spacer</p>`;
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual([`${tag}: First | Second`, 'p: A. Smith, without a spacer']);
+      }
+    }
+  });
+
+  it('keeps a Word numbered heading with its number and a single space', () => {
+    const style = 'margin-left: .25in; text-indent: -.25in;';
+    const input = `<h2>Steps</h2><h3 style="${style}"><span>1.${spacer(5)}</span>Vacuum the seat</h3><p class="MsoNormal">Body one.</p>` +
+      `<h3 style="${style}">2.${spacer(5)}Spray the cleaner</h3><h3>3. Typed number</h3>`;
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['h2: Steps', 'h3: 1. Vacuum the seat', 'p: Body one.', 'h3: 2. Spray the cleaner', 'h3: 3. Typed number']);
+      }
+    }
+  });
+
   it('keeps the inline formatting and links of bulleted items', () => {
     const input = item('CxSpFirst', '·', 'See <a href="https://example.com/guide">the guide</a> now') +
       item('CxSpLast', '<span style="font-family: Symbol;">·</span>', '<b>Bold</b> lead');
@@ -595,16 +853,20 @@ describe('Word desktop list paragraphs', () => {
   });
 
   it.each([
-    ['3.', '4.', '3'],
-    ['c)', 'd)', '3'],
-    ['iv.', 'v.', '4'],
-  ])('starts an ordered list at the Word number %s', (first, second, start) => {
+    ['3.', '4.', '3', null],
+    ['c)', 'd)', '3', 'a'],
+    ['C.', 'D.', '3', 'A'],
+    ['iv.', 'v.', '4', 'i'],
+    ['(IV)', '(V)', '4', 'I'],
+  ])('starts an ordered list at the Word number %s with its numbering type', (first, second, start, type) => {
     const input = item('CxSpFirst', first, 'One') + item('CxSpLast', second, 'Two');
     for (const mode of modes) {
       const output = convertToHtml(cleanWordHtml(input), mode);
       for (const html of [output.formatted, output.unformatted]) {
         expect(blocks(html)).toEqual([`ol[${start}]: One | Two`]);
+        expect(new DOMParser().parseFromString(html, 'text/html').querySelector('ol')?.getAttribute('type')).toBe(type);
       }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
     }
   });
 
@@ -615,6 +877,37 @@ describe('Word desktop list paragraphs', () => {
       const output = convertToHtml(cleanWordHtml(input), mode);
       for (const html of [output.formatted, output.unformatted]) {
         expect(blocks(html)).toEqual(['p: 1.    Not a list', 'p: · Plain bullet text', 'p: Indented note without a marker']);
+      }
+    }
+  });
+
+  it.each([
+    'A. Smith wrote the study.',
+    'J. K. Rowling wrote the series.',
+    '<b>A.</b> Smith wrote the study.',
+    'iv. Typed with one space',
+  ])('keeps a list paragraph without Word\'s marker spacer as a paragraph: %s', (body) => {
+    const input = `<p class="MsoListParagraph" style="margin-left:.5in">${body}</p>`;
+    const text = new DOMParser().parseFromString(body, 'text/html').body.textContent;
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual([`p: ${text}`]);
+      }
+    }
+  });
+
+  it.each([
+    ['a tab', '1.<span style="mso-tab-count:1">\t</span>'],
+    ['a separate spacer span', '1.<span style="font:7.0pt &quot;Times New Roman&quot;">&nbsp;</span>'],
+    ['the mso-list:Ignore span', '<span style="mso-list:Ignore">1. </span>'],
+  ])('recognizes Word\'s marker spacer as %s', (_form, marker) => {
+    const input = `<p class="MsoListParagraphCxSpFirst" style="margin-left:.5in">${marker}First</p>` +
+      `<p class="MsoListParagraphCxSpLast" style="margin-left:.5in">${marker.replace('1.', '2.')}Second</p>`;
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['ol: First | Second']);
       }
     }
   });
@@ -646,6 +939,25 @@ describe('Word desktop list paragraphs', () => {
         expect(Array.from(doc.querySelectorAll('body > ol > li > ol')).map(ol => Array.from(ol.children).map(li => li.textContent)))
           .toEqual([['Sub one', 'Sub two'], ['Last sub']]);
         expect(doc.querySelectorAll('body > ol')).toHaveLength(1);
+      }
+    }
+  });
+
+  it('nests a sub-list when only the deeper items kept an inline margin', () => {
+    // The prepareWordSource snapshot drops the class margin of level 1, but
+    // Word writes deeper levels inline. The sub-list also ends the run.
+    const nested = 'margin-left: 1in; text-indent: -0.25in;';
+    const input = '<h2>Key Takeaways</h2>' + item('CxSpFirst', '1.', 'Prepare the seat', 'text-indent: -0.25in;') +
+      item('CxSpMiddle', 'a.', 'Vacuum it', nested) + item('CxSpLast', 'b.', 'Test a spot', nested) +
+      '<p class="MsoTitle">How to Clean Car Seats</p><p class="MsoNormal">Intro paragraph.</p>';
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('body > ol > li')).map(li => li.firstChild?.textContent?.trim())).toEqual(['Prepare the seat']);
+        expect(Array.from(doc.querySelectorAll('body > ol > li > ol > li')).map(li => li.textContent)).toEqual(['Vacuum it', 'Test a spot']);
+        expect(doc.querySelectorAll('body > ol')).toHaveLength(1);
+        expect(doc.body.textContent?.includes('How to Clean Car Seats')).toBe(mode !== 'blogs');
       }
     }
   });
@@ -864,6 +1176,11 @@ describe('spacing within formatted links', () => {
     ['<p>All <a href="https://example.com/fda">FDA</a>s agree.</p>', 'All FDAs agree.'],
     ['<p>See <a href="https://example.com/a">our article </a>today.</p>', 'See our article today.'],
     ['<p><span>See </span><a href="https://example.com/a"><span style="color:blue">our article </span></a><span>today.</span></p>', 'See our article today.'],
+    ['<p>Use a non-<a href="https://example.com/t">toxic</a> cleaner for $<a href="https://example.com/p">29.99</a>.</p>', 'Use a non-toxic cleaner for $29.99.'],
+    ['<p>Shop e-<a href="https://example.com/b">Bay</a> and/<a href="https://example.com/o">or</a> pages 10–<a href="https://example.com/n">12</a>.</p>', 'Shop e-Bay and/or pages 10–12.'],
+    ['<p>Visit e<a href="https://example.com/b">Bay</a> today.</p>', 'Visit e Bay today.'],
+    ['<p>End word.<a href="https://example.com/m">More</a> here.</p>', 'End word. More here.'],
+    ['<p>Note:<a href="https://example.com/n">details</a> here.</p>', 'Note: details here.'],
   ])('keeps the source word boundaries around a link: %s', (input, text) => {
     for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
       const output = convertToHtml(cleanWordHtml(input), mode);
@@ -871,6 +1188,27 @@ describe('spacing within formatted links', () => {
         expect(new DOMParser().parseFromString(html, 'text/html').body.textContent).toBe(text);
       }
       expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'link-spacing')?.passed).toBe(true);
+    }
+  });
+
+  it.each([
+    ['<p><b>Bold </b>after.</p>', 'Bold after.', '<strong>Bold</strong> after.'],
+    ['<p><i>x </i>y</p>', 'x y', '<em>x</em> y'],
+    ['<p><u><b>x </b></u>y</p>', 'x y', '<u><strong>x</strong></u> y'],
+    ['<p>before<b> bold</b></p>', 'before bold', 'before <strong>bold</strong>'],
+    ['<p><strong><a href="https://example.com/a">x </a></strong>today</p>', 'x today', '</a></strong> today'],
+    ['<p>a<b> </b>b</p>', 'a b', '<p>a b</p>'],
+    ['<p>Text <b>Bold </b></p>', 'Text Bold', '<p>Text <strong>Bold</strong></p>'],
+    ['<h2><b><i>Heading </i></b></h2>', 'Heading', 'Heading</'],
+    ['<ul><li><b>Label: </b>value</li></ul>', 'Label: value', '<strong>Label:</strong> value'],
+  ])('moves edge spaces of inline formatting outside without joining words: %s', (input, text, snippet) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(new DOMParser().parseFromString(html, 'text/html').body.textContent?.replace(/\s*\n\s*/g, '')).toBe(text);
+        expect(html).toContain(snippet);
+        expect(html).not.toMatch(/\s<\/(strong|em|u|a)>|<(strong|em|u)>\s/);
+      }
     }
   });
 
@@ -963,11 +1301,56 @@ describe('Word-to-HTML pipeline regressions', () => {
   });
 
   it.each([
+    ['a', 'a'], ['A', 'A'], ['i', 'i'], ['I', 'I'], ['1', null],
+    ['b', null], ['disc', null], ['lower-alpha', null], ['', null], ['aa', null],
+  ])('keeps only a valid numbering type on <ol type="%s">', (value, expected) => {
+    const ol = new DOMParser().parseFromString(sanitizeHtml(`<ol type="${value}"><li>x</li></ol>`), 'text/html').querySelector('ol');
+    expect(ol?.textContent).toBe('x');
+    expect(ol?.getAttribute('type')).toBe(expected);
+  });
+
+  it.each([
+    ['<ol style="list-style-type:lower-alpha"><li>x</li></ol>', 'a'],
+    ['<ol style="list-style-type: upper-roman"><li>x</li></ol>', 'I'],
+    // Google Docs sets the type on every item.
+    ['<ol><li style="list-style-type:upper-alpha">x</li><li style="list-style-type:upper-alpha">y</li></ol>', 'A'],
+    ['<ol style="list-style-type:lower-alpha"><li style="list-style-type:lower-roman">x</li></ol>', 'i'],
+    ['<ol type="a" style="list-style-type:decimal"><li>x</li></ol>', null],
+    ['<ol style="list-style-type:disc"><li>x</li></ol>', null],
+  ])('maps CSS list numbering to the <ol> type: %s', (input, expected) => {
+    for (const html of [sanitizeHtml(input), getUnformattedHtml(input)]) {
+      expect(new DOMParser().parseFromString(html, 'text/html').querySelector('ol')?.getAttribute('type')).toBe(expected);
+    }
+  });
+
+  it.each([
     ['<ul start="2" reversed><li>x</li></ul>', '<ul><li>x</li></ul>'],
     ['<ol><li start="2" reversed>x</li></ol>', '<ol><li>x</li></ol>'],
     ['<p start="2" reversed>x</p>', '<p>x</p>'],
+    ['<ul type="a"><li type="a">x</li></ul>', '<ul><li>x</li></ul>'],
   ])('removes list numbering attributes outside <ol>: %s', (input, expected) => {
     expect(sanitizeHtml(input)).toBe(expected);
+  });
+
+  it.each([
+    ['<p role="heading" aria-level="2">Steps</p>', '<h2>Steps</h2>'],
+    ['<div role="heading" aria-level="3"><span style="font-weight:bold">Bold</span> part</div>', '<h3><strong>Bold</strong> part</h3>'],
+    ['<p role="heading" aria-level="1" style="font-style:italic">Title</p>', '<h1><em>Title</em></h1>'],
+    ['<p role="heading" aria-level="7">Body</p>', '<p>Body</p>'],
+    ['<p role="heading" aria-level="two">Body</p>', '<p>Body</p>'],
+    ['<p role="heading">Body</p>', '<p>Body</p>'],
+    ['<p role="presentation" aria-level="2">Body</p>', '<p>Body</p>'],
+    ['<div role="heading" aria-level="2"><p>One</p><p>Two</p></div>', '<p>One</p><p>Two</p>'],
+  ])('maps an ARIA heading paragraph to its heading level: %s', (input, expected) => {
+    expect(sanitizeHtml(input)).toBe(expected);
+  });
+
+  it('formats an ARIA heading paragraph as a heading in mode output', () => {
+    const input = '<p role="heading" aria-level="2">Key Takeaways</p><ul><li>Point</li></ul><p role="heading" aria-level="3">Details</p><p>Body.</p>';
+    const output = getUnformattedHtml(input, 'blogs');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(Array.from(doc.querySelectorAll('h2, h3')).map(h => `${h.tagName}: ${h.textContent}`)).toEqual(['H2: Key Takeaways:', 'H3: Details']);
+    expect(validateMode(output, 'blogs', {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
   });
 
   it.each([
@@ -1104,6 +1487,40 @@ describe('Sources content preservation', () => {
     expect(validateMode(output, 'shoppables', {}).summary.failed).toBe(0);
   });
 
+  it.each(['blogs', 'shoppables'] as const)('normalizes every item of a Word Online Sources list split into one <ol> per item in %s', (mode) => {
+    const item = (n: number, href: string, text: string) => `<div class="ListContainerWrapper"><ol start="${n}" role="list"><li role="listitem" data-aria-posinset="${n}" data-aria-level="1"><p class="Paragraph"><a href="${href}" class="Hyperlink"><span style="color:#0563c1;text-decoration:underline">${text}</span></a></p></li></ol></div>`;
+    const input = '<div class="OutlineElement"><p class="Paragraph"><span style="font-weight:bold">Sources:</span></p></div>' +
+      item(1, 'https://nih.gov/a', 'NIH: article') + item(2, 'https://cdc.gov/b', 'CDC: page') + item(3, 'https://who.int/c', 'WHO report');
+    const output = convertToHtml(cleanWordHtml(input), mode);
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const items = Array.from(doc.querySelectorAll('ol > li'));
+      expect(doc.querySelectorAll('ol')).toHaveLength(1);
+      expect(items.map(li => li.textContent?.trim())).toEqual(['NIH: article', 'CDC: page', 'WHO report']);
+      expect(doc.querySelector('a')).toBeNull();
+      expect(items.every(li => li.getAttribute('style') === 'font-style: italic' && li.querySelector(':scope > em')?.textContent?.trim() === li.textContent?.trim())).toBe(true);
+    }
+    const results = validateMode(output.unformatted, mode, {});
+    expect(results.results.find(r => r.ruleId === 'ol-bold-labels')?.passed).toBe(true);
+    expect(results.summary.failed).toBe(0);
+  });
+
+  it.each(['<ol><li>Unrelated</li></ol>', '<ol start="5"><li>Unrelated</li></ol>'])('keeps a list that restarts its numbering out of the Sources list: %s', (restart) => {
+    const output = getUnformattedHtml(`<p><b>Sources:</b></p><ol><li><a href="https://nih.gov/a">NIH article</a></li></ol>${restart}`, 'shoppables');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(Array.from(doc.querySelectorAll('ol')).map(ol => Array.from(ol.children).map(li => li.hasAttribute('style')))).toEqual([[true], [false]]);
+  });
+
+  it.each([
+    ['', ' type="a"', 2],
+    [' type="i"', '', 2],
+    [' type="a"', ' type="A"', 2],
+    [' type="a"', ' type="a"', 1],
+  ])('merges a continuing Sources list only with the same marker type: <ol%s> then <ol%s>', (first, next, lists) => {
+    const output = normalizeLists(`<p>Sources:</p><ol${first}><li>One</li></ol><ol start="2"${next}><li>Two</li></ol>`);
+    expect(new DOMParser().parseFromString(output, 'text/html').querySelectorAll('ol')).toHaveLength(lists);
+  });
+
   it('removes source links independently of label normalization and supports heading BR spacing', () => {
     const features = { sourcesNormalize: false, brBeforeSources: true };
     const output = getUnformattedHtml('<p>Body.</p><h2>Sources:</h2><ul><li><a href="/study">Study</a></li></ul>', 'shoppables', features);
@@ -1204,10 +1621,62 @@ describe('trailing whitespace before block end tags', () => {
     },
   );
 
+  it.each(['regular', 'blogs', 'shoppables'] as const)(
+    'keeps trimming past whitespace-only trailing nodes in %s mode',
+    (mode) => {
+      const output = convertToHtml(cleanWordHtml('<p>Text <b>Bold </b> </p><p>Last <i>word </i><i> </i></p>'), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(html).toContain('<p>Text <strong>Bold</strong></p>');
+        expect(html).toContain('<p>Last <em>word</em></p>');
+      }
+    },
+  );
+
+  it.each([
+    '<p>end word&nbsp;</p>',
+    '<p class="MsoNormal"><span style="font-size:12pt">end word </span><o:p>&nbsp;</o:p></p>',
+    '<p><b>end word&nbsp;</b></p>',
+    '<p>end word\u200B</p>',
+    '<p>end word\u2002</p>',
+    '<p>end word\u3000</p>',
+    '<p>end word\uFEFF</p>',
+  ])('trims a trailing non-breaking or Unicode space from both outputs: %s', (input) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(html).toMatch(/end word<\//);
+      }
+    }
+  });
+
+  it('keeps interior and code non-breaking spaces', () => {
+    const input = '<p>Take 10&nbsp;kg daily</p><p>Run <code>x&nbsp;</code></p><pre>code&nbsp;</pre>';
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.querySelector('p')?.textContent).toBe('Take 10\u00A0kg daily');
+        expect(doc.querySelector('p code')?.textContent).toBe('x\u00A0');
+        expect(doc.querySelector('pre')?.textContent).toBe('code\u00A0');
+      }
+    }
+  });
+
+  it.each([undefined, '<p>&nbsp;</p>', '<p class="gap">&nbsp;</p>', '<p>&#8203;</p>', '<div>&nbsp;&nbsp;</div>'])(
+    'keeps blank spacer markup intact: %s',
+    (customSpacer) => {
+      const spacer = new DOMParser().parseFromString(customSpacer ?? '<p>&nbsp;</p>', 'text/html').body.firstElementChild!;
+      const output = convertToHtml(cleanWordHtml('<p>First.</p><p>Second.</p>'), 'regular', { paragraphSpacing: true, customSpacer });
+      expect(output.formatted).toContain(spacer.outerHTML);
+      const doc = new DOMParser().parseFromString(output.unformatted, 'text/html');
+      expect(doc.body.children[1].innerHTML).toBe(spacer.innerHTML);
+    },
+  );
+
   it('keeps inline spacing that separates words', () => {
     const output = convertToHtml(cleanWordHtml('<p>Hello <strong>World </strong>more</p>'), 'regular');
     for (const html of [output.formatted, output.unformatted]) {
-      expect(html).toContain('World </strong>more');
+      expect(html).toContain('World</strong> more');
     }
   });
 

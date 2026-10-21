@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getLinkSpacingIssues, getOlBoldLabelItems, getSectionSpacingIssues, validateMode, type ValidationResults } from './validator';
+import { getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, validateMode, type ValidationResults } from './validator';
 import type { FeatureFlags, OutputMode } from './converter';
 
 function getResult(results: ValidationResults, ruleId: string) {
@@ -102,7 +102,7 @@ describe('validateSanitizedStructure', () => {
   });
 
   it('allows list numbering attributes on <ol>', () => {
-    const results = validateMode('<ol start="2" reversed><li>x</li></ol>', 'blogs', defaultFeatures);
+    const results = validateMode('<ol start="2" reversed type="a"><li>x</li></ol>', 'blogs', defaultFeatures);
     expectPass(results, 'sanitized-structure');
   });
 
@@ -477,22 +477,41 @@ describe('validateLinkSpacing (D2)', () => {
     expectPass(results, 'link-spacing');
   });
 
-  it('passes after opening punctuation', () => {
-    const html = '<p>(<a href="https://x.com">link</a>)</p>';
+  it.each([
+    '<p>(<a href="https://x.com">link</a>)</p>',
+    '<p>"<a href="https://x.com">link</a>"</p>',
+  ])('passes after opening punctuation: %s', (html) => {
     const results = validateMode(html, 'blogs', defaultFeatures);
     expectPass(results, 'link-spacing');
   });
 
-  it('passes after closing punctuation', () => {
-    const html = '<p>End.<a href="https://x.com">More</a></p>';
+  it.each([
+    '<p>End word.<a href="https://x.com">More</a></p>',
+    '<p>Note:<a href="https://x.com">More</a></p>',
+  ])('fails with no space after closing punctuation, which link spacing adds: %s', (html) => {
     const results = validateMode(html, 'blogs', defaultFeatures);
-    expectPass(results, 'link-spacing');
+    expectFail(results, 'link-spacing');
   });
 
   it('fails with no space and no punctuation', () => {
     const html = '<p>word<a href="https://x.com">link</a></p>';
     const results = validateMode(html, 'blogs', defaultFeatures);
     expectFail(results, 'link-spacing');
+  });
+
+  it('fails with no space after a symbol that does not continue the link', () => {
+    const html = '<p>Save 50%<a href="https://x.com">link</a></p>';
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    expectFail(results, 'link-spacing');
+  });
+
+  it.each([
+    '<p>a non-<a href="https://x.com">toxic</a> cleaner</p>',
+    '<p>for $<a href="https://x.com">29.99</a> or €<a href="https://x.com">5</a></p>',
+    '<p>e-<a href="https://x.com">Bay</a> and/<a href="https://x.com">or</a> 10–<a href="https://x.com">12</a></p>',
+  ])('passes for a link that continues a compound or amount: %s', (html) => {
+    const results = validateMode(html, 'blogs', defaultFeatures);
+    expectPass(results, 'link-spacing');
   });
 
   it('passes for a footnote link attached to the preceding word', () => {
@@ -549,6 +568,15 @@ describe('validateListNormalize (D14)', () => {
     const results = validateMode(html, 'blogs', defaultFeatures);
     expectFail(results, 'list-normalization');
   });
+
+  it('reports the items it counts for preview highlighting', () => {
+    const doc = new DOMParser().parseFromString('<p><strong><em>Sources:</em></strong></p><ol><li><strong>Src:</strong>one</li></ol><ul><li><strong>Tip:</strong>glued</li><li><strong>Done:</strong> dry</li></ul>', 'text/html');
+    const issues = getListNormalizationIssues(doc);
+    expect(issues.map(issue => [issue.element.textContent, issue.message])).toEqual([
+      ['Tip:glued', 'List item missing space after </strong> in "Tip:..."'],
+    ]);
+    expect(getResult(validateMode(doc.body.innerHTML, 'blogs', defaultFeatures), 'list-normalization').details).toEqual(issues.map(issue => issue.message));
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -573,10 +601,27 @@ describe('validateOlBoldLabels', () => {
     expect(getOlBoldLabelItems(doc).missingBold.map(li => li.textContent)).toEqual(['Step one: preheat', 'No bold here:']);
   });
 
+  it('flags an unbolded label in an unordered list', () => {
+    const html = '<ul><li>Tip: rinse</li><li><strong>Done:</strong> dry</li><li><strong>Step</strong>: wipe</li></ul>';
+    const results = validateMode(html, 'shoppables', defaultFeatures);
+    expectFail(results, 'ol-bold-labels');
+    expect(getResult(results, 'ol-bold-labels').message).toBe('1/3 list items have bold labels (2 missing)');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    expect(getOlBoldLabelItems(doc).missingBold.map(li => li.textContent)).toEqual(['Tip: rinse', 'Step: wipe']);
+  });
+
+  it('does not count times, ratios, URLs or sentence colons as labels', () => {
+    const items = '<li>Meet at 9:30 am</li><li>Mix a 1:2 ratio</li><li>Visit https://example.com today</li><li>Rinse well. Then: dry it</li>';
+    const results = validateMode(`<ol>${items}</ol><ul>${items}</ul>`, 'blogs', defaultFeatures);
+    expectSkipped(results, 'ol-bold-labels');
+    expect(getResult(results, 'ol-bold-labels').message).toBe('No list items with colons found');
+  });
+
   it('excludes Sources list items', () => {
     const html = '<p>Sources:</p><ol><li>plain source</li></ol><ol><li><strong>Bolded:</strong> text</li></ol>';
     const results = validateMode(html, 'blogs', defaultFeatures);
     expectPass(results, 'ol-bold-labels');
+    expectSkipped(validateMode('<p>Sources:</p><ul><li>Smith J: Cleaning Science</li></ul>', 'blogs', defaultFeatures), 'ol-bold-labels');
   });
 });
 
@@ -828,6 +873,13 @@ describe('validateParagraphSpacing', () => {
     const html = '<p>A</p><p>B</p>';
     const results = validateMode(html, 'blogs', { paragraphSpacing: true });
     expectFail(results, 'paragraph-spacing');
+  });
+
+  it('enabled: counts the configured custom spacer as the spacer', () => {
+    const features = { paragraphSpacing: true, customSpacer: '<p>&#8203;</p>' };
+    expectPass(validateMode('<p>A</p><p>&#8203;</p><p>B</p>', 'blogs', features), 'paragraph-spacing');
+    expectPass(validateMode('<p>A</p><p data-w2h-spacer="1">&#8203;</p><p>B</p>', 'blogs', features), 'paragraph-spacing');
+    expectFail(validateMode('<p>A</p><p>&#8203;</p><p>B</p>', 'blogs', { paragraphSpacing: true }), 'paragraph-spacing');
   });
 });
 

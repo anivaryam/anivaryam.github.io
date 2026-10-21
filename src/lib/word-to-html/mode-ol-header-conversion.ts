@@ -6,7 +6,8 @@
  * - Lists must be fully header-only; mixed lists (containing both headers and regular content) are ignored
  * - Preserves original heading levels (h1-h6) - does not normalize to a single level
  * - Numbering resets per <h2> section and stops at <h1> boundaries; adjacent header lists continue it
- * - Supports both Word-style structures: <li><strong><hX>...</hX></strong></li> and <li><hX><strong>...</strong></hX></li>
+ * - Supports both Word-style structures: <li><strong><hX>...</hX></strong></li> and <li><hX>...</hX></li>,
+ *   with or without <strong> inside the heading (Heading Strong runs first and may have unwrapped it)
  * - An item with anything besides its heading (body text, a second heading, a nested list) makes the
  *   list mixed; only blank Word filler (empty paragraphs, line breaks) next to the heading is discarded
  */
@@ -51,18 +52,14 @@ function hasStrongWrappedHeading(li: Element): boolean {
 }
 
 /**
- * Checks if a list item has a heading directly containing a <strong> tag
- * Example: <li><h3><strong>Title</strong></h3></li>
+ * Checks if a list item holds a heading directly
+ * Example: <li><h3><strong>Title</strong></h3></li> or <li><h3>Title</h3></li>
+ * Bold is not required: with Heading Strong off, its <strong> is already unwrapped.
  * Note: querySelector will find headings even if there are empty <p> tags before them
  */
-function hasDirectStrongHeading(li: Element): boolean {
+function hasDirectHeading(li: Element): boolean {
   const directHeading = li.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
-  if (!directHeading) {
-    return false;
-  }
-  
-  const strongInHeading = directHeading.querySelector(':scope > strong');
-  return strongInHeading !== null && holdsOnly(li, directHeading);
+  return directHeading !== null && holdsOnly(li, directHeading);
 }
 
 /** Shared with the validator and the UI warnings so all three flag the same lists */
@@ -75,7 +72,7 @@ export function isHeaderList(olElement: Element): boolean {
 
   // All list items must be valid headers; mixed lists are rejected
   for (const li of listItems) {
-    if (!hasStrongWrappedHeading(li) && !hasDirectStrongHeading(li)) {
+    if (!hasStrongWrappedHeading(li) && !hasDirectHeading(li)) {
       return false;
     }
   }

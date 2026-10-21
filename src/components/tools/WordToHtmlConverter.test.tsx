@@ -13,12 +13,25 @@ vi.mock('lenis', () => ({
 }));
 vi.mock('@/hooks/use-toast', () => ({ toast: vi.fn() }));
 
+/** Output a test stands in for the converter's; null runs the real converter. */
+const converterOutput = vi.hoisted(() => ({ html: null as string | null }));
+vi.mock('@/lib/word-to-html/converter', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/word-to-html/converter')>();
+  return {
+    ...actual,
+    convertToHtml: (...args: Parameters<typeof actual.convertToHtml>) => converterOutput.html === null
+      ? actual.convertToHtml(...args)
+      : { formatted: converterOutput.html, unformatted: converterOutput.html },
+  };
+});
+
 beforeEach(() => {
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
 });
 
 afterEach(() => {
+  converterOutput.html = null;
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -194,7 +207,8 @@ describe('WordToHtmlConverter', () => {
 
   it('keeps unrelated product links and highlights their own list-label warnings', () => {
     render(<WordToHtmlConverter />);
-    enterHtml('<p>Sources: Citation.</p><h2>Products</h2><ol><li>Option: <a href="/product">Buy product</a></li></ol>');
+    // A label split across elements is left for the warning rather than bolded.
+    enterHtml('<p>Sources: Citation.</p><h2>Products</h2><ol><li><em>Best</em> option: <a href="/product">Buy product</a></li></ol>');
     fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
     const preview = document.querySelector('.output-preview')!;
     expect(preview.querySelector('a')?.getAttribute('href')).toBe('/product');
@@ -307,10 +321,23 @@ describe('WordToHtmlConverter', () => {
 
   it('highlights the list items the bold-label rule counts', () => {
     render(<WordToHtmlConverter />);
-    enterHtml('<ol><li><strong>Step one</strong>: preheat</li><li><strong>Step two:</strong> serve</li></ol>');
+    enterHtml('<ol><li><em>Step</em> one: preheat</li><li><strong>Step two:</strong> serve</li></ol>');
     fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
     const items = Array.from(document.querySelector('.output-preview')!.querySelectorAll('li'));
     expect(items.map(li => li.getAttribute('data-warning'))).toEqual(['Missing bold label before colon', null]);
+    enterHtml('<ul><li><em>Step</em> one: preheat</li><li>Meet at 9:30 am</li><li>Step two: serve</li></ul>');
+    const bulleted = Array.from(document.querySelector('.output-preview')!.querySelectorAll('ul > li'));
+    expect(bulleted.map(li => li.getAttribute('data-warning'))).toEqual(['Missing bold label before colon', null, null]);
+    expect(bulleted[2].querySelector('strong')?.textContent).toBe('Step two:');
+  });
+
+  it('highlights the list items the list-normalization rule counts', () => {
+    // Converter output always spaces a bold label, so stand in output that does not.
+    converterOutput.html = '<ul><li><strong>Tip:</strong>glued</li><li><strong>Done:</strong> dry</li></ul>';
+    render(<WordToHtmlConverter />);
+    enterHtml('<ul><li>Tip: glued</li></ul>');
+    const items = Array.from(document.querySelector('.output-preview')!.querySelectorAll('li'));
+    expect(items.map(li => li.getAttribute('data-warning'))).toEqual(['List item missing space after </strong> in "Tip:..."', null]);
   });
 
   it('does not highlight a source Disclaimer that is already normalized when normalization is off', () => {
@@ -403,6 +430,21 @@ describe('WordToHtmlConverter', () => {
     expect(block?.querySelector('code')?.textContent).toBe('sample()');
   });
 
+  it('keeps the link attributes in the Blocks view and its maximized view', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Read <a href="https://example.com/guide">our guide</a> first.</p>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    expect(screen.getByRole('checkbox', { name: 'Link Attributes' }).getAttribute('data-state')).toBe('checked');
+    fireEvent.click(screen.getByTitle('Copy blocks'));
+    const attributes = (link: Element | null | undefined) => [link?.getAttribute('target'), link?.getAttribute('rel')];
+    const block = screen.getByText('Content', { exact: true }).closest('.group');
+    expect(attributes(block?.querySelector('a'))).toEqual(['_blank', 'noopener noreferrer']);
+    fireEvent.click(screen.getByTitle('Maximize Output'));
+    const outputDialog = screen.getByRole('dialog', { name: 'Output - Blocks' });
+    expect(attributes(outputDialog.querySelector('a[href="https://example.com/guide"]'))).toEqual(['_blank', 'noopener noreferrer']);
+  });
+
   it('accepts the Regular heading toggle and resets paragraph spacing when switching modes', () => {
     render(<WordToHtmlConverter />);
     enterHtml('<h2>Title</h2><p>First</p><p>Second</p>');
@@ -468,6 +510,42 @@ describe('WordToHtmlConverter', () => {
       if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
       else Reflect.deleteProperty(navigator, 'clipboard');
     }
+  });
+
+  it('copies a selection of the rendered preview without warning highlights or spacer markers', () => {
+    render(<WordToHtmlConverter />);
+    // A label split across elements is left unbolded, so the preview keeps a warning to strip.
+    enterHtml('<p>Intro.</p><h2>Products</h2><ol><li><em>Top</em> option: <a href="/product">Buy product</a></li></ol>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), {
+      target: { value: '<div style="height:10px;"></div>' },
+    });
+    const preview = document.querySelector('.output-preview')!;
+    const item = preview.querySelector('li')!;
+    expect(item.getAttribute('data-warning')).toBe('Missing bold label before colon');
+
+    const copySelection = (select: (range: Range) => void) => {
+      const range = document.createRange();
+      select(range);
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+      const setData = vi.fn();
+      fireEvent.copy(preview, { clipboardData: { setData } });
+      return Object.fromEntries(setData.mock.calls) as Record<string, string>;
+    };
+
+    const all = copySelection(range => range.selectNodeContents(preview));
+    expect(all['text/html']).toContain('<div style="height:10px;"></div>');
+    expect(all['text/html']).toContain('<a href="/product"');
+    expect(all['text/plain']).toContain('Buy product');
+    const part = copySelection(range => range.selectNodeContents(item.firstChild!));
+    expect(part['text/html']).toBe('<ol><li><em>Top</em></li></ol>');
+    for (const html of [all['text/html'], part['text/html']]) {
+      expect(html).not.toContain('data-warning');
+      expect(html).not.toContain('data-w2h-spacer');
+    }
+    expect(item.getAttribute('data-warning')).toBe('Missing bold label before colon');
   });
 
   it('keeps the custom spacer in the copyable blocks', async () => {
@@ -595,5 +673,37 @@ describe('WordToHtmlConverter', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Sanitize the spacer markup' }));
     expect(preview.querySelector('img')?.getAttribute('onerror')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('says when the custom spacer markup falls back to the default spacer', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+
+    const preview = document.querySelector('.output-preview')!;
+    const input = screen.getByRole('textbox', { name: 'Custom Spacer' });
+    fireEvent.change(input, { target: { value: '<p>&nbsp;</p><p>&nbsp;</p>' } });
+    expect(preview.innerHTML).toContain('<p>Body text.</p><p>&nbsp;</p><p>');
+    expect(screen.getByText(/not a single element, so the default spacer is used/)).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: '<div style="height:10px;"></div>' } });
+    expect(screen.queryByText(/so the default spacer is used/)).toBeNull();
+  });
+
+  it.each([
+    [`<div style='height:10px'></div>`, false],
+    ['<br/>', false],
+    ['<img src="x" onerror="window.__XSS=1">', true],
+  ])('reports a sanitizer change only when the spacer used differs: %s', (markup, changed) => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), { target: { value: markup } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Sanitize the spacer markup' }));
+
+    expect(!!screen.queryByText(/The sanitizer changed the markup/)).toBe(changed);
+    expect(screen.queryByText(/so the default spacer is used/)).toBeNull();
   });
 });

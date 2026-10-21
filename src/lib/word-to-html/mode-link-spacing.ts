@@ -21,6 +21,15 @@ const CLOSING_PUNCTUATION_RE = /^[.,;:!?)}\]'"'\u201D\u2019]/;
 // compound ("FDA-approved"). No space is added before it.
 const WORD_CONTINUATION_RE = /^[\p{L}\p{N}\u2010-\u2015-]/u;
 
+/**
+ * Text that the following link continues: a hyphen, dash or slash compound
+ * ("non-<a>toxic</a>", "and/<a>or</a>") or a currency amount
+ * ("$<a>29.99</a>"). No space is added before the link. A letter or digit
+ * does not count: Word often drops the space in "word<a>link</a>".
+ * Shared with the validator's link-spacing rule.
+ */
+export const LINK_CONTINUES_TEXT_RE = /[\p{Sc}\u2010-\u2015/-]$/u;
+
 // Whitespace that HTML collapses (the set html-cleaner trims). U+00A0 (&nbsp;)
 // is intentional spacing and must survive normalization.
 const COLLAPSIBLE_WHITESPACE_RE = /[\t\n\r\f\v ]+/g;
@@ -137,8 +146,10 @@ export function addLinkSpacing(html: string): string {
           textContent = textNodeToModify.textContent || '';
         }
 
-        // Add space before if needed (after normalization)
-        if (textNodeToModify && !isCodeNeighbor && textContent.trim() && !endsWithWhitespace(textContent) && !endsWithOpeningPunctuation(textContent)) {
+        // Add space before if needed (after normalization); a link that
+        // continues the preceding word or token stays attached to it
+        if (textNodeToModify && !isCodeNeighbor && textContent.trim() && !endsWithWhitespace(textContent) && !endsWithOpeningPunctuation(textContent) &&
+            !LINK_CONTINUES_TEXT_RE.test(textContent)) {
           textNodeToModify.textContent = textContent + ' ';
         } else if (!textNodeToModify) {
           // No text node found - insert a space node before the anchor

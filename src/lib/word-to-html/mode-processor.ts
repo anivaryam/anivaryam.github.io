@@ -131,8 +131,8 @@ function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags 
       processedHtml = removeSourcesLinks(processedHtml);
     }
 
-    // Final list normalization pass
-    processedHtml = normalizeLists(processedHtml);
+    // Final list normalization pass (no merging: see normalizeLists)
+    processedHtml = normalizeLists(processedHtml, { mergeLists: false });
 
     return processedHtml;
   }
@@ -205,7 +205,9 @@ function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags 
 
     // Final list normalization pass (after all processing that might modify list items)
     // This ensures spacing is normalized even if other functions reintroduced multiple spaces
-    processedHtml = normalizeLists(processedHtml);
+    // No merging: lists the mode steps made adjacent stay apart (see normalizeLists)
+    // Unbolded list labels are bolded here, after Sources lists are identified
+    processedHtml = normalizeLists(processedHtml, { mergeLists: false, boldLabels: true });
     return processedHtml;
   }
 
@@ -277,7 +279,9 @@ function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags 
 
     // Final list normalization pass (after all processing that might modify list items)
     // This ensures spacing is normalized even if other functions reintroduced multiple spaces
-    processedHtml = normalizeLists(processedHtml);
+    // No merging: lists the mode steps made adjacent stay apart (see normalizeLists)
+    // Unbolded list labels are bolded here, after Sources lists are identified
+    processedHtml = normalizeLists(processedHtml, { mergeLists: false, boldLabels: true });
     return processedHtml;
   }
 

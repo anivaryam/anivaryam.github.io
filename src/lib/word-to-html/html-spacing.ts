@@ -31,6 +31,12 @@ function isDefaultSpacerParagraph(element: Element): boolean {
  * Only the blank paragraphs produced by the spacing rules are swapped; BR
  * spacers (`<p><br></p>`) are an explicit opt in and stay untouched. Markup
  * that is not a single element leaves the default spacer in place.
+ *
+ * Input blank paragraphs are discarded before the rules run, but a custom
+ * spacer such as `<hr>` or `<p>&#8203;</p>` survives cleaning, for example
+ * when copied output is converted again. It is existing spacing: a default
+ * spacer beside it is dropped and the input element becomes the spacer, so
+ * the spacing is not doubled.
  */
 export function applyCustomSpacer(html: string, customSpacer?: string | null): string {
   const spacer = parseCustomSpacer(customSpacer);
@@ -47,9 +53,18 @@ export function applyCustomSpacer(html: string, customSpacer?: string | null): s
     // that matches the configured markup.
     markSpacerElement(template);
 
+    const inputSpacers = new Set(Array.from(doc.body.getElementsByTagName(template.tagName))
+      .filter(element => !isSpacingParagraph(element) && isCustomSpacerElement(element, spacer)));
+
     doc.querySelectorAll('p').forEach(p => {
       if (!isDefaultSpacerParagraph(p)) return;
       if (p.closest('pre, code')) return;
+      const existing = [p.previousElementSibling, p.nextElementSibling].find(sibling => sibling && inputSpacers.has(sibling));
+      if (existing) {
+        markSpacerElement(existing);
+        p.remove();
+        return;
+      }
       p.replaceWith(template.cloneNode(true));
     });
 

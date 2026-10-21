@@ -10,7 +10,7 @@
  * - Normalizes list content (unwraps <p> inside <li>, removes <br> noise)
  * - Eliminates layout <br> elements (inside blocks, after blocks)
  * - Cleans inline formatting inside list items (normalizes strong/em nesting)
- * - Trims whitespace from anchor text
+ * - Moves edge whitespace out of links and inline formatting
  * - Trims whitespace at the end of block elements (trimTrailingBlockWhitespace,
  *   run after mode processing; see its docs)
  * 
@@ -33,6 +33,9 @@ export const BLOCK_ELEMENTS = [
 // Set for O(1) lookups in hot loops
 export const BLOCK_ELEMENT_SET = new Set(BLOCK_ELEMENTS);
 
+// Void elements have no content or end tag; each renders as content of its own
+export const VOID_ELEMENTS = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'];
+
 /**
  * IMPORTANT: This cleaner is order-dependent.
  * The passes must run in this specific order:
@@ -41,7 +44,7 @@ export const BLOCK_ELEMENT_SET = new Set(BLOCK_ELEMENTS);
  * 3. removeBrAfterBlockElements - global layout cleanup
  * 4. removeConsecutiveBr - remove consecutive br tags
  * 5. removeParagraphsFromListItems - ensure all <p> tags are removed from <li> elements
- * 6. trimAnchorWhitespace - text-level polish
+ * 6. trimInlineEdgeWhitespace - text-level polish
  * 
  * Do not reorder passes without updating tests.
  * 
@@ -66,7 +69,7 @@ export function cleanHtml(html: string): string {
     removeConsecutiveBr(doc.body);
 
     removeParagraphsFromListItems(doc.body);
-    trimAnchorWhitespace(doc.body);
+    trimInlineEdgeWhitespace(doc.body);
     
     return doc.body.innerHTML;
   } catch (e) {
@@ -291,15 +294,22 @@ function mergeAdjacentEmTags(element: Element): void {
 }
 
 /**
- * Trims whitespace at the outer edges of an anchor.
+ * Inline elements whose edge whitespace moves outside them: links and
+ * formatting wrappers. <sup>, <sub> and <code> keep theirs.
+ */
+const EDGE_TRIMMED_INLINE_TAGS = new Set(['a', 'strong', 'b', 'em', 'i', 'u', 'span', 'mark', 'small']);
+
+/**
+ * Trims whitespace at the outer edges of links and inline formatting.
  * 
  * Only direct text nodes at those boundaries are trimmed. Spaces separating
  * plain text from nested formatting (e.g. "our <strong>How It Works</strong>")
  * belong to the link text and must remain intact. Trimmed padding that
- * separates the link from adjacent content moves outside the link, so
- * "<a>our article </a>today" keeps its word boundary.
+ * separates the element from adjacent content moves outside it, so
+ * "<a>our article </a>today" and "<strong>Bold </strong>after" keep their
+ * word boundary. A formatting element left empty is removed.
  */
-function trimAnchorWhitespace(element: Element): void {
+function trimInlineEdgeWhitespace(element: Element): void {
   if (!element || element.nodeType !== Node.ELEMENT_NODE) {
     return;
   }
@@ -307,21 +317,27 @@ function trimAnchorWhitespace(element: Element): void {
   const children = Array.from(element.childNodes);
   for (let i = 0; i < children.length; i++) {
     if (children[i].nodeType === Node.ELEMENT_NODE) {
-      trimAnchorWhitespace(children[i] as Element);
+      trimInlineEdgeWhitespace(children[i] as Element);
     }
   }
   
   const tagName = element.tagName.toLowerCase();
-  if (tagName !== 'a') {
+  if (!EDGE_TRIMMED_INLINE_TAGS.has(tagName)) {
+    return;
+  }
+  const isLink = tagName === 'a';
+  // Whitespace inside pre/code is data.
+  if (!isLink && element.closest('pre, code')) {
     return;
   }
   
+  const hadChildren = element.hasChildNodes();
   const first = element.firstChild;
   const last = element.lastChild;
   if (first?.nodeType === Node.TEXT_NODE) {
     const text = first.textContent || '';
     first.textContent = text.replace(/^\s+/, '');
-    keepSeparatorOutsideAnchor(element, text.slice(0, text.length - first.textContent.length), 'before');
+    keepSeparatorOutside(element, text.slice(0, text.length - first.textContent.length), 'before');
     if (!first.textContent) element.removeChild(first);
   }
 
@@ -329,32 +345,55 @@ function trimAnchorWhitespace(element: Element): void {
   if (last?.nodeType === Node.TEXT_NODE && last.parentNode === element) {
     const text = last.textContent || '';
     last.textContent = text.replace(/\s+$/, '');
-    keepSeparatorOutsideAnchor(element, text.slice(last.textContent.length), 'after');
+    keepSeparatorOutside(element, text.slice(last.textContent.length), 'after');
     if (!last.textContent) element.removeChild(last);
+  }
+
+  // An emptied link keeps its element so its href is not lost.
+  if (!isLink && hadChildren && !element.hasChildNodes()) {
+    element.parentNode?.removeChild(element);
   }
 }
 
 /**
- * Re-inserts trimmed anchor padding next to the anchor when a sibling on that
- * side has no separator of its own. At the parent's edge it is dropped.
+ * Re-inserts trimmed padding next to the element when a sibling on that side
+ * has no separator of its own. At the edge of an inline parent the padding
+ * moves up to the parent's level ("<u><strong>x </strong></u>y" keeps its
+ * space after </u>); at a block edge it is dropped.
  */
-function keepSeparatorOutsideAnchor(anchor: Element, padding: string, side: 'before' | 'after'): void {
-  const sibling = side === 'before' ? anchor.previousSibling : anchor.nextSibling;
-  if (!padding || !sibling) return;
+function keepSeparatorOutside(element: Element, padding: string, side: 'before' | 'after'): void {
+  if (!padding) return;
+  let host = element;
+  let sibling = side === 'before' ? host.previousSibling : host.nextSibling;
+  while (!sibling) {
+    const parent = host.parentElement;
+    if (!parent || parent.tagName === 'BODY' || BLOCK_ELEMENT_SET.has(parent.tagName.toLowerCase())) return;
+    host = parent;
+    sibling = side === 'before' ? host.previousSibling : host.nextSibling;
+  }
   if (sibling.nodeType === Node.TEXT_NODE) {
     const text = sibling.textContent || '';
     if (side === 'before' ? /\s$/.test(text) : /^\s/.test(text)) return;
   }
-  const separator = anchor.ownerDocument.createTextNode(padding);
-  anchor.parentNode?.insertBefore(separator, side === 'before' ? anchor : anchor.nextSibling);
+  const separator = host.ownerDocument.createTextNode(padding);
+  host.parentNode?.insertBefore(separator, side === 'before' ? host : host.nextSibling);
 }
 
 /**
  * Whitespace that HTML collapses: space, tab, line feed, form feed, carriage
- * return. Deliberately excludes U+00A0 (&nbsp;), which carries intentional
- * spacing and must be preserved.
+ * return. It excludes U+00A0 (&nbsp;), which keeps a blank spacer block such
+ * as <p>&nbsp;</p> open.
  */
 const TRAILING_HTML_WHITESPACE = /[\t\n\r\f\v ]+$/;
+
+/**
+ * Collapsible whitespace plus the invisible spaces Word and Google Docs emit
+ * for a space typed at the end of a paragraph: U+00A0 (&nbsp;), U+2000–U+200A,
+ * U+200B, U+3000 and U+FEFF.
+ */
+const BLOCK_END_SPACES = '\\t\\n\\r\\f\\v \\u00A0\\u2000-\\u200B\\u3000\\uFEFF';
+const TRAILING_BLOCK_END_SPACES = new RegExp(`[${BLOCK_END_SPACES}]+$`);
+const VISIBLE_CHARACTER = new RegExp(`[^${BLOCK_END_SPACES}]`);
 
 /** Elements whose interior whitespace is data, not layout. */
 const WHITESPACE_PRESERVING_TAGS = new Set(['pre', 'code']);
@@ -365,9 +404,15 @@ const WHITESPACE_PRESERVING_TAGS = new Set(['pre', 'code']);
  * Trailing whitespace at the end of a block is discarded by HTML whitespace
  * collapsing, so removing it does not change rendering. The walk descends
  * through trailing inline wrappers (e.g. <p>Hello <strong>World   </strong></p>)
- * but stops at nested block boundaries, since each block is handled by its own
- * pass. Inline whitespace that separates words is never touched, and neither is
- * &nbsp; or the contents of <pre>/<code>.
+ * and continues past whitespace-only text and empty wrappers until it reaches
+ * content, but stops at nested block boundaries, since each block is handled
+ * by its own pass. Wrappers the trim leaves empty are removed. Inline
+ * whitespace that separates words is never touched, and neither are the
+ * contents of <pre>/<code>.
+ *
+ * Trailing &nbsp; and invisible Unicode spaces are trimmed too when the block
+ * has visible text; a block holding only such spaces (the <p>&nbsp;</p>
+ * spacer, a blank custom spacer, an empty table cell) keeps them.
  */
 export function trimTrailingWhitespaceInBlocks(root: Element): void {
   if (!root || root.nodeType !== Node.ELEMENT_NODE) {
@@ -404,33 +449,52 @@ function isListLabelSeparator(block: Element, node: Node): boolean {
 }
 
 function trimBlockEnd(block: Element): void {
-  let node: Node | null = block.lastChild;
+  const trailing = VISIBLE_CHARACTER.test(block.textContent || '') ? TRAILING_BLOCK_END_SPACES : TRAILING_HTML_WHITESPACE;
+  trimContainerEnd(block, block, trailing);
+}
+
+/**
+ * Trims the end of `container`, walking back from its last child. Returns
+ * true once content ends the walk: text that keeps characters, a void element,
+ * a nested block, <pre>/<code>, or the list-label separator.
+ */
+function trimContainerEnd(block: Element, container: Node, trailing: RegExp): boolean {
+  let node: Node | null = container.lastChild;
   while (node) {
+    const previous: Node | null = node.previousSibling;
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent || '';
-      const trimmed = text.replace(TRAILING_HTML_WHITESPACE, '');
-      if (trimmed === text) {
-        return;
-      }
+      const trimmed = text.replace(trailing, '');
       if (trimmed) {
-        node.textContent = trimmed;
-      } else if (isListLabelSeparator(block, node)) {
-        node.textContent = ' ';
-      } else {
-        node.parentNode?.removeChild(node);
+        if (trimmed !== text) node.textContent = trimmed;
+        return true;
       }
-      return;
+      if (isListLabelSeparator(block, node)) {
+        node.textContent = ' ';
+        return true;
+      }
+      node.parentNode?.removeChild(node);
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as Element;
+      const childTag = element.tagName.toLowerCase();
+      if (BLOCK_ELEMENT_SET.has(childTag) || WHITESPACE_PRESERVING_TAGS.has(childTag) || VOID_ELEMENTS.includes(childTag)) {
+        return true;
+      }
+      const hadChildren = element.hasChildNodes();
+      if (trimContainerEnd(block, element, trailing)) {
+        return true;
+      }
+      // A wrapper that held only whitespace renders nothing once trimmed.
+      // Links keep their element, as the anchor trim does.
+      if (hadChildren && childTag !== 'a') {
+        element.parentNode?.removeChild(element);
+      }
+    } else {
+      return true;
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-      return;
-    }
-    const element = node as Element;
-    const childTag = element.tagName.toLowerCase();
-    if (BLOCK_ELEMENT_SET.has(childTag) || WHITESPACE_PRESERVING_TAGS.has(childTag)) {
-      return;
-    }
-    node = element.lastChild;
+    node = previous;
   }
+  return false;
 }
 
 /**

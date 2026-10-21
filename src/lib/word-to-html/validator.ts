@@ -14,7 +14,8 @@ import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
 import { getHeadingSpacingIssues } from './mode-spacing';
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
 import { isHeaderList } from './mode-ol-header-conversion';
-import { isFootnoteLink } from './mode-link-spacing';
+import { findListLabel } from './mode-list-normalize';
+import { isFootnoteLink, LINK_CONTINUES_TEXT_RE } from './mode-link-spacing';
 import { isDisclaimerParagraph, isDisclaimerSectionStart } from './mode-disclaimer-normalize';
 
 /**
@@ -61,13 +62,6 @@ const SAFE_REL_VALUES = new Set(SANITIZED_REL_VALUES);
 export function findDisclaimerSection(doc: Document): { paragraph: Element } | null {
   const paragraph = Array.from(doc.querySelectorAll('p')).find(isDisclaimerParagraph);
   return paragraph ? { paragraph } : null;
-}
-
-/**
- * Blank non-BR paragraphs include ordinary whitespace and wrapped Word spaces.
- */
-function isNbspSpacingElement(element: Element | null): boolean {
-  return isAnySpacingElement(element) && !isBrSpacingElement(element);
 }
 
 export interface TestResult {
@@ -632,7 +626,6 @@ export function getLinkSpacingIssues(doc: Document): { element: Element; message
   const links = doc.querySelectorAll('a[href]');
   const issues: { element: Element; message: string }[] = [];
   const OPENING_PUNCT = /[\("'\[\{\u201C\u2018]$/;
-  const TRAILING_PUNCT = /[.,;:!?)}\]\u201D\u2019"']$/;
 
   links.forEach((link) => {
     const parent = link.parentNode;
@@ -660,10 +653,12 @@ export function getLinkSpacingIssues(doc: Document): { element: Element; message
     }
 
     const trimmedEnd = previousText.replace(/\s+$/, '');
+    /* Closing punctuation ("word.<a>", "Note:<a>") is flagged: link spacing adds the space. */
     if (OPENING_PUNCT.test(trimmedEnd)) {
       return;
     }
-    if (TRAILING_PUNCT.test(trimmedEnd)) {
+    /* A link that continues a compound or amount ("non-<a>", "$<a>") needs no space. */
+    if (LINK_CONTINUES_TEXT_RE.test(previousText)) {
       return;
     }
     const lastChar = previousText.slice(-1);
@@ -692,7 +687,7 @@ function validateLinkSpacing(doc: Document, mode: OutputMode, features?: Feature
       ? `Link spacing correctly applied (${links.length} link(s) checked)`
       : `${issues.length} spacing issue(s): ${issues.join('; ')}`,
     severity: issues.length === 0 ? 'info' : 'warning',
-    expected: 'Links preceded by space (except after opening/closing punctuation)',
+    expected: 'Links preceded by space (except after opening punctuation, a hyphen, dash, slash or currency sign)',
     actual: issues.length === 0
       ? `All ${links.length} link(s) have proper spacing`
       : `${issues.length} link(s) have spacing issues`,
@@ -709,25 +704,16 @@ function trailingSpaceBeforeStrong(html: string): boolean {
   return trimmed.endsWith(': ') || trimmed.match(/:\s+$/) !== null;
 }
 
-function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
+/**
+ * List items outside Sources whose bold label (a <strong> ending in ":") has
+ * a trailing space inside it, or not exactly one space after it.
+ * Element-level diagnostics, shared with preview highlights.
+ */
+export function getListNormalizationIssues(doc: Document): { element: Element; message: string }[] {
   const sourcesSections = findSourcesSections(doc);
+  const issues: { element: Element; message: string }[] = [];
 
-  const listItems = doc.querySelectorAll('li');
-
-  if (listItems.length === 0) {
-    return {
-      ruleId: 'list-normalization',
-      feature: 'List Normalization',
-      mode,
-      passed: true,
-      message: 'No list items found (skipped)',
-      severity: 'info',
-    };
-  }
-
-  const issues: string[] = [];
-
-  listItems.forEach((li) => {
+  doc.querySelectorAll('li').forEach((li) => {
     if (sourcesSections.some(section => section.list?.contains(li))) {
       return;
     }
@@ -739,9 +725,10 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
 
       if (strongText.trim().endsWith(':')) {
         if (trailingSpaceBeforeStrong(strong.innerHTML)) {
-          issues.push(
-            `List item has trailing space before </strong> in "${strongText.trim().substring(0, 30)}..."`
-          );
+          issues.push({
+            element: li,
+            message: `List item has trailing space before </strong> in "${strongText.trim().substring(0, 30)}..."`,
+          });
         }
 
         const nextNode = strong.nextSibling;
@@ -749,22 +736,42 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
         if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
           const text = (nextNode as Text).textContent || '';
           if (text.length === 0 || (!text.startsWith(' ') && !text.startsWith('\u00A0'))) {
-            issues.push(
-              `List item missing space after </strong> in "${strongText.trim().substring(0, 30)}..."`
-            );
+            issues.push({
+              element: li,
+              message: `List item missing space after </strong> in "${strongText.trim().substring(0, 30)}..."`,
+            });
           } else if (/^\s{2,}/.test(text)) {
-            issues.push(
-              `List item has multiple spaces after </strong> in "${strongText.trim().substring(0, 30)}..."`
-            );
+            issues.push({
+              element: li,
+              message: `List item has multiple spaces after </strong> in "${strongText.trim().substring(0, 30)}..."`,
+            });
           }
         } else {
-          issues.push(
-            `List item missing text node with space after </strong> in "${strongText.trim().substring(0, 30)}..."`
-          );
+          issues.push({
+            element: li,
+            message: `List item missing text node with space after </strong> in "${strongText.trim().substring(0, 30)}..."`,
+          });
         }
       }
     });
   });
+
+  return issues;
+}
+
+function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
+  if (doc.querySelectorAll('li').length === 0) {
+    return {
+      ruleId: 'list-normalization',
+      feature: 'List Normalization',
+      mode,
+      passed: true,
+      message: 'No list items found (skipped)',
+      severity: 'info',
+    };
+  }
+
+  const issues = getListNormalizationIssues(doc).map(issue => issue.message);
 
   return {
     ruleId: 'list-normalization',
@@ -781,8 +788,10 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
 }
 
 /**
- * Ordered-list items outside Sources whose text has a colon, and those whose
- * first <strong> does not hold the colon. Shared with preview highlights.
+ * List items (<ol> and <ul>) outside Sources with a label colon, and those
+ * whose colon no <strong> holds. findListLabel is the converter's own label
+ * test, so a label it would bold is exactly one flagged here when missing.
+ * Shared with preview highlights.
  */
 export function getOlBoldLabelItems(doc: Document): { withColon: Element[]; missingBold: Element[]; skippedSources: number } {
   const sourcesSections = findSourcesSections(doc);
@@ -790,17 +799,16 @@ export function getOlBoldLabelItems(doc: Document): { withColon: Element[]; miss
   const missingBold: Element[] = [];
   let skippedSources = 0;
 
-  doc.querySelectorAll('ol > li').forEach((li) => {
+  doc.querySelectorAll('ol > li, ul > li').forEach((li) => {
     if (sourcesSections.some(section => section.list?.contains(li))) {
       skippedSources++;
       return;
     }
 
-    const text = li.textContent || '';
-    if (text.includes(':')) {
+    const label = findListLabel(li);
+    if (label) {
       withColon.push(li);
-      const strongText = li.querySelector('strong')?.textContent || '';
-      if (!strongText.includes(':')) {
+      if (!label.bold) {
         missingBold.push(li);
       }
     }
@@ -832,8 +840,8 @@ function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: Featur
       mode,
       passed: true,
       message: skippedSources > 0
-        ? `No ordered list items with colons found (${skippedSources} Sources items skipped)`
-        : 'No ordered list items with colons found',
+        ? `No list items with colons found (${skippedSources} Sources items skipped)`
+        : 'No list items with colons found',
       severity: 'info',
     };
   }
@@ -846,10 +854,10 @@ function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: Featur
     mode,
     passed,
     message: passed
-      ? `${itemsWithBold}/${itemsWithColon} ordered list items have bold labels`
-      : `${itemsWithBold}/${itemsWithColon} ordered list items have bold labels (${itemsWithColon - itemsWithBold} missing)`,
+      ? `${itemsWithBold}/${itemsWithColon} list items have bold labels`
+      : `${itemsWithBold}/${itemsWithColon} list items have bold labels (${itemsWithColon - itemsWithBold} missing)`,
     severity: passed ? 'info' : 'warning',
-    expected: 'Text before colon in <ol> wrapped in <strong>',
+    expected: 'Text before colon in list items wrapped in <strong>',
     actual: `${itemsWithBold}/${itemsWithColon} items have bold (${skippedSources} Sources items excluded)`,
   };
 }
@@ -1283,15 +1291,16 @@ function validateParagraphSpacing(doc: Document, mode: OutputMode, features?: Fe
   }
 
   /* Walk direct children of body and look for adjacent <p> pairs missing a
-   * spacing element between them. */
+   * spacing element between them. A configured custom spacer such as
+   * <p>&#8203;</p> is a spacing element too. */
   const issues: string[] = [];
+  const spacer = parseCustomSpacer(features?.customSpacer);
   const rootChildren = doc.body ? Array.from(doc.body.children) : [];
   for (let i = 0; i < rootChildren.length - 1; i++) {
     const a = rootChildren[i];
     const b = rootChildren[i + 1];
     if (a.tagName.toLowerCase() !== 'p' || b.tagName.toLowerCase() !== 'p') continue;
-    if (isNbspSpacingElement(a) || isBrSpacingElement(a)) continue;
-    if (isNbspSpacingElement(b) || isBrSpacingElement(b)) continue;
+    if (isSpacerElement(a, spacer) || isSpacerElement(b, spacer)) continue;
 
     const aText = (a.textContent || '').trim();
     const bText = (b.textContent || '').trim();

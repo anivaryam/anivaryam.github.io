@@ -33,10 +33,22 @@ export const ALLOWED_ELEMENTS = [
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   'a': ['href', 'target', 'rel'],
   'img': ['src', 'alt'],
-  'ol': ['start', 'reversed'],
+  'ol': ['start', 'reversed', 'type'],
   'th': ['colspan', 'rowspan'],
   'td': ['colspan', 'rowspan'],
   '*': []
+};
+
+// Non-default <ol type> values; the value is case-sensitive. type="1" is the
+// default decimal numbering and is dropped, like start="1".
+const OL_TYPES = ['a', 'A', 'i', 'I'];
+// CSS list numbering with an <ol type> equivalent.
+const LIST_STYLE_TYPES: Record<string, string> = {
+  'decimal': '1',
+  'lower-alpha': 'a', 'lower-latin': 'a',
+  'upper-alpha': 'A', 'upper-latin': 'A',
+  'lower-roman': 'i',
+  'upper-roman': 'I',
 };
 
 const SAFE_PROTOCOLS = ['http:', 'https:', 'mailto:'];
@@ -123,6 +135,20 @@ function extractFormatting(style: string): FormattingInfo | null {
   
   return { isItalic, isBold, isSuperscript, isSubscript, isUnderline };
 }
+
+/**
+ * Word puts the list marker's formatting on the <li>. Its bold (and underline)
+ * is ignored, since list-label bolding handles labels; italic and sup/sub apply
+ * to the item's own text.
+ */
+function extractListItemFormatting(style: string): FormattingInfo | null {
+  const formatting = extractFormatting(style);
+  if (!formatting?.isItalic && !formatting?.isSuperscript && !formatting?.isSubscript) return null;
+  return { ...formatting, isBold: false, isUnderline: false };
+}
+
+/** A nested list carries its own item formatting, so list item formatting skips it. */
+const isNestedList = (child: Element) => child.matches('ul, ol');
 
 /**
  * Converts formatting styles to semantic HTML tags
@@ -246,6 +272,18 @@ function wrapInlineRuns(element: Element, tagName: string, isExcluded: (child: E
   return [...wrappers, ...wrapInlineContent(element, tagName, containsExcluded)];
 }
 
+/**
+ * Format each inline run, including those in child blocks: a single wrapper
+ * would enclose blocks such as the paragraphs of a cell or quote.
+ */
+function formatInlineRuns(element: Element, formatting: FormattingInfo, isExcluded?: (child: Element) => boolean): void {
+  for (const run of wrapInlineRuns(element, 'span', isExcluded)) {
+    const wrapper = convertFormattingToSemanticTags(run, formatting);
+    if (wrapper) run.replaceWith(wrapper);
+    else unwrapElement(run);
+  }
+}
+
 /** Preserve non-link underlining when a source <u> also surrounds links. */
 function underlineNonLinkContent(element: Element): void {
   wrapInlineRuns(element, 'u', child => child.matches('a[href]'));
@@ -281,13 +319,14 @@ export function splitEmphasisOverrides(root: Element): void {
       const value = parseStyle(element.getAttribute('style') || '')[property];
       return value !== undefined && isCancelledBy(value);
     };
-    // The sanitizer ignores formatting on list items and table/list containers.
+    // The sanitizer ignores bold on list items and formatting on table/list containers.
     const provides = (element: Element) => {
       const tag = element.tagName.toLowerCase();
       if (cancels(element)) return false;
       if (tags.includes(tag)) return true;
-      const formatting = extractFormatting(element.getAttribute('style') || '');
-      return !!formatting && isSet(formatting) && tag !== 'li' && !STRUCTURAL_CHILDREN.has(tag);
+      const style = element.getAttribute('style') || '';
+      const formatting = tag === 'li' ? extractListItemFormatting(style) : extractFormatting(style);
+      return !!formatting && isSet(formatting) && !STRUCTURAL_CHILDREN.has(tag);
     };
     const toSpan = (element: Element) => {
       const span = element.ownerDocument.createElement('span');
@@ -311,7 +350,8 @@ export function splitEmphasisOverrides(root: Element): void {
             .filter(rule => rule.split(':')[0].trim().toLowerCase() !== property).join(';').trim();
           if (style) plain.setAttribute('style', style);
           else plain.removeAttribute('style');
-          wrapInlineRuns(plain, tags[0], element => cancels(element) || provides(element));
+          const isListItem = plain.tagName.toLowerCase() === 'li';
+          wrapInlineRuns(plain, tags[0], element => cancels(element) || provides(element) || (isListItem && isNestedList(element)));
         }
         ancestor = parent;
       }
@@ -345,6 +385,32 @@ export function sanitizeHtml(html: string): string {
     block.append(...Array.from(caption.childNodes));
     caption.parentElement!.before(block);
     caption.remove();
+  });
+
+  // Word Online can mark a heading with ARIA on a paragraph instead of an
+  // <h1>-<h6>. Keep its level before attribute cleanup drops role and
+  // aria-level. A block holding other blocks is a layout wrapper, not a heading.
+  tempDiv.querySelectorAll('p[role][aria-level], div[role][aria-level]').forEach(block => {
+    const level = block.getAttribute('aria-level')!.trim();
+    if (block.getAttribute('role')!.trim().toLowerCase() !== 'heading' || !/^[1-6]$/.test(level)) return;
+    if (Array.from(block.querySelectorAll('*')).some(child => BLOCK_ELEMENT_SET.has(child.tagName.toLowerCase()))) return;
+    const heading = document.createElement(`h${level}`);
+    Array.from(block.attributes).forEach(attr => heading.setAttribute(attr.name, attr.value));
+    heading.append(...Array.from(block.childNodes));
+    block.replaceWith(heading);
+  });
+
+  // Lettered and roman numbering is CSS in Google Docs paste, and styles are
+  // discarded: keep it as the <ol> type. An item's own style overrides the
+  // list's, and Google Docs repeats the style on every item.
+  const listStyleType = (element: Element): string | undefined => {
+    const value = parseStyle(element.getAttribute('style') || '')['list-style-type'];
+    return value ? LIST_STYLE_TYPES[value.toLowerCase()] : undefined;
+  };
+  tempDiv.querySelectorAll('ol').forEach(list => {
+    const itemTypes = new Set(Array.from(list.children).filter(child => child.matches('li')).map(listStyleType));
+    const type = (itemTypes.size === 1 ? [...itemTypes][0] : undefined) ?? listStyleType(list);
+    if (type) list.setAttribute('type', type);
   });
 
   sanitizeElement(tempDiv);
@@ -452,18 +518,28 @@ function sanitizeElement(element: Element): void {
       // === LIFT AND SCRUB FOR LI ELEMENTS ===
       // Inside-Out Rule:
       // 1. First sanitize children: convert span styles to semantic tags (strong/em)
-      // 2. Then strip all attributes from LI
-      // 3. IGNORE LI's own styling - don't propagate to children
-      //    (child spans' formatting is preserved; LI's formatting is discarded)
+      // 2. Apply the LI's own italic and sup/sub to its inline text, outside
+      //    nested lists; its bold is ignored (see extractListItemFormatting).
+      //    A child's `font-style: normal` was already split out by
+      //    splitEmphasisOverrides, which then removed the LI's italic.
+      // 3. Then strip all attributes from LI
       
       const isListItem = tagName === 'li';
       
       if (isListItem) {
-        // Step 1: First sanitize children to convert span styles to semantic tags
         sanitizeElement(node);
-        
-        // Step 2: Strip all attributes from LI (including style)
-        // LI's own font-weight/font-style is IGNORED - not propagated to children
+
+        const itemFormatting = extractListItemFormatting(style);
+        if (itemFormatting) {
+          // Flatten the item's own tags the wrappers repeat, as Sources italic
+          // does, so already emphasized text is not wrapped twice.
+          const repeated = [itemFormatting.isItalic && 'em', itemFormatting.isSuperscript && 'sup', itemFormatting.isSubscript && 'sub'].filter(Boolean).join(', ');
+          for (const element of Array.from(node.querySelectorAll(repeated)).reverse()) {
+            if (element.closest('li') === node) element.replaceWith(...Array.from(element.childNodes));
+          }
+          formatInlineRuns(node, itemFormatting, isNestedList);
+        }
+
         sanitizeAttributes(node, tagName);
         
         continue;
@@ -471,15 +547,7 @@ function sanitizeElement(element: Element): void {
       
       // Always clean descendants, including beneath styled semantic elements.
       sanitizeElement(node);
-      if (formatting && !STRUCTURAL_CHILDREN.has(tagName)) {
-        // Format each inline run, including those in child blocks: a single
-        // wrapper would enclose blocks such as the paragraphs of a cell or quote.
-        for (const run of wrapInlineRuns(node, 'span')) {
-          const wrapper = convertFormattingToSemanticTags(run, formatting);
-          if (wrapper) run.replaceWith(wrapper);
-          else unwrapElement(run);
-        }
-      }
+      if (formatting && !STRUCTURAL_CHILDREN.has(tagName)) formatInlineRuns(node, formatting);
 
       // Extract formatting before removing style/class/unsafe attributes.
       sanitizeAttributes(node, tagName);
@@ -550,6 +618,10 @@ function sanitizeAttributes(element: Element, tagName: string): void {
 
     if (tagName === 'ol' && attrName === 'reversed' && attr.value !== '') {
       element.setAttribute(attr.name, '');
+    }
+
+    if (tagName === 'ol' && attrName === 'type' && !OL_TYPES.includes(attr.value)) {
+      attrsToRemove.push(attr.name);
     }
 
     if ((tagName === 'td' || tagName === 'th') && (attrName === 'colspan' || attrName === 'rowspan')) {

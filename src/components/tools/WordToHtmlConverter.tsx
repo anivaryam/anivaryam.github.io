@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, type ClipboardEvent as ReactClipboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import Lenis from "lenis";
 import { Copy, Check, FileText, Code, Braces, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash, Link, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph, isSpacerElement } from "@/lib/word-to-html/html-spacing";
 import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "@/lib/word-to-html/spacer";
-import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
+import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "next-themes";
@@ -145,6 +145,10 @@ interface ContentBlock {
   preview: string;
   id: string;
 }
+
+// DOMPurify drops `target` by default; keep it, as the paste path does, so a
+// block link opens in a new tab instead of replacing the tool.
+const BLOCK_SANITIZE_CONFIG = { ADD_ATTR: ['target'] };
 
 const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[] => {
   const parser = new DOMParser();
@@ -421,6 +425,17 @@ export function WordToHtmlConverter() {
     () => getCustomSpacerWarnings(effectiveFeatures.customSpacer),
     [effectiveFeatures.customSpacer]
   );
+
+  // The panel messages compare the spacer the pipeline parses, not the raw
+  // text, so equivalent markup such as "<br/>" and "<br>" is no change.
+  const spacerStatus = useMemo(() => {
+    const entered = parseCustomSpacer(features.customSpacer);
+    const used = parseCustomSpacer(effectiveFeatures.customSpacer);
+    return {
+      usesDefault: !!entered.html && !used.root,
+      sanitizerChanged: sanitizeSpacer && !!entered.root && entered.root.outerHTML !== used.root?.outerHTML,
+    };
+  }, [features.customSpacer, effectiveFeatures.customSpacer, sanitizeSpacer]);
 
   const inputAreaRef = useRef<HTMLDivElement>(null);
   const outputPreviewRef = useRef<HTMLDivElement>(null);
@@ -949,22 +964,9 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // List normalization - only flag list items with specific issues
+        // List normalization - flag the list items the validator counts
         if (result.ruleId === 'list-normalization') {
-          const details = result.details || [];
-          
-          const listItems = doc.querySelectorAll('li');
-          listItems.forEach(li => {
-            if (isInSourcesList(li)) {
-              return;
-            }
-            const liText = li.textContent || '';
-            details.forEach((detail: string) => {
-              if (detail.includes(liText.substring(0, 30))) {
-                li.setAttribute('data-warning', detail);
-              }
-            });
-          });
+          getListNormalizationIssues(doc).forEach(issue => issue.element.setAttribute('data-warning', issue.message));
         }
         
         // Sources normalization - flag sources section and list
@@ -1177,6 +1179,31 @@ export function WordToHtmlConverter() {
   // The rendered preview can be selected and copied, so it shows the configured
   // spacer markup without the converter's marker.
   const displayedPreviewHtml = useMemo(() => stripSpacerMarkers(previewHtmlWithWarnings), [previewHtmlWithWarnings]);
+
+  // A selection copied from the rendered preview leaves out the warning
+  // highlights and the spacer marker; the Copy buttons copy clean HTML on their
+  // own. The selected nodes keep their ancestors inside the preview, so text
+  // selected in a list item is still copied as a list.
+  const handlePreviewCopy = (event: ReactClipboardEvent<HTMLDivElement>) => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    const container = document.createElement('div');
+    for (let i = 0; i < selection.rangeCount; i++) {
+      const range = selection.getRangeAt(i);
+      let copied: Node = range.cloneContents();
+      for (let node: Node | null = range.commonAncestorContainer; node && node !== event.currentTarget && event.currentTarget.contains(node); node = node.parentNode) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        const wrapper = node.cloneNode(false);
+        wrapper.appendChild(copied);
+        copied = wrapper;
+      }
+      container.appendChild(copied);
+    }
+    container.querySelectorAll('[data-warning]').forEach(element => element.removeAttribute('data-warning'));
+    event.clipboardData.setData('text/html', stripSpacerMarkers(container.innerHTML));
+    event.clipboardData.setData('text/plain', selection.toString());
+    event.preventDefault();
+  };
 
   return (
     <div className="flex flex-col gap-3 md:gap-4 w-full max-w-full">
@@ -1518,9 +1545,14 @@ export function WordToHtmlConverter() {
                             </div>
                           </div>
                         )}
-                        {sanitizeSpacer && (features.customSpacer ?? '').trim() !== (effectiveFeatures.customSpacer ?? '').trim() && (
+                        {spacerStatus.sanitizerChanged && (
                           <p className="text-xs text-muted-foreground mt-2">
                             The sanitizer changed the markup, so a different spacer is used than the one you entered.
+                          </p>
+                        )}
+                        {spacerStatus.usesDefault && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            The markup is not a single element, so the default spacer is used.
                           </p>
                         )}
                         <label className="flex items-center space-x-2 cursor-pointer mt-2">
@@ -1836,6 +1868,7 @@ export function WordToHtmlConverter() {
             {/* Using h-full instead of absolute to properly calculate scroll height */}
             <div
               ref={outputPreviewRef}
+              onCopy={handlePreviewCopy}
               className={`h-full pl-8 pr-4 pt-4 pb-4 border border-border/50 rounded-lg overflow-y-auto overflow-x-auto bg-background/80 output-preview ${
                 outputView === 'preview' ? 'block' : 'hidden'
               }`}
@@ -2249,7 +2282,7 @@ export function WordToHtmlConverter() {
                             >
                               {block.type === 'heading' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '1.5em',
                                     fontWeight: 'bold',
@@ -2260,7 +2293,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'content' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2270,7 +2303,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'image' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2279,7 +2312,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'disclaimer' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '0.875rem',
                                     lineHeight: '1.6',
@@ -2291,7 +2324,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'sources' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2300,7 +2333,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'readmore' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2512,6 +2545,7 @@ export function WordToHtmlConverter() {
               /* Preview in Modal */
               <div
                 className="pl-8 pr-6 pt-6 pb-6 bg-background/80 output-preview"
+                onCopy={handlePreviewCopy}
                 style={{
                   fontSize: '1rem',
                   lineHeight: '1.75',
@@ -2552,7 +2586,7 @@ export function WordToHtmlConverter() {
                                 {typeLabel}
                               </span>
                               <div className="text-sm leading-relaxed max-w-none" style={{ color: 'hsl(var(--foreground) / 0.9)' }}>
-                                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }} />
+                                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }} />
                               </div>
                             </div>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0 ml-2">

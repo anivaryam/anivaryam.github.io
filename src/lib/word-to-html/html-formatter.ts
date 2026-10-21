@@ -3,7 +3,7 @@
  * Formats HTML in a compact style with nested tags on the same line
  */
 
-import { BLOCK_ELEMENTS } from './html-cleaner';
+import { BLOCK_ELEMENTS, VOID_ELEMENTS } from './html-cleaner';
 import { isCustomSpacerElement, parseCustomSpacer, unmarkedSpacerElement, type CustomSpacer } from './spacer';
 
 const INLINE_ELEMENTS = [
@@ -11,7 +11,6 @@ const INLINE_ELEMENTS = [
   'small', 'mark', 'del', 'ins', 'u', 'abbr', 'cite', 'q', 'samp', 'var'
 ];
 
-const SELF_CLOSING = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'];
 const PRESERVE_EMPTY_ELEMENTS = new Set(['table', 'thead', 'tbody', 'tr', 'th', 'td']);
 // Empty list items keep the numbering and empty headings the structure the
 // preview shows, so the copied code matches it. A document without any text
@@ -23,6 +22,8 @@ function isInlineElement(node: Node | null): boolean {
   return node?.nodeType === Node.ELEMENT_NODE && !BLOCK_ELEMENTS.includes((node as Element).tagName.toLowerCase());
 }
 
+// Written as &nbsp;, as DOM serialization (the unformatted output) does, so
+// the copied code shows it instead of an invisible character.
 function escapeHtml(str: unknown): string {
   if (str == null) return '';
   return String(str)
@@ -30,7 +31,13 @@ function escapeHtml(str: unknown): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/\u00A0/g, '&nbsp;');
+}
+
+/** Text other than collapsible formatting whitespace; &nbsp; is content. */
+function hasRenderedText(text: string): boolean {
+  return /[^\t\n\f\r ]/.test(text);
 }
 
 function isSpacingParagraph(node: Element): boolean {
@@ -51,7 +58,7 @@ function preservesEmpty(tagName: string, keepEmptyContent: boolean): boolean {
 function formatElement(element: Element, insideLi = false, indentLevel = 0, spacer: CustomSpacer = NO_SPACER, keepEmptyContent = false): string {
   const tagName = element.tagName.toLowerCase();
   const isBlock = BLOCK_ELEMENTS.includes(tagName);
-  const isSelfClosing = SELF_CLOSING.includes(tagName);
+  const isSelfClosing = VOID_ELEMENTS.includes(tagName);
   const isLi = tagName === 'li';
   
   // A custom spacer is emitted verbatim so its markup reaches the output.
@@ -142,7 +149,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0, spac
       const nextSibling = node.nextSibling;
       const isBetweenElements = isInlineElement(prevSibling) || isInlineElement(nextSibling);
       
-      if (text.trim() || (isSpaceOnly && isBetweenElements)) {
+      if (hasRenderedText(text) || (isSpaceOnly && isBetweenElements)) {
         content += escapeHtml(text);
         hasContent = true;
       }

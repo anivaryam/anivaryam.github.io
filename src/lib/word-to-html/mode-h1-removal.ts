@@ -1,13 +1,41 @@
 /** Article-title detection shared by source normalization, removal, and validation. */
 import { BLOCK_ELEMENT_SET } from './html-cleaner';
-import { nextNonSpacingElement } from './html-spacing';
+import { isSpacingParagraph, nextNonSpacingElement } from './html-spacing';
 import { findKeyTakeawaysSection } from './mode-key-takeaways';
 
 type SourceStyleReader = (element: Element) => Pick<CSSStyleDeclaration, 'fontSize'>;
 
+/** Word Online wraps each block, and each list item's own list, in a layout div. */
+function isLayoutWrapper(element: Element | null): element is Element {
+  return !!element && element.tagName.toLowerCase() === 'div' && element.children.length === 1 &&
+    BLOCK_ELEMENT_SET.has(element.children[0].tagName.toLowerCase()) &&
+    !Array.from(element.childNodes).some(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
+}
+
+/** The next content block, looking out of and into single-block layout wrappers. */
+function nextContentBlock(from: Element): Element | null {
+  let current = from;
+  for (;;) {
+    let next = nextNonSpacingElement(current);
+    while (!next && isLayoutWrapper(current.parentElement)) {
+      current = current.parentElement;
+      next = nextNonSpacingElement(current);
+    }
+    while (isLayoutWrapper(next)) next = next.children[0];
+    if (!next || !isSpacingParagraph(next)) return next;
+    current = next;
+  }
+}
+
 export function getArticleTitleCandidate(root: ParentNode): Element | null {
-  const section = findKeyTakeawaysSection(root);
-  return section ? nextNonSpacingElement(section.list) : null;
+  const section = findKeyTakeawaysSection(root, nextContentBlock);
+  if (!section) return null;
+  let candidate = nextContentBlock(section.list);
+  // Word Online splits a list into one wrapped list per item.
+  while (candidate?.tagName === section.list.tagName && isLayoutWrapper(candidate.parentElement)) {
+    candidate = nextContentBlock(candidate);
+  }
+  return candidate;
 }
 
 function hasTitleStyle(element: Element): boolean {
@@ -47,12 +75,12 @@ export function findArticleTitleAfterKeyTakeaways(root: ParentNode, styleOf?: So
   // Compare the whole candidate with up to three introductory paragraphs. Do
   // not infer a body size from headings, captions elsewhere, or a fixed default.
   const bodySizes: { size: number; weight: number }[] = [];
-  let next = nextNonSpacingElement(candidate);
+  let next = nextContentBlock(candidate);
   let paragraphs = 0;
   while (next?.matches('p') && paragraphs < 3) {
     bodySizes.push(...textSizes(next, styleOf).filter(run => Number.isFinite(run.size)));
     paragraphs++;
-    next = nextNonSpacingElement(next);
+    next = nextContentBlock(next);
   }
   if (!bodySizes.length) return null;
   bodySizes.sort((a, b) => a.size - b.size);
