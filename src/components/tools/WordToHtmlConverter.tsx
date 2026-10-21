@@ -18,8 +18,8 @@ import { findArticleTitleAfterKeyTakeaways } from "@/lib/word-to-html/mode-h1-re
 import { findKeyTakeawaysSection } from "@/lib/word-to-html/mode-key-takeaways";
 import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
-import { isBrSpacingParagraph } from "@/lib/word-to-html/html-spacing";
-import { getCustomSpacerWarnings, isCustomSpacerElement, parseCustomSpacer, sanitizeCustomSpacerMarkup } from "@/lib/word-to-html/spacer";
+import { isBrSpacingParagraph, isSpacerElement } from "@/lib/word-to-html/html-spacing";
+import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup } from "@/lib/word-to-html/spacer";
 import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -159,6 +159,8 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
   const spacer = parseCustomSpacer(customSpacer);
 
   let currentContentHtml = '';
+  // Spacers before the first element; they open the first block.
+  let leadingSpacerHtml = '';
   const skipIndices = new Set<number>();
 
   children.forEach((node, index) => {
@@ -174,8 +176,16 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
 
     const tagName = element.tagName?.toLowerCase();
 
-    // Spacers are not copyable content, the same way the default spacer is not.
-    if (isCustomSpacerElement(element, spacer)) {
+    // Spacers are part of the copied output. A spacer stays with the block
+    // before it, so each spacer is copied once and no block holds spacers only.
+    if (node.nodeType === Node.ELEMENT_NODE && isSpacerElement(element, spacer)) {
+      if (currentContentHtml) {
+        currentContentHtml += element.outerHTML;
+      } else if (blocks.length > 0) {
+        blocks[blocks.length - 1].html += element.outerHTML;
+      } else {
+        leadingSpacerHtml += element.outerHTML;
+      }
       return;
     }
 
@@ -333,9 +343,6 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
       });
     }
     else if (tagName === 'p' || tagName === 'ul' || tagName === 'ol' || tagName === 'blockquote') {
-      if (tagName === 'p' && !element.textContent?.trim()) {
-        return;
-      }
       currentContentHtml += element.outerHTML;
     }
     else if (node.nodeType === Node.ELEMENT_NODE) {
@@ -351,6 +358,14 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
       preview: currentContentHtml.replace(/<[^>]*>/g, '').substring(0, 100) + '...',
       id: `block-${blockId++}`,
     });
+  }
+
+  if (leadingSpacerHtml) {
+    if (blocks.length > 0) {
+      blocks[0].html = leadingSpacerHtml + blocks[0].html;
+    } else {
+      blocks.push({ type: 'content', html: leadingSpacerHtml, preview: '', id: `block-${blockId++}` });
+    }
   }
 
   return blocks;

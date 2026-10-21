@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { WordToHtmlConverter } from './WordToHtmlConverter';
 import { toast } from '@/hooks/use-toast';
+import { getUnformattedHtml } from '@/lib/word-to-html/converter';
 
 vi.mock('lenis', () => ({
   default: class {
@@ -27,6 +28,18 @@ function enterHtml(html: string) {
   const input = document.querySelector('[contenteditable="true"]') as HTMLElement;
   input.innerHTML = html;
   fireEvent.input(input);
+}
+
+/** Copy every block as HTML, in order, and return the clipboard payloads. */
+function copyAllBlocks(writeText: ReturnType<typeof vi.fn>): string[] {
+  fireEvent.click(screen.getByTitle('Copy blocks'));
+  screen.getAllByTitle('Copy as HTML code with CSS').forEach(button => fireEvent.click(button));
+  return writeText.mock.calls.map(call => String(call[0]));
+}
+
+/** True when the copied block holds more than spacers. */
+function hasText(html: string): boolean {
+  return !!new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim();
 }
 
 describe('WordToHtmlConverter', () => {
@@ -379,59 +392,74 @@ describe('WordToHtmlConverter', () => {
     expect(screen.queryByText(/^Failed:/)).toBeNull();
   });
 
-  it('keeps the custom spacer out of the copyable content blocks', async () => {
+  it('keeps the custom spacer in the copyable blocks', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     try {
+      const input = '<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>';
+      const customSpacer = '<div style="height:10px;"></div>';
       render(<WordToHtmlConverter />);
-      enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+      enterHtml(input);
       fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
       fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
       fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), {
-        target: { value: '<div style="height:10px;"></div>' },
+        target: { value: customSpacer },
       });
 
-      fireEvent.click(screen.getByTitle('Copy blocks'));
-      const copyButtons = [
-        ...screen.getAllByTitle('Copy as formatted HTML'),
-        ...screen.getAllByTitle('Copy as HTML code with CSS'),
-      ];
-      expect(copyButtons.length).toBeGreaterThan(0);
-      copyButtons.forEach(button => fireEvent.click(button));
-
+      const payloads = copyAllBlocks(writeText);
       await waitFor(() => expect(writeText).toHaveBeenCalled());
-      const payloads = writeText.mock.calls.map(call => String(call[0]));
-      expect(payloads.length).toBeGreaterThan(0);
-      expect(payloads.some(payload => payload.includes('height:10px'))).toBe(false);
-      expect(payloads.some(payload => payload.includes('&nbsp;'))).toBe(false);
+      expect(payloads.join('')).toBe(getUnformattedHtml(input, 'blogs', { customSpacer }));
+      expect(payloads.join('').match(/height:10px/g)).toHaveLength(1);
+      expect(payloads.join('')).not.toContain('&nbsp;');
+      expect(payloads.every(hasText)).toBe(true);
     } finally {
       if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
       else Reflect.deleteProperty(navigator, 'clipboard');
     }
   });
 
-  it('keeps the default spacer out of the copyable content blocks', async () => {
+  it('keeps the default spacer in the copyable blocks', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      const input = '<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>';
+      render(<WordToHtmlConverter />);
+      enterHtml(input);
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+
+      const payloads = copyAllBlocks(writeText);
+      await waitFor(() => expect(writeText).toHaveBeenCalled());
+      expect(payloads.join('')).toBe(getUnformattedHtml(input, 'blogs'));
+      expect(payloads.join('').match(/&nbsp;/g)).toHaveLength(1);
+      expect(payloads.every(hasText)).toBe(true);
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
+  it.each([
+    '<p>First para.</p><p>Second para.</p><h2>Heading</h2><h3>Sub</h3><p>Read more: x</p><p>Third para.</p><p>Disclaimer: y</p>',
+    '<p>Read more: x</p><p>First para.</p><p>Second para.</p>',
+  ])('copies every spacer once, without spacer-only blocks, with paragraph spacing: %s', async (input) => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     try {
       render(<WordToHtmlConverter />);
-      enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+      enterHtml(input);
       fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Paragraph Spacing' }));
 
-      fireEvent.click(screen.getByTitle('Copy blocks'));
-      const copyButtons = [
-        ...screen.getAllByTitle('Copy as formatted HTML'),
-        ...screen.getAllByTitle('Copy as HTML code with CSS'),
-      ];
-      expect(copyButtons.length).toBeGreaterThan(0);
-      copyButtons.forEach(button => fireEvent.click(button));
-
+      const payloads = copyAllBlocks(writeText);
       await waitFor(() => expect(writeText).toHaveBeenCalled());
-      const payloads = writeText.mock.calls.map(call => String(call[0]));
-      expect(payloads.length).toBeGreaterThan(0);
-      expect(payloads.some(payload => payload.includes('&nbsp;'))).toBe(false);
+      const expected = getUnformattedHtml(input, 'blogs', { paragraphSpacing: true });
+      expect(expected).toContain('<p>First para.</p><p>&nbsp;</p><p>Second para.</p>');
+      expect(payloads.join('')).toBe(expected);
+      expect(payloads.every(hasText)).toBe(true);
     } finally {
       if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
       else Reflect.deleteProperty(navigator, 'clipboard');
