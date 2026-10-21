@@ -618,9 +618,9 @@ describe('validateSourcesNormalize (D7)', () => {
     expectPass(results, 'sources-normalization');
   });
 
-  it('disabled: fails when sources ARE normalized', () => {
+  it('disabled: passes the unchanged source when it is already normalized', () => {
     const results = validateMode(normalizedSources, 'blogs', { sourcesNormalize: false });
-    expectFail(results, 'sources-normalization');
+    expectSkipped(results, 'sources-normalization');
   });
 });
 
@@ -691,16 +691,15 @@ describe('validateDisclaimerNormalize (D5)', () => {
     expectFail(results, 'disclaimer-normalization');
   });
 
-  it('D5: disabled: fails when strong><em>Disclaimer:</em> is present', () => {
+  it('D5: disabled: passes the unchanged source when strong><em>Disclaimer:</em> is present', () => {
     const html = '<p><strong><em>Disclaimer:</em></strong> Body text.</p>';
     const results = validateMode(html, 'blogs', { disclaimerNormalize: false });
-    expectFail(results, 'disclaimer-normalization');
+    expectSkipped(results, 'disclaimer-normalization');
   });
 
   it('checks the labeled Disclaimer, not a body sentence that starts with "Disclaimers"', () => {
     const html = '<p>Disclaimers matter.</p><p>&nbsp;</p><p><strong><em>Disclaimer:</em></strong> Not advice.</p>';
     expectPass(validateMode(html, 'blogs', defaultFeatures), 'disclaimer-normalization');
-    expectFail(validateMode(html, 'blogs', { disclaimerNormalize: false }), 'disclaimer-normalization');
     expectSkipped(validateMode('<p>Disclaimers vary by state.</p>', 'blogs', defaultFeatures), 'disclaimer-normalization');
   });
 
@@ -957,10 +956,10 @@ describe('validateOlHeaderConversion (D6 / D13)', () => {
     expectSkipped(validateMode(html, 'blogs', defaultFeatures), 'ol-header-conversion');
   });
 
-  it('disabled: fails when numbered headings present', () => {
-    const html = '<h2>1. Title</h2><p>body</p>';
+  it('disabled: passes the unchanged source when it has numbered headings', () => {
+    const html = '<h2>1. Introduction</h2><p>body</p><h2>3.5 Ways to Save</h2><p>body</p>';
     const results = validateMode(html, 'blogs', { olHeaderConversion: false });
-    expectFail(results, 'ol-header-conversion');
+    expectSkipped(results, 'ol-header-conversion');
   });
 
   it('disabled: passes when header lists still present as <ol>', () => {

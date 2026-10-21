@@ -892,44 +892,16 @@ function validateSourcesNormalize(doc: Document, mode: OutputMode, features?: Fe
 
   const isEnabled = isFeatureEnabled(features, 'sourcesNormalize', true);
 
+  /* Disabled — the converter leaves the section as it is in the source, so
+   * a source that already has the normalized form cannot be an error. */
   if (!isEnabled) {
-    const issues: string[] = [];
-
-    /* Label check: only look at the strong > em structure on the paragraph. */
-    sections.forEach(({ label }) => {
-      const labelEm = label.querySelector(':scope > strong > em');
-      if (labelEm?.textContent?.trim().toLowerCase() === 'sources:') {
-        issues.push('Sources paragraph is normalized (should not have <strong><em> structure)');
-      }
-    });
-
-    listItems.forEach((li, index) => {
-      const directEm = Array.from(li.children).find(
-        (c) => c.tagName.toLowerCase() === 'em'
-      );
-      if (directEm) {
-        const hasTextOutside = Array.from(li.childNodes).some(
-          (node) =>
-            node.nodeType === Node.TEXT_NODE &&
-            (node as Text).textContent?.trim()
-        );
-        if (!hasTextOutside) {
-          issues.push(`List item ${index + 1} is wrapped in <em> tag (should not be normalized)`);
-        }
-      }
-    });
-
     return {
       ruleId: 'sources-normalization',
       feature: 'Sources Normalization',
       mode,
-      passed: issues.length === 0,
-      message:
-        issues.length === 0
-          ? 'Sources section correctly not normalized (feature disabled)'
-          : `${issues.length} normalization issue(s) found: ${issues.join('; ')}`,
-      severity: issues.length === 0 ? 'info' : 'error',
-      details: issues.length > 0 ? issues : null,
+      passed: true,
+      message: 'Sources section left as in the source (feature disabled)',
+      severity: 'info',
     };
   }
 
@@ -1093,17 +1065,16 @@ function validateDisclaimerNormalize(doc: Document, mode: OutputMode, features?:
   const labelEm = labelStrong?.querySelector(':scope > em');
   const emText = labelEm?.textContent?.trim().toLowerCase() || '';
 
+  /* Disabled — the converter leaves the label as it is in the source, so a
+   * source label that is already normalized cannot be an error. */
   if (!isEnabled) {
-    const isOverNormalized = !!labelEm && emText === 'disclaimer:';
     return {
       ruleId: 'disclaimer-normalization',
       feature: 'Disclaimer Normalization',
       mode,
-      passed: !isOverNormalized,
-      message: isOverNormalized
-        ? 'Disclaimer paragraph is normalized (should not have <strong><em> structure)'
-        : 'Disclaimer section correctly not normalized (feature disabled)',
-      severity: isOverNormalized ? 'error' : 'info',
+      passed: true,
+      message: 'Disclaimer left as in the source (feature disabled)',
+      severity: 'info',
     };
   }
 
@@ -1584,30 +1555,16 @@ function validateOlHeaderConversion(doc: Document, mode: OutputMode, features?: 
   const headerLists = Array.from(olElements).filter(isHeaderList);
   const isEnabled = isFeatureEnabled(features, 'olHeaderConversion', true);
 
+  /* Disabled — the converter leaves lists and headings as they are in the
+   * source, so numbered headings the source already has cannot be an error. */
   if (!isEnabled) {
-    /* Disabled — check that no numbered headings exist regardless of
-     * whether <ol> elements are present (manual edits can also produce
-     * them). */
-    const allHeadings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    const numberedHeadings = Array.from(allHeadings).filter((h) => {
-      const text = h.textContent?.trim() || '';
-      return /^\d+[\.\)\-]\s/.test(text) || /^\d+[\.\)]/.test(text);
-    });
-
     return {
       ruleId: 'ol-header-conversion',
       feature: 'OL Header Conversion',
       mode,
-      passed: numberedHeadings.length === 0,
-      message:
-        numberedHeadings.length === 0
-          ? 'No numbered headings found (feature disabled, conversion not applied)'
-          : `Found ${numberedHeadings.length} numbered heading(s) (should not be converted when feature is disabled)`,
-      severity: numberedHeadings.length === 0 ? 'info' : 'error',
-      expected: 'No numbered headings present when feature is disabled',
-      actual: numberedHeadings.length === 0
-        ? 'No numbered headings found'
-        : `${numberedHeadings.length} numbered heading(s) found`,
+      passed: true,
+      message: 'Lists and headings left as in the source (feature disabled)',
+      severity: 'info',
     };
   }
 

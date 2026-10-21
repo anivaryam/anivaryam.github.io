@@ -292,7 +292,7 @@ describe('WordToHtmlConverter', () => {
     expect(items.map(li => li.getAttribute('data-warning'))).toEqual(['Missing bold label before colon', null]);
   });
 
-  it('highlights the Disclaimer paragraph that the validator checks', () => {
+  it('does not highlight a source Disclaimer that is already normalized when normalization is off', () => {
     render(<WordToHtmlConverter />);
     enterHtml('<p>Disclaimers matter.</p><p>Body.</p><p><strong><em>Disclaimer:</em></strong> Not advice.</p>');
     fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
@@ -300,7 +300,7 @@ describe('WordToHtmlConverter', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Normalize Disclaimer' }));
     const preview = document.querySelector('.output-preview')!;
     const paragraphs = Array.from(preview.querySelectorAll('p')).filter(p => /^Disclaimer/.test(p.textContent || ''));
-    expect(paragraphs.map(p => p.hasAttribute('data-warning'))).toEqual([false, true]);
+    expect(paragraphs.map(p => p.hasAttribute('data-warning'))).toEqual([false, false]);
   });
 
   it('shows the same warning in both toolbars and restores focus inside maximized output', async () => {
