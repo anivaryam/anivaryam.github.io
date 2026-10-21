@@ -64,13 +64,6 @@ export function findDisclaimerSection(doc: Document): { paragraph: Element } | n
   return paragraph ? { paragraph } : null;
 }
 
-/**
- * Blank non-BR paragraphs include ordinary whitespace and wrapped Word spaces.
- */
-function isNbspSpacingElement(element: Element | null): boolean {
-  return isAnySpacingElement(element) && !isBrSpacingElement(element);
-}
-
 export interface TestResult {
   /** Stable rule identifier for programmatic access (e.g., 'heading-strong', 'spacing-rules') */
   ruleId: string;
@@ -1289,15 +1282,16 @@ function validateParagraphSpacing(doc: Document, mode: OutputMode, features?: Fe
   }
 
   /* Walk direct children of body and look for adjacent <p> pairs missing a
-   * spacing element between them. */
+   * spacing element between them. A configured custom spacer such as
+   * <p>&#8203;</p> is a spacing element too. */
   const issues: string[] = [];
+  const spacer = parseCustomSpacer(features?.customSpacer);
   const rootChildren = doc.body ? Array.from(doc.body.children) : [];
   for (let i = 0; i < rootChildren.length - 1; i++) {
     const a = rootChildren[i];
     const b = rootChildren[i + 1];
     if (a.tagName.toLowerCase() !== 'p' || b.tagName.toLowerCase() !== 'p') continue;
-    if (isNbspSpacingElement(a) || isBrSpacingElement(a)) continue;
-    if (isNbspSpacingElement(b) || isBrSpacingElement(b)) continue;
+    if (isSpacerElement(a, spacer) || isSpacerElement(b, spacer)) continue;
 
     const aText = (a.textContent || '').trim();
     const bText = (b.textContent || '').trim();

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { addSpacing, addSpacingBetweenParagraphs, getHeadingSpacingIssues } from "./mode-spacing";
 import { convertWordToHtml, getUnformattedHtml } from "./converter";
 import { formatCompact } from "./html-formatter";
-import { getCustomSpacerWarnings, sanitizeCustomSpacerMarkup } from "./spacer";
+import { getCustomSpacerWarnings, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "./spacer";
 import { validateMode } from "./validator";
 
 describe("spacing pipeline parity", () => {
@@ -163,6 +163,24 @@ describe("custom spacer", () => {
     const validation = validateMode(output, "blogs", { customSpacer: CUSTOM_SPACER });
 
     expect(validation.results.find(result => result.ruleId === "spacing-rules")?.passed).toBe(true);
+  });
+
+  it.each(["", CUSTOM_SPACER, "<p>&#8203;</p>", "<hr>"])("validates spacer %j and does not double it when the copied output is converted again", (customSpacer) => {
+    const article = '<h2>Key Takeaways</h2><ul><li>Point.</li></ul><p>Intro.</p><p>Body.</p><h2>Section</h2><p>Text.</p>' +
+      '<p>Read more: Care.</p><p>Sources:</p><ol><li>Source one</li></ol><p>Disclaimer: General information.</p>';
+    const features = { customSpacer, spacing: true, paragraphSpacing: true };
+    for (const mode of ["regular", "blogs", "shoppables"] as const) {
+      const output = getUnformattedHtml(article, mode, features);
+      const failures = validateMode(output, mode, features).results.filter(result => !result.passed).map(result => result.ruleId);
+      expect(failures).toEqual([]);
+
+      const copied = stripSpacerMarkers(output);
+      expect(stripSpacerMarkers(getUnformattedHtml(copied, mode, features))).toBe(copied);
+      // The copied code carries formatting whitespace between the tags.
+      const formatted = convertWordToHtml(article, mode, features);
+      const blocks = (html: string) => stripSpacerMarkers(html).replace(/>\s+</g, "><");
+      expect(blocks(getUnformattedHtml(formatted, mode, features))).toBe(copied);
+    }
   });
 
   it("exempts the custom spacer from the sanitizer allowlist", () => {

@@ -856,6 +856,13 @@ describe('validateParagraphSpacing', () => {
     const results = validateMode(html, 'blogs', { paragraphSpacing: true });
     expectFail(results, 'paragraph-spacing');
   });
+
+  it('enabled: counts the configured custom spacer as the spacer', () => {
+    const features = { paragraphSpacing: true, customSpacer: '<p>&#8203;</p>' };
+    expectPass(validateMode('<p>A</p><p>&#8203;</p><p>B</p>', 'blogs', features), 'paragraph-spacing');
+    expectPass(validateMode('<p>A</p><p data-w2h-spacer="1">&#8203;</p><p>B</p>', 'blogs', features), 'paragraph-spacing');
+    expectFail(validateMode('<p>A</p><p>&#8203;</p><p>B</p>', 'blogs', { paragraphSpacing: true }), 'paragraph-spacing');
+  });
 });
 
 /* ------------------------------------------------------------------ */
