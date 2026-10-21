@@ -493,7 +493,7 @@ interface WordListItem {
 // Bullets: Word's library glyphs as pasted text (Symbol ·, Courier New o,
 // Wingdings § Ø ü v) and typed ones. Numbers: decimal, alphabetic, or roman,
 // followed by `.` or `)`. Word always separates the marker with a spacer.
-const WORD_LIST_MARKER = /^\s*(?:([·•◦▪▫■□●○◆◇♦❖➢➤►✓✔o§Øüv*\-–—])|(\(?)(\d{1,4}|[a-z]+|[A-Z]+)([.)]))\s+/;
+const WORD_LIST_MARKER = /^\s*(?:([·•◦▪▫■□●○◆◇♦❖➢➤►✓✔o§Øüv*\-–—])|(\(?)(\d{1,4}|[a-z]+|[A-Z]+)([.)]))(\s+)/;
 const ROMAN_NUMERAL = /^x{0,3}(?:ix|iv|v?i{0,3})$/;
 const ROMAN_DIGITS: Record<string, number> = { i: 1, v: 5, x: 10 };
 const POINTS_PER_UNIT: Record<string, number> = { in: 72, pt: 1, px: 0.75, cm: 72 / 2.54, mm: 72 / 25.4 };
@@ -504,10 +504,30 @@ function isWordListParagraph(paragraph: Element): boolean {
     /mso-list\s*:\s*l\d/i.test(paragraph.getAttribute('style') || '');
 }
 
-function parseWordListMarker(text: string): Pick<WordListItem, 'markerLength' | 'markers'> | null {
-  const match = WORD_LIST_MARKER.exec(text);
+/**
+ * Word's spacer after a marker is a run of spaces, a tab, a separate
+ * whitespace-only span, or part of the marker's `mso-list:Ignore` span. A
+ * single typed space is ordinary text, as in "A. Smith wrote".
+ */
+function hasWordMarkerSpacer(block: Element, spacerStart: number, spacer: string): boolean {
+  if (spacer.length > 1 || spacer.includes('\t')) return true;
+  if (Array.from(block.querySelectorAll('span[style]')).some(span => /mso-list\s*:\s*ignore/i.test(span.getAttribute('style')!))) return true;
+  const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  let offset = 0;
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    if (offset + node.data.length > spacerStart) {
+      return offset === spacerStart && !node.data.trim() && node.parentElement !== block && node.parentElement?.tagName === 'SPAN';
+    }
+    offset += node.data.length;
+  }
+  return false;
+}
+
+function parseWordListMarker(block: Element): Pick<WordListItem, 'markerLength' | 'markers'> | null {
+  const match = WORD_LIST_MARKER.exec(block.textContent || '');
   if (!match) return null;
-  const [prefix, bullet, open, token, close] = match;
+  const [prefix, bullet, open, token, close, spacer] = match;
+  if (!hasWordMarkerSpacer(block, prefix.length - spacer.length, spacer)) return null;
   if (bullet) return { markerLength: prefix.length, markers: [{ tag: 'ul', family: bullet, value: 0 }] };
 
   const markers: WordListMarker[] = [];
@@ -633,7 +653,7 @@ function convertWordListParagraphs(root: HTMLElement): void {
   let run: WordListItem[] = [];
   for (const paragraph of Array.from(root.querySelectorAll<HTMLElement>('p'))) {
     if (!isWordListParagraph(paragraph) || paragraph.closest('li')) continue;
-    const marker = parseWordListMarker(paragraph.textContent || '');
+    const marker = parseWordListMarker(paragraph);
     if (!marker) continue;
     const previous = run[run.length - 1];
     if (previous && (paragraph.classList.contains('MsoListParagraphCxSpFirst') || nextNonSpacingElement(previous.paragraph) !== paragraph)) {

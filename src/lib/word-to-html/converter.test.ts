@@ -623,6 +623,37 @@ describe('Word desktop list paragraphs', () => {
     }
   });
 
+  it.each([
+    'A. Smith wrote the study.',
+    'J. K. Rowling wrote the series.',
+    '<b>A.</b> Smith wrote the study.',
+    'iv. Typed with one space',
+  ])('keeps a list paragraph without Word\'s marker spacer as a paragraph: %s', (body) => {
+    const input = `<p class="MsoListParagraph" style="margin-left:.5in">${body}</p>`;
+    const text = new DOMParser().parseFromString(body, 'text/html').body.textContent;
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual([`p: ${text}`]);
+      }
+    }
+  });
+
+  it.each([
+    ['a tab', '1.<span style="mso-tab-count:1">\t</span>'],
+    ['a separate spacer span', '1.<span style="font:7.0pt &quot;Times New Roman&quot;">&nbsp;</span>'],
+    ['the mso-list:Ignore span', '<span style="mso-list:Ignore">1. </span>'],
+  ])('recognizes Word\'s marker spacer as %s', (_form, marker) => {
+    const input = `<p class="MsoListParagraphCxSpFirst" style="margin-left:.5in">${marker}First</p>` +
+      `<p class="MsoListParagraphCxSpLast" style="margin-left:.5in">${marker.replace('1.', '2.')}Second</p>`;
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['ol: First | Second']);
+      }
+    }
+  });
+
   it('keeps two lists separated by a normal paragraph apart', () => {
     const input = item('CxSpFirst', '1.', 'One') + item('CxSpLast', '2.', 'Two') +
       '<p class="MsoNormal">Between</p>' + item('', '1.', 'Again');
