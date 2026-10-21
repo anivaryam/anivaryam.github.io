@@ -401,6 +401,24 @@ describe('structural and formatting regressions', () => {
     }
   });
 
+  it.each<[OutputMode, { headingStrong?: boolean; olHeaderConversion?: boolean }, string[]]>([
+    ['regular', { olHeaderConversion: true }, ['1. Alpha', '2. Beta']],
+    ['blogs', { headingStrong: false }, ['1. Alpha', '2. Beta']],
+    ['shoppables', { headingStrong: false }, ['1. Alpha', '2. Beta']],
+    ['regular', { headingStrong: true, olHeaderConversion: true }, ['<strong>1. Alpha</strong>', '<strong>2. Beta</strong>']],
+    ['blogs', {}, ['<strong>1. Alpha</strong>', '<strong>2. Beta</strong>']],
+  ])('numbers heading lists in %s %o whether or not Heading Strong adds bold', (mode, features, headings) => {
+    for (const item of ['<h3><b>$</b></h3>', '<h3>$</h3>']) {
+      const items = ['Alpha', 'Beta'].map(title => `<li>${item.replace('$', title)}</li>`).join('');
+      const output = getUnformattedHtml(`<h2>Steps</h2><ol>${items}</ol><p>After.</p>`, mode, features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('ol')).toBeNull();
+      expect(Array.from(doc.querySelectorAll('h3')).map(h => h.innerHTML)).toEqual(headings);
+      const results = validateMode(output, mode, features).results;
+      expect(results.filter(r => r.ruleId === 'ol-header-conversion' || r.ruleId === 'heading-strong').every(r => r.passed)).toBe(true);
+    }
+  });
+
   it.each([
     ['text after the heading', '<li><h3><b>Prepare</b></h3>Wash your hands first.</li><li><h3><b>Apply</b></h3><p>Use a thin layer.</p></li>'],
     ['text after the bold-wrapped heading', '<li><b><h3>Prepare</h3></b>Wash your hands first.</li><li><b><h3>Apply</h3></b><p>Use a thin layer.</p></li>'],
