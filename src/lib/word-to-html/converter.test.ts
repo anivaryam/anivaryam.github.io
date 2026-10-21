@@ -92,6 +92,21 @@ describe('formatted-output content parity', () => {
     }
   });
 
+  it.each([
+    '<ol><li>a</li><li></li><li>c</li></ol>',
+    '<ul><li>a</li><li><strong></strong></li><li>c</li></ul>',
+    '<ol><li>a<ul><li></li></ul></li></ol>',
+    '<p>x</p><h2></h2><p>y</p>',
+    '<p>x</p><h3><strong> </strong></h3><p>y</p>',
+  ])('keeps the empty list items and headings of the preview: %s', (input) => {
+    const items = (html: string) => Array.from(new DOMParser().parseFromString(html, 'text/html').querySelectorAll('li, h1, h2, h3, h4, h5, h6'))
+      .map(element => [element.tagName, element.textContent?.trim()]);
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      expect(items(output.formatted)).toEqual(items(output.unformatted));
+    }
+  });
+
   it.each(['first\n\nsecond  \n  third', '  \n\n  ', '&lt;literal&gt;\n\n&amp; text'])('preserves preformatted whitespace and text: %s', (content) => {
     const output = convertToHtml(`<pre><code>${content}</code></pre>`);
     const preview = new DOMParser().parseFromString(output.unformatted, 'text/html');

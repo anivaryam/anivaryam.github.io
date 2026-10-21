@@ -13,6 +13,10 @@ const INLINE_ELEMENTS = [
 
 const SELF_CLOSING = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'];
 const PRESERVE_EMPTY_ELEMENTS = new Set(['table', 'thead', 'tbody', 'tr', 'th', 'td']);
+// Empty list items keep the numbering and empty headings the structure the
+// preview shows, so the copied code matches it. A document without any text
+// has no remaining content, so they are not kept on their own.
+const PRESERVE_EMPTY_CONTENT_ELEMENTS = new Set(['li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
 const NO_SPACER: CustomSpacer = { html: '', root: null };
 
 function isInlineElement(node: Node | null): boolean {
@@ -40,7 +44,11 @@ function isSpacingParagraph(node: Element): boolean {
          text.trim() === '\u00A0';
 }
 
-function formatElement(element: Element, insideLi = false, indentLevel = 0, spacer: CustomSpacer = NO_SPACER): string {
+function preservesEmpty(tagName: string, keepEmptyContent: boolean): boolean {
+  return PRESERVE_EMPTY_ELEMENTS.has(tagName) || (keepEmptyContent && PRESERVE_EMPTY_CONTENT_ELEMENTS.has(tagName));
+}
+
+function formatElement(element: Element, insideLi = false, indentLevel = 0, spacer: CustomSpacer = NO_SPACER, keepEmptyContent = false): string {
   const tagName = element.tagName.toLowerCase();
   const isBlock = BLOCK_ELEMENTS.includes(tagName);
   const isSelfClosing = SELF_CLOSING.includes(tagName);
@@ -106,7 +114,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0, spac
       const childTag = (node as Element).tagName.toLowerCase();
       
       const isSpacingElement = isSpacingParagraph(node as Element) || isCustomSpacerElement(node as Element, spacer);
-      if (BLOCK_ELEMENTS.includes(childTag) && !PRESERVE_EMPTY_ELEMENTS.has(childTag) && !['pre', 'code'].includes(childTag) && !(node as Element).textContent?.trim() && (node as Element).children.length === 0 && !isSpacingElement) {
+      if (BLOCK_ELEMENTS.includes(childTag) && !preservesEmpty(childTag, keepEmptyContent) && !['pre', 'code'].includes(childTag) && !(node as Element).textContent?.trim() && (node as Element).children.length === 0 && !isSpacingElement) {
         continue;
       }
       
@@ -118,7 +126,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0, spac
       
       const childInsideLi = isLi || insideLi;
       const childIndentLevel = BLOCK_ELEMENTS.includes(childTag) ? indentLevel + 1 : indentLevel;
-      const formattedChild = formatElement(node as Element, childInsideLi, childIndentLevel, spacer);
+      const formattedChild = formatElement(node as Element, childInsideLi, childIndentLevel, spacer, keepEmptyContent);
       if (formattedChild) {
         if (BLOCK_ELEMENTS.includes(childTag) && isBlock) {
           content += formattedChild;
@@ -142,10 +150,10 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0, spac
   }
   
   const isThisSpacingElement = isSpacingParagraph(element);
-  if (!hasContent && PRESERVE_EMPTY_ELEMENTS.has(tagName)) {
+  if (!hasContent && preservesEmpty(tagName, keepEmptyContent)) {
     return '\n' + indent + openingTag + `</${tagName}>`;
   }
-  if (!hasContent && !isThisSpacingElement && !PRESERVE_EMPTY_ELEMENTS.has(tagName)) {
+  if (!hasContent && !isThisSpacingElement && !preservesEmpty(tagName, keepEmptyContent)) {
     return '';
   }
   
@@ -189,12 +197,13 @@ export function formatCompact(html: string, customSpacer?: string | null): strin
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     const spacer = parseCustomSpacer(customSpacer);
+    const keepEmptyContent = !!doc.body.textContent?.trim();
     
     let result = '';
     for (let i = 0; i < doc.body.childNodes.length; i++) {
       const node = doc.body.childNodes[i];
       if (node.nodeType === Node.ELEMENT_NODE) {
-        const formatted = formatElement(node as Element, false, 0, spacer);
+        const formatted = formatElement(node as Element, false, 0, spacer, keepEmptyContent);
         result += formatted;
       } else if (node.nodeType === Node.TEXT_NODE) {
         // Keep separators between top-level inline nodes intact.
