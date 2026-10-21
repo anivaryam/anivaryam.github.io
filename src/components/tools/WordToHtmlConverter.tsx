@@ -19,7 +19,7 @@ import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph } from "@/lib/word-to-html/html-spacing";
 import { getCustomSpacerWarnings, isCustomSpacerElement, parseCustomSpacer, sanitizeCustomSpacerMarkup } from "@/lib/word-to-html/spacer";
-import { validateMode, getUnexpectedSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
+import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "next-themes";
@@ -1132,14 +1132,9 @@ export function WordToHtmlConverter() {
           });
         }
 
-        // Disclaimer normalization - flag the disclaimer paragraph
+        // Disclaimer normalization - flag the disclaimer paragraph the validator checked
         if (result.ruleId === 'disclaimer-normalization' && !result.passed) {
-          doc.querySelectorAll('p').forEach((p) => {
-            const text = (p.textContent || '').trim().toLowerCase();
-            if (text.startsWith('disclaimer')) {
-              p.setAttribute('data-warning', result.message);
-            }
-          });
+          findDisclaimerSection(doc)?.paragraph.setAttribute('data-warning', result.message);
         }
 
         // Paragraph spacing - flag the second paragraph in each pair missing a spacer

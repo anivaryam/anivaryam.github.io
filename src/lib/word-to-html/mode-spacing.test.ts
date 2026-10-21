@@ -29,6 +29,13 @@ describe("spacing pipeline parity", () => {
     expect(addSpacing(output)).toBe(output);
   });
 
+  it('adds spacing only before labeled read-more and Disclaimer paragraphs', () => {
+    const body = '<p>Intro.</p><p>Bacteria spread more quickly.</p><p>You will see more results.</p><p>Read more about it later.</p><p>Disclaimers vary by state.</p>';
+    const output = getUnformattedHtml(body + '<p>Read more: Details.</p>', 'blogs');
+    expect(output).toBe(body + '<p>&nbsp;</p><p>Read more: Details.</p>');
+    expect(validateMode(output, 'blogs', {}).summary.failed).toBe(0);
+  });
+
   it("fills every paragraph gap even when the preceding gap already has spacing", () => {
     const doc = new DOMParser().parseFromString('<p>A</p><p>&nbsp;</p><p>B</p><p>C</p>', 'text/html');
     addSpacingBetweenParagraphs(doc);

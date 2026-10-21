@@ -247,6 +247,17 @@ describe('WordToHtmlConverter', () => {
     expect(list?.getAttribute('data-warning')).toContain('Invalid child structure');
   });
 
+  it('highlights the Disclaimer paragraph that the validator checks', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Disclaimers matter.</p><p>Body.</p><p><strong><em>Disclaimer:</em></strong> Not advice.</p>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Normalize Disclaimer' }));
+    const preview = document.querySelector('.output-preview')!;
+    const paragraphs = Array.from(preview.querySelectorAll('p')).filter(p => /^Disclaimer/.test(p.textContent || ''));
+    expect(paragraphs.map(p => p.hasAttribute('data-warning'))).toEqual([false, true]);
+  });
+
   it('shows the same warning in both toolbars and restores focus inside maximized output', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,

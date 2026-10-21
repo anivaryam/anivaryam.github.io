@@ -15,6 +15,7 @@ import { getHeadingSpacingIssues } from './mode-spacing';
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
 import { isHeaderList } from './mode-ol-header-conversion';
 import { isFootnoteLink } from './mode-link-spacing';
+import { isDisclaimerParagraph, isDisclaimerSectionStart } from './mode-disclaimer-normalize';
 
 /**
  * Feature flags that toggle behavior. The custom spacer is a text setting,
@@ -56,15 +57,10 @@ const BANNED_ATTRIBUTE_PREFIXES = ['data-', 'on'];
  */
 const SAFE_REL_VALUES = new Set(SANITIZED_REL_VALUES);
 
-function findDisclaimerSection(doc: Document): { paragraph: Element } | null {
-  const paragraphs = doc.querySelectorAll('p');
-  for (const p of Array.from(paragraphs)) {
-    const text = (p.textContent || '').trim().toLowerCase();
-    if (text.startsWith('disclaimer')) {
-      return { paragraph: p };
-    }
-  }
-  return null;
+/** The first paragraph the Disclaimer normalizer rewrites; shared with preview highlights. */
+export function findDisclaimerSection(doc: Document): { paragraph: Element } | null {
+  const paragraph = Array.from(doc.querySelectorAll('p')).find(isDisclaimerParagraph);
+  return paragraph ? { paragraph } : null;
 }
 
 /**
@@ -1160,10 +1156,8 @@ function validateSpecialParagraphSpacing(doc: Document, issues: string[], spacer
   paragraphs.forEach((p) => {
     const text = p.textContent?.trim().toLowerCase() || '';
 
-    /* Use exact prefix matching for "alt image text:" instead of includes(). */
-    if (text === 'read also:' || text.startsWith('read also:') ||
-        text === 'read more:' || text.startsWith('read more:') ||
-        text === 'see more:' || text.startsWith('see more:')) {
+    /* The same label detection as the spacing rules. */
+    if (isReadMoreParagraph(p)) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
         issues.push(`Missing spacing before "${text.substring(0, 20)}..."`);
@@ -1177,7 +1171,7 @@ function validateSpecialParagraphSpacing(doc: Document, issues: string[], spacer
       }
     }
 
-    if (text.startsWith('disclaimer')) {
+    if (isDisclaimerSectionStart(p)) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
         issues.push('Missing spacing before "Disclaimer:" section');

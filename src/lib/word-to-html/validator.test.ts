@@ -673,6 +673,13 @@ describe('validateDisclaimerNormalize (D5)', () => {
     expectFail(results, 'disclaimer-normalization');
   });
 
+  it('checks the labeled Disclaimer, not a body sentence that starts with "Disclaimers"', () => {
+    const html = '<p>Disclaimers matter.</p><p>&nbsp;</p><p><strong><em>Disclaimer:</em></strong> Not advice.</p>';
+    expectPass(validateMode(html, 'blogs', defaultFeatures), 'disclaimer-normalization');
+    expectFail(validateMode(html, 'blogs', { disclaimerNormalize: false }), 'disclaimer-normalization');
+    expectSkipped(validateMode('<p>Disclaimers vary by state.</p>', 'blogs', defaultFeatures), 'disclaimer-normalization');
+  });
+
   it('D5: disabled: passes when label is plain', () => {
     const html = '<p>Disclaimer: Body text.</p>';
     const results = validateMode(html, 'blogs', { disclaimerNormalize: false });
@@ -731,6 +738,12 @@ describe('validateSpacing (D9 / D11)', () => {
     const html = '<p>Content.</p><p>&nbsp;</p><h2>Heading</h2>';
     const results = validateMode(html, 'blogs', { spacing: false });
     expectFail(results, 'spacing-rules');
+  });
+
+  it('requires spacing only before labeled read-more and Disclaimer paragraphs', () => {
+    const html = '<p>Intro.</p><p>Disclaimers vary by state.</p><p>Bacteria spread more quickly.</p><p>Also, read more: details.</p>';
+    const r = getResult(validateMode(html, 'blogs', defaultFeatures), 'spacing-rules');
+    expect(r.details).toEqual(['Missing spacing before "also, read more: det..."']);
   });
 
   it('D11: alt image text exact match triggers spacing check', () => {
