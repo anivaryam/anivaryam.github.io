@@ -96,6 +96,26 @@ describe('WordToHtmlConverter', () => {
     expect(input.querySelector('a, [data-word-paste-boundary]')).toBeNull();
   });
 
+  it('inserts a prepared paste once when insertHTML inserts but reports false', () => {
+    render(<WordToHtmlConverter />);
+    const input = screen.getByRole('textbox', { name: 'Word document content' });
+    const execCommand = vi.fn((_command: string, _showUi?: boolean, value?: string) => {
+      input.insertAdjacentHTML('beforeend', value ?? '');
+      return false;
+    });
+    const original = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true });
+    try {
+      const html = '<p>Read <a href="/concealed" style="color:black;text-decoration:none">our guide</a> first.</p>';
+      fireEvent.paste(input, { clipboardData: { getData: (type: string) => type === 'text/html' ? html : '' } });
+      expect(execCommand).toHaveBeenCalledWith('insertHTML', false, expect.any(String));
+      expect(input.textContent?.split('our guide')).toHaveLength(2);
+    } finally {
+      if (original) Object.defineProperty(document, 'execCommand', original);
+      else delete (document as { execCommand?: unknown }).execCommand;
+    }
+  });
+
   it('aborts a pending link check when the converter unmounts', () => {
     const fetchMock = vi.fn().mockReturnValue(new Promise(() => {}));
     vi.stubGlobal('fetch', fetchMock);

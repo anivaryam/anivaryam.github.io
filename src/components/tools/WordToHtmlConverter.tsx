@@ -649,8 +649,11 @@ export function WordToHtmlConverter() {
           const html = DOMPurify.sanitize(source.innerHTML, { FORBID_TAGS: ['style'], ADD_ATTR: ['target'] });
           e.preventDefault();
           // insertHTML preserves the browser's editing/undo history. Range is
-          // the fallback for environments without this editing command.
-          if (!document.execCommand?.('insertHTML', false, html)) {
+          // the fallback for environments without this editing command. Some
+          // browsers report false after inserting, so the fallback runs only
+          // when the input is unchanged; otherwise the paste would appear twice.
+          const inputBeforeInsert = inputArea.innerHTML;
+          if (!document.execCommand?.('insertHTML', false, html) && inputArea.innerHTML === inputBeforeInsert) {
             const selection = window.getSelection();
             const range = selection?.rangeCount ? selection.getRangeAt(0) : document.createRange();
             if (!inputArea.contains(range.commonAncestorContainer)) {
