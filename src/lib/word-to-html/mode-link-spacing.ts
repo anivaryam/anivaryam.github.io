@@ -17,6 +17,10 @@ const OPENING_PUNCTUATION_RE = /[\("'\[\{\u201C\u2018]$/;
 // Regex pattern for checking if text starts with closing punctuation that doesn't need a space before it
 const CLOSING_PUNCTUATION_RE = /^[.,;:!?)}\]'"'\u201D\u2019]/;
 
+// Whitespace that HTML collapses (the set html-cleaner trims). U+00A0 (&nbsp;)
+// is intentional spacing and must survive normalization.
+const COLLAPSIBLE_WHITESPACE_RE = /[\t\n\r\f\v ]+/g;
+
 export function addLinkSpacing(html: string): string {
   if (!html || typeof html !== 'string') {
     return '';
@@ -60,6 +64,11 @@ export function addLinkSpacing(html: string): string {
       return node ? (node as Text) : null;
     };
 
+    // Text inside <pre>/<code> is data, not prose: never rewrite it
+    const isCodeText = (node: Text): boolean => {
+      return !!node.parentElement?.closest('pre, code');
+    };
+
     // Helper function to find the previous meaningful sibling (skips empty text nodes)
     const findPreviousMeaningfulSibling = (node: Node | null): Node | null => {
       let current = node;
@@ -91,6 +100,11 @@ export function addLinkSpacing(html: string): string {
     allAnchors.forEach(anchor => {
       // Guard against missing parentNode (defensive safety check)
       if (!anchor.parentNode) {
+        return;
+      }
+
+      // Links inside code keep the code's exact whitespace
+      if (anchor.closest('pre, code')) {
         return;
       }
 
@@ -127,14 +141,17 @@ export function addLinkSpacing(html: string): string {
           }
         }
 
+        // Code text next to the link stays exactly as written
+        const isCodeNeighbor = textNodeToModify !== null && isCodeText(textNodeToModify);
+
         // ALWAYS normalize multiple spaces to single space first (before any other logic)
-        if (textNodeToModify) {
-          textNodeToModify.textContent = textContent.replace(/\s+/g, ' ');
+        if (textNodeToModify && !isCodeNeighbor) {
+          textNodeToModify.textContent = textContent.replace(COLLAPSIBLE_WHITESPACE_RE, ' ');
           textContent = textNodeToModify.textContent || '';
         }
 
         // Add space before if needed (after normalization)
-        if (textNodeToModify && textContent.trim() && !endsWithWhitespace(textContent) && !endsWithOpeningPunctuation(textContent)) {
+        if (textNodeToModify && !isCodeNeighbor && textContent.trim() && !endsWithWhitespace(textContent) && !endsWithOpeningPunctuation(textContent)) {
           textNodeToModify.textContent = textContent + ' ';
         } else if (!textNodeToModify) {
           // No text node found - insert a space node before the anchor
@@ -176,14 +193,16 @@ export function addLinkSpacing(html: string): string {
           }
         }
 
+        const isCodeNeighbor = nextTextNode !== null && isCodeText(nextTextNode);
+
         // Normalize multiple spaces
-        if (nextTextNode) {
-          nextTextNode.textContent = nextText.replace(/\s+/g, ' ');
+        if (nextTextNode && !isCodeNeighbor) {
+          nextTextNode.textContent = nextText.replace(COLLAPSIBLE_WHITESPACE_RE, ' ');
           nextText = nextTextNode.textContent || '';
         }
 
         // Add space after if needed
-        if (nextTextNode && nextText.trim() && !WHITESPACE_START_RE.test(nextText) && !CLOSING_PUNCTUATION_RE.test(nextText)) {
+        if (nextTextNode && !isCodeNeighbor && nextText.trim() && !WHITESPACE_START_RE.test(nextText) && !CLOSING_PUNCTUATION_RE.test(nextText)) {
           nextTextNode.textContent = ' ' + nextText;
         } else if (!nextTextNode) {
           // No text node found - insert a space node after the anchor

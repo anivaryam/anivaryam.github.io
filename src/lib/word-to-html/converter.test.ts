@@ -69,6 +69,27 @@ describe('formatted-output content parity', () => {
     expect(formatted.querySelector('code')?.textContent).toBe(preview.querySelector('code')?.textContent);
   });
 
+  it.each([
+    ['<pre><code>first\n\nsecond  <a href="https://example.com">docs</a>\n  third</code></pre>', 'first\n\nsecond  docs\n  third'],
+    ['<p>Run <code>npm  test</code><a href="https://example.com">docs</a></p>', 'npm  test'],
+  ])('keeps code whitespace next to a link: %s', (input, code) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(new DOMParser().parseFromString(html, 'text/html').querySelector('code')?.textContent).toBe(code);
+      }
+    }
+  });
+
+  it('keeps a non-breaking space in text next to a link', () => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml('<p>Take 10&nbsp;mg <a href="https://example.com">daily</a>.</p>'), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(new DOMParser().parseFromString(html, 'text/html').querySelector('p')?.textContent).toBe('Take 10 mg daily.');
+      }
+    }
+  });
+
   it('does not truncate large documents in the copied code', () => {
     const text = 'a'.repeat(1000000) + ' END';
     const output = convertToHtml(`<p>${text}</p>`);
