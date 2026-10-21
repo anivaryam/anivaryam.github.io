@@ -371,6 +371,27 @@ describe('structural and formatting regressions', () => {
     expect(doc.querySelector('table > strong, tbody > em, tr > em')).toBeNull();
   });
 
+  it.each([
+    ['<table><caption>Table 1: Prices</caption><tr><td>a</td></tr></table>', null],
+    ['<p>Intro.</p><table><caption style="font-style:italic">Table 1: <strong>Prices</strong></caption><tr><td>a</td></tr></table>', 'em'],
+    ['<table><caption><p>Table 1:</p> Prices</caption><tr><td>a</td></tr></table>', null],
+  ])('keeps table caption text as a paragraph directly before its table: %s', (input, emphasis) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const table = doc.querySelector('table')!;
+        const captions = Array.from(doc.body.children).slice(0, Array.from(doc.body.children).indexOf(table)).filter(p => p.textContent !== 'Intro.');
+        expect(captions.map(p => p.tagName).every(tag => tag === 'P')).toBe(true);
+        expect(captions.map(p => p.textContent).join(' ').replace(/\s+/g, ' ')).toBe('Table 1: Prices');
+        expect(table.textContent?.trim()).toBe('a');
+        expect(Array.from(doc.body.childNodes).some(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())).toBe(false);
+        if (emphasis) expect(captions[0].querySelector(emphasis)?.textContent).toBe('Table 1: Prices');
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
+    }
+  });
+
   it.each(['b', 'i', 'span'])('preserves superscript/subscript on <%s>', (tag) => {
     for (const [alignment, expected] of [['super', 'sup'], ['35%', 'sup'], ['sub', 'sub'], ['-0.6em', 'sub']]) {
       const output = getUnformattedHtml(`<p>x<${tag} style="vertical-align:${alignment}">2</${tag}></p>`, 'shoppables');

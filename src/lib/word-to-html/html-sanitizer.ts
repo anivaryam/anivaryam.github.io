@@ -246,6 +246,18 @@ export function sanitizeHtml(html: string): string {
     ADD_ATTR: ['target'],
   });
 
+  // <caption> is not allowed, and its unwrapped text would be moved out of the
+  // table when the HTML is parsed again. Keep it as a layout block directly
+  // before its table, where browsers render a caption by default.
+  tempDiv.querySelectorAll('table > caption').forEach(caption => {
+    const block = document.createElement('div');
+    const style = caption.getAttribute('style');
+    if (style) block.setAttribute('style', style);
+    block.append(...Array.from(caption.childNodes));
+    caption.parentElement!.before(block);
+    caption.remove();
+  });
+
   sanitizeElement(tempDiv);
 
   // Source appearance has already determined link boundaries in Word cleanup.
