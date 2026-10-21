@@ -241,7 +241,8 @@ self.onmessage = async (event: MessageEvent<ParallelWorkerMessage>) => {
       transferList.push(result.buffer);
     }
     
-    self.postMessage({
+    // The DOM lib types self as Window; in a worker the second argument is the transfer list.
+    (self as unknown as { postMessage(message: unknown, transfer: Transferable[]): void }).postMessage({
       type: 'success',
       id,
       data: result,

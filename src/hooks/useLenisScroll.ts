@@ -59,15 +59,15 @@ export interface UseLenisOptions {
    */
   className?: string;
   /**
-   * Selector for the wrapper element
-   * @default 'html'
+   * The scroll wrapper
+   * @default window
    */
-  wrapper?: Window | HTMLElement | string;
+  wrapper?: Window | HTMLElement;
   /**
-   * Selector for the content element
-   * @default 'html, body'
+   * The scroll content
+   * @default document.documentElement
    */
-  content?: string | HTMLElement | Window;
+  content?: HTMLElement;
   /**
    * Auto-resize on window resize
    * @default true
@@ -118,15 +118,10 @@ export function useLenisScroll(options: UseLenisOptions = {}) {
     gestureOrientation = "vertical",
     smoothWheel = true,
     smoothTouch = false,
-    normalizeWheel = false,
-    smooth = true,
-    className = "lenis",
     wrapper = typeof window !== "undefined" ? window : undefined,
     content = typeof window !== "undefined" ? document.documentElement : undefined,
     resize = true,
-    transform = false,
     errorCallback,
-    on,
   } = options;
 
   const initLenis = useCallback(() => {
@@ -139,15 +134,12 @@ export function useLenisScroll(options: UseLenisOptions = {}) {
         orientation,
         gestureOrientation,
         smoothWheel,
-        smoothTouch,
-        normalizeWheel,
-        smooth,
-        className,
+        // Lenis 1.x renamed smoothTouch and resize to syncTouch and autoResize, and
+        // has no normalizeWheel, smooth, className, transform or on option.
+        syncTouch: smoothTouch,
         wrapper,
         content,
-        resize,
-        transform,
-        on,
+        autoResize: resize,
       });
 
       lenisRef.current = lenis;
@@ -164,14 +156,9 @@ export function useLenisScroll(options: UseLenisOptions = {}) {
     gestureOrientation,
     smoothWheel,
     smoothTouch,
-    normalizeWheel,
-    smooth,
-    className,
     wrapper,
     content,
     resize,
-    transform,
-    on,
     errorCallback,
   ]);
 

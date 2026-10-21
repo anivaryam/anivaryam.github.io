@@ -43,7 +43,7 @@ export interface LenisContainerProps extends React.HTMLAttributes<HTMLDivElement
   /**
    * Children to render
    */
-  children: React.ReactNode;
+  children?: React.ReactNode;
   /**
    * Callback when Lenis is ready
    */
@@ -131,11 +131,10 @@ export const LenisContainer = forwardRef<LenisContainerRef, LenisContainerProps>
         easing,
         gestureOrientation,
         smoothWheel,
-        smoothTouch,
+        // Lenis 1.x renamed smoothTouch to syncTouch and dropped smooth and className.
+        syncTouch: smoothTouch,
         wrapper: containerRef.current,
         content: containerRef.current,
-        smooth: true,
-        className: "lenis",
       });
 
       // Notify when ready

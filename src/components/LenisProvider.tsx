@@ -97,10 +97,9 @@ export function LenisProvider({
       duration,
       easing,
       smoothWheel,
-      smoothTouch,
-      normalizeWheel,
-      smooth: true,
-      className: "lenis",
+      // Lenis 1.x renamed smoothTouch to syncTouch and dropped smooth, className
+      // and normalizeWheel, so normalizeWheel has no effect.
+      syncTouch: smoothTouch,
     });
 
     // Check if element should be ignored by Lenis
