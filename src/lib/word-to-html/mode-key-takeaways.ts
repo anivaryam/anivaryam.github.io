@@ -5,13 +5,19 @@
 
 import { nextNonSpacingElement } from './html-spacing';
 
-/** A section's list must follow its label, without crossing article content. */
-export function findKeyTakeawaysSection(root: ParentNode): { heading: Element; list: Element } | null {
+/**
+ * A section's list must follow its label, without crossing article content.
+ * Source title detection passes a walk that also looks through layout wrappers.
+ */
+export function findKeyTakeawaysSection(
+  root: ParentNode,
+  nextBlock: (from: Element) => Element | null = nextNonSpacingElement
+): { heading: Element; list: Element } | null {
   const heading = Array.from(root.querySelectorAll('h2')).find(element =>
     /^key takeaways\s*:?$/i.test(element.textContent?.trim() || '')
   );
   if (!heading) return null;
-  const list = nextNonSpacingElement(heading);
+  const list = nextBlock(heading);
   return list?.matches('ul, ol') ? { heading, list } : null;
 }
 

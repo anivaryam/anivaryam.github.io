@@ -241,6 +241,35 @@ describe('article titles after Key Takeaways', () => {
     expect(validateMode(output, 'blogs', {}).summary.failed).toBe(0);
   });
 
+  describe('through Word Online layout wrappers', () => {
+    // Word Online wraps every block in a div, and every list item in its own list.
+    const textRun = (text: string, size: string) => `<span class="TextRun"><span class="NormalTextRun" style="font-size:${size}">${text}</span></span>`;
+    const outline = (block: string) => `<div class="OutlineElement Ltr SCXW1 BCX0">${block}</div>`;
+    const listItem = (text: string) => `<div class="ListContainerWrapper SCXW1 BCX0"><ul role="list"><li role="listitem"><p class="Paragraph">${text}</p></li></ul></div>`;
+    const paragraph = (text: string, size = '12pt') => outline(`<p class="Paragraph">${textRun(text, size)}</p>`);
+    const section = outline(`<h2 class="Paragraph">${textRun('Key Takeaways', '16pt')}</h2>`) + listItem('Point one.') + listItem('Point two.');
+
+    it.each([
+      ['an enlarged title', paragraph(title, '28pt')],
+      ['a Title style', outline(`<p class="MsoTitle">${title}</p>`)],
+    ])('removes %s', (_variant, heading) => {
+      const input = section + heading + paragraph('Intro paragraph one.') + paragraph('Intro paragraph two.');
+      const output = getUnformattedHtml(input, 'blogs');
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.body.textContent).not.toContain(title);
+      expect(Array.from(doc.querySelectorAll('ul > li')).map(li => li.textContent)).toEqual(['Point one.', 'Point two.']);
+      expect(doc.body.textContent).toContain('Intro paragraph two.');
+      expect(validateMode(output, 'blogs', {}).summary.failed).toBe(0);
+      const kept = getUnformattedHtml(input, 'blogs', { h1Removal: false });
+      expect(new DOMParser().parseFromString(kept, 'text/html').querySelector('h1')?.textContent).toBe(title);
+    });
+
+    it('does not search beyond the first wrapped content block', () => {
+      const input = section + paragraph('Ordinary content.') + paragraph(title, '28pt') + paragraph('Intro paragraph.');
+      expect(getUnformattedHtml(input, 'blogs')).toContain(title);
+    });
+  });
+
   it('honors explicit removal in Regular/Blogs and works independently of Takeaways formatting', () => {
     for (const mode of ['regular', 'blogs'] as const) {
       const features = { h1Removal: true, keyTakeaways: false };
