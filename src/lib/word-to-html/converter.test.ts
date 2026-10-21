@@ -422,6 +422,23 @@ describe('structural and formatting regressions', () => {
     }
   });
 
+  it.each([
+    ['Just a typed line', ['Just a typed line']],
+    ['First<br>Second', ['First Second']],
+    ['First line<div>Second line</div>', ['First line', 'Second line']],
+    ['Hello <strong>world</strong> today.<h2>Heading</h2>Tail', ['Hello world today.', 'Tail']],
+  ])('wraps top-level inline content in paragraphs: %s', (input, paragraphs) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.body.childNodes).some(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())).toBe(false);
+        expect(Array.from(doc.querySelectorAll('body > p')).map(p => p.textContent).filter(text => text?.trim())).toEqual(paragraphs);
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'basic-structure')?.passed).toBe(true);
+    }
+  });
+
   it('keeps the numbering of a Word Online list split into one <ol> per item', () => {
     const item = (n: number, text: string) => `<div class="ListContainerWrapper"><ol start="${n}" role="list"><li role="listitem" data-aria-posinset="${n}" data-aria-level="1"><p class="Paragraph"><span>${text}</span></p></li></ol></div>`;
     const input = item(1, 'One') + item(2, 'Two') + item(3, 'Three');

@@ -285,6 +285,10 @@ export function sanitizeHtml(html: string): string {
     }
   }
 
+  // Typed or plain-text input has no block structure. Treat the top level like
+  // a layout block, so its inline runs become paragraphs.
+  wrapInlineContent(tempDiv, 'p');
+
   return tempDiv.innerHTML;
 }
 

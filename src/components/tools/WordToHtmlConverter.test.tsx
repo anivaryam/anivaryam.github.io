@@ -222,6 +222,13 @@ describe('WordToHtmlConverter', () => {
     }
   });
 
+  it('converts typed plain text into a valid paragraph in Regular mode', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('Just a typed line');
+    expect(document.querySelector('.output-preview p')?.textContent).toBe('Just a typed line');
+    expect(screen.queryByText(/^Failed:/)).toBeNull();
+  });
+
   it('keeps the accepted FAQ and Shoppables spacing in the UI', () => {
     render(<WordToHtmlConverter />);
     enterHtml('<p>Body.</p><h2>Frequently Asked Questions About How Often Do Newborns Eat?</h2><p><span>&nbsp;</span></p><h3>How many times a day should a newborn eat?</h3><p>Answer.</p>');
