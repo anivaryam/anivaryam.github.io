@@ -601,4 +601,36 @@ describe('WordToHtmlConverter', () => {
     expect(preview.querySelector('img')?.getAttribute('onerror')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  it('says when the custom spacer markup falls back to the default spacer', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+
+    const preview = document.querySelector('.output-preview')!;
+    const input = screen.getByRole('textbox', { name: 'Custom Spacer' });
+    fireEvent.change(input, { target: { value: '<p>&nbsp;</p><p>&nbsp;</p>' } });
+    expect(preview.innerHTML).toContain('<p>Body text.</p><p>&nbsp;</p><p>');
+    expect(screen.getByText(/not a single element, so the default spacer is used/)).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: '<div style="height:10px;"></div>' } });
+    expect(screen.queryByText(/so the default spacer is used/)).toBeNull();
+  });
+
+  it.each([
+    [`<div style='height:10px'></div>`, false],
+    ['<br/>', false],
+    ['<img src="x" onerror="window.__XSS=1">', true],
+  ])('reports a sanitizer change only when the spacer used differs: %s', (markup, changed) => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), { target: { value: markup } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Sanitize the spacer markup' }));
+
+    expect(!!screen.queryByText(/The sanitizer changed the markup/)).toBe(changed);
+    expect(screen.queryByText(/so the default spacer is used/)).toBeNull();
+  });
 });

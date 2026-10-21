@@ -422,6 +422,17 @@ export function WordToHtmlConverter() {
     [effectiveFeatures.customSpacer]
   );
 
+  // The panel messages compare the spacer the pipeline parses, not the raw
+  // text, so equivalent markup such as "<br/>" and "<br>" is no change.
+  const spacerStatus = useMemo(() => {
+    const entered = parseCustomSpacer(features.customSpacer);
+    const used = parseCustomSpacer(effectiveFeatures.customSpacer);
+    return {
+      usesDefault: !!entered.html && !used.root,
+      sanitizerChanged: sanitizeSpacer && !!entered.root && entered.root.outerHTML !== used.root?.outerHTML,
+    };
+  }, [features.customSpacer, effectiveFeatures.customSpacer, sanitizeSpacer]);
+
   const inputAreaRef = useRef<HTMLDivElement>(null);
   const outputPreviewRef = useRef<HTMLDivElement>(null);
   const codeAreaRef = useRef<HTMLDivElement>(null);
@@ -1518,9 +1529,14 @@ export function WordToHtmlConverter() {
                             </div>
                           </div>
                         )}
-                        {sanitizeSpacer && (features.customSpacer ?? '').trim() !== (effectiveFeatures.customSpacer ?? '').trim() && (
+                        {spacerStatus.sanitizerChanged && (
                           <p className="text-xs text-muted-foreground mt-2">
                             The sanitizer changed the markup, so a different spacer is used than the one you entered.
+                          </p>
+                        )}
+                        {spacerStatus.usesDefault && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            The markup is not a single element, so the default spacer is used.
                           </p>
                         )}
                         <label className="flex items-center space-x-2 cursor-pointer mt-2">
