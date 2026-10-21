@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateMode, type ValidationResults } from './validator';
+import { getLinkSpacingIssues, getOlBoldLabelItems, getSectionSpacingIssues, validateMode, type ValidationResults } from './validator';
 import type { FeatureFlags, OutputMode } from './converter';
 
 function getResult(results: ValidationResults, ruleId: string) {
@@ -501,6 +501,13 @@ describe('validateLinkSpacing (D2)', () => {
     expectPass(results, 'link-spacing');
   });
 
+  it('reports the link it counts for preview highlighting', () => {
+    const doc = new DOMParser().parseFromString('<p>word<a href="https://x.com">link</a> and <a href="https://x.com/ok">ok</a></p>', 'text/html');
+    const issues = getLinkSpacingIssues(doc);
+    expect(issues.map(issue => issue.element.textContent)).toEqual(['link']);
+    expect(getResult(validateMode(doc.body.innerHTML, 'blogs', defaultFeatures), 'link-spacing').message).toContain(issues[0].message);
+  });
+
   it('passes at start of paragraph', () => {
     const html = '<p><a href="https://x.com">link</a> after</p>';
     const results = validateMode(html, 'blogs', defaultFeatures);
@@ -559,6 +566,11 @@ describe('validateOlBoldLabels', () => {
     const html = '<ol><li><strong>Foo:</strong> text</li><li>No bold here:</li></ol>';
     const results = validateMode(html, 'blogs', defaultFeatures);
     expectFail(results, 'ol-bold-labels');
+  });
+
+  it('reports the items it counts as missing a bold label', () => {
+    const doc = new DOMParser().parseFromString('<ol><li><strong>Foo:</strong> text</li><li><strong>Step one</strong>: preheat</li><li>No bold here:</li></ol>', 'text/html');
+    expect(getOlBoldLabelItems(doc).missingBold.map(li => li.textContent)).toEqual(['Step one: preheat', 'No bold here:']);
   });
 
   it('excludes Sources list items', () => {
@@ -750,6 +762,15 @@ describe('validateSpacing (D9 / D11)', () => {
     const html = '<p>Content.</p><p>&nbsp;</p><h2>Heading</h2>';
     const results = validateMode(html, 'blogs', { spacing: false });
     expectFail(results, 'spacing-rules');
+  });
+
+  it('reports the elements behind its Key Takeaways and labeled-paragraph messages', () => {
+    const html = '<h2>Key Takeaways:</h2><ul><li>Point</li></ul><p>Body.</p><p>Read more: x</p><p>Disclaimer: y</p>';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const issues = getSectionSpacingIssues(doc);
+    expect(issues.map(issue => issue.element.tagName + ':' + issue.element.textContent)).toEqual(['UL:Point', 'P:Read more: x', 'P:Disclaimer: y']);
+    const details = getResult(validateMode(html, 'blogs', defaultFeatures), 'spacing-rules').details;
+    expect(issues.every(issue => details?.includes(issue.message))).toBe(true);
   });
 
   it('requires spacing only before labeled read-more and Disclaimer paragraphs', () => {

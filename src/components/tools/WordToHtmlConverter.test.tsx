@@ -247,6 +247,14 @@ describe('WordToHtmlConverter', () => {
     expect(list?.getAttribute('data-warning')).toContain('Invalid child structure');
   });
 
+  it('highlights the list items the bold-label rule counts', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<ol><li><strong>Step one</strong>: preheat</li><li><strong>Step two:</strong> serve</li></ol>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
+    const items = Array.from(document.querySelector('.output-preview')!.querySelectorAll('li'));
+    expect(items.map(li => li.getAttribute('data-warning'))).toEqual(['Missing bold label before colon', null]);
+  });
+
   it('highlights the Disclaimer paragraph that the validator checks', () => {
     render(<WordToHtmlConverter />);
     enterHtml('<p>Disclaimers matter.</p><p>Body.</p><p><strong><em>Disclaimer:</em></strong> Not advice.</p>');

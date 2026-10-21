@@ -626,10 +626,11 @@ function validateRelativePaths(doc: Document, mode: OutputMode, features?: Featu
 /**
  * Walk previous siblings (including element nodes) so images and <br> tags
  * immediately before a link are also checked for missing space.
+ * Element-level diagnostics, shared with preview highlights.
  */
-function validateLinkSpacing(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+export function getLinkSpacingIssues(doc: Document): { element: Element; message: string }[] {
   const links = doc.querySelectorAll('a[href]');
-  const issues: string[] = [];
+  const issues: { element: Element; message: string }[] = [];
   const OPENING_PUNCT = /[\("'\[\{\u201C\u2018]$/;
   const TRAILING_PUNCT = /[.,;:!?)}\]\u201D\u2019"']$/;
 
@@ -667,13 +668,20 @@ function validateLinkSpacing(doc: Document, mode: OutputMode, features?: Feature
     }
     const lastChar = previousText.slice(-1);
     if (lastChar !== ' ' && lastChar !== '\u00A0') {
-      issues.push(`Missing space before link: "${trimmedEnd.slice(-30)}..."`);
+      issues.push({ element: link, message: `Missing space before link: "${trimmedEnd.slice(-30)}..."` });
       return;
     }
     if (/^\s{2,}/.test(previousText.slice(-10))) {
-      issues.push(`Multiple spaces before link: "${trimmedEnd.slice(-30)}..."`);
+      issues.push({ element: link, message: `Multiple spaces before link: "${trimmedEnd.slice(-30)}..."` });
     }
   });
+
+  return issues;
+}
+
+function validateLinkSpacing(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  const links = doc.querySelectorAll('a[href]');
+  const issues = getLinkSpacingIssues(doc).map(issue => issue.message);
 
   return {
     ruleId: 'link-spacing',
@@ -772,6 +780,35 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
   };
 }
 
+/**
+ * Ordered-list items outside Sources whose text has a colon, and those whose
+ * first <strong> does not hold the colon. Shared with preview highlights.
+ */
+export function getOlBoldLabelItems(doc: Document): { withColon: Element[]; missingBold: Element[]; skippedSources: number } {
+  const sourcesSections = findSourcesSections(doc);
+  const withColon: Element[] = [];
+  const missingBold: Element[] = [];
+  let skippedSources = 0;
+
+  doc.querySelectorAll('ol > li').forEach((li) => {
+    if (sourcesSections.some(section => section.list?.contains(li))) {
+      skippedSources++;
+      return;
+    }
+
+    const text = li.textContent || '';
+    if (text.includes(':')) {
+      withColon.push(li);
+      const strongText = li.querySelector('strong')?.textContent || '';
+      if (!strongText.includes(':')) {
+        missingBold.push(li);
+      }
+    }
+  });
+
+  return { withColon, missingBold, skippedSources };
+}
+
 function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
   if (mode === 'regular') {
     return {
@@ -784,31 +821,9 @@ function validateOlBoldLabels(doc: Document, mode: OutputMode, features?: Featur
     };
   }
 
-  const sourcesSections = findSourcesSections(doc);
-
-  const olItems = doc.querySelectorAll('ol > li');
-  let itemsWithColon = 0;
-  let itemsWithBold = 0;
-  let skippedSources = 0;
-
-  olItems.forEach((li) => {
-    if (sourcesSections.some(section => section.list?.contains(li))) {
-      skippedSources++;
-      return;
-    }
-
-    const text = li.textContent || '';
-    if (text.includes(':')) {
-      itemsWithColon++;
-      const strong = li.querySelector('strong');
-      if (strong) {
-        const strongText = strong.textContent || '';
-        if (strongText.includes(':')) {
-          itemsWithBold++;
-        }
-      }
-    }
-  });
+  const { withColon, missingBold, skippedSources } = getOlBoldLabelItems(doc);
+  const itemsWithColon = withColon.length;
+  const itemsWithBold = itemsWithColon - missingBold.length;
 
   if (itemsWithColon === 0) {
     return {
@@ -1125,12 +1140,12 @@ function validateDisclaimerNormalize(doc: Document, mode: OutputMode, features?:
 /* Spacing                                                            */
 /* ------------------------------------------------------------------ */
 
-function validateKeyTakeawaySpacing(doc: Document, issues: string[], spacer: CustomSpacer): void {
+function validateKeyTakeawaySpacing(doc: Document, issues: { element: Element; message: string }[], spacer: CustomSpacer): void {
   const section = findKeyTakeawaysSection(doc);
   if (!section) return;
   const elementAfterUl = section.list.nextElementSibling;
   if (!isSpacerElement(elementAfterUl, spacer)) {
-    issues.push('Missing spacing after Key Takeaways section');
+    issues.push({ element: section.list, message: 'Missing spacing after Key Takeaways section' });
   }
 }
 
@@ -1138,7 +1153,7 @@ function validateHeadingSpacing(doc: Document, issues: string[], customSpacer?: 
   issues.push(...getHeadingSpacingIssues(doc, customSpacer).map(issue => issue.message));
 }
 
-function validateSpecialParagraphSpacing(doc: Document, issues: string[], spacer: CustomSpacer): void {
+function validateSpecialParagraphSpacing(doc: Document, issues: { element: Element; message: string }[], spacer: CustomSpacer): void {
   const paragraphs = doc.querySelectorAll('p');
 
   paragraphs.forEach((p) => {
@@ -1148,31 +1163,43 @@ function validateSpecialParagraphSpacing(doc: Document, issues: string[], spacer
     if (isReadMoreParagraph(p)) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
-        issues.push(`Missing spacing before "${text.substring(0, 20)}..."`);
+        issues.push({ element: p, message: `Missing spacing before "${text.substring(0, 20)}..."` });
       }
     }
 
     if (isSourcesLabel(p)) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
-        issues.push('Missing spacing before "Sources:" section');
+        issues.push({ element: p, message: 'Missing spacing before "Sources:" section' });
       }
     }
 
     if (isDisclaimerSectionStart(p)) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
-        issues.push('Missing spacing before "Disclaimer:" section');
+        issues.push({ element: p, message: 'Missing spacing before "Disclaimer:" section' });
       }
     }
 
     if (text.startsWith('alt image text:')) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
-        issues.push('Missing spacing before "Alt Image Text:" paragraph');
+        issues.push({ element: p, message: 'Missing spacing before "Alt Image Text:" paragraph' });
       }
     }
   });
+}
+
+/**
+ * Element-level diagnostics for the spacing after Key Takeaways and before
+ * the labeled paragraphs. Shared with preview highlights.
+ */
+export function getSectionSpacingIssues(doc: Document, customSpacer?: string): { element: Element; message: string }[] {
+  const spacer = parseCustomSpacer(customSpacer);
+  const issues: { element: Element; message: string }[] = [];
+  validateKeyTakeawaySpacing(doc, issues, spacer);
+  validateSpecialParagraphSpacing(doc, issues, spacer);
+  return issues;
 }
 
 /** Shared element-level diagnostics for disabled spacing and preview highlights. */
@@ -1247,11 +1274,9 @@ function validateSpacing(doc: Document, mode: OutputMode, features?: FeatureFlag
   }
 
   const issues: string[] = [];
-  const spacer = parseCustomSpacer(features?.customSpacer);
 
-  validateKeyTakeawaySpacing(doc, issues, spacer);
   validateHeadingSpacing(doc, issues, features?.customSpacer);
-  validateSpecialParagraphSpacing(doc, issues, spacer);
+  issues.push(...getSectionSpacingIssues(doc, features?.customSpacer).map(issue => issue.message));
 
   return {
     ruleId: 'spacing-rules',

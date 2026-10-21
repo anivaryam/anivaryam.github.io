@@ -15,11 +15,12 @@ import DOMPurify from 'dompurify';
 import { cleanWordHtml } from "@/lib/word-to-html/word-html-cleaner";
 import { createInertContainer, prepareWordSource } from "@/lib/word-to-html/word-source-formatting";
 import { findArticleTitleAfterKeyTakeaways } from "@/lib/word-to-html/mode-h1-removal";
+import { findKeyTakeawaysSection } from "@/lib/word-to-html/mode-key-takeaways";
 import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph } from "@/lib/word-to-html/html-spacing";
 import { getCustomSpacerWarnings, isCustomSpacerElement, parseCustomSpacer, sanitizeCustomSpacerMarkup } from "@/lib/word-to-html/spacer";
-import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, type ValidationResults } from "@/lib/word-to-html/validator";
+import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "next-themes";
@@ -902,19 +903,9 @@ export function WordToHtmlConverter() {
           }
         }
         
-        // OL bold labels - flag all li with colon but no strong EXCEPT Sources section
+        // OL bold labels - flag the items the validator counts as missing a bold label
         if (result.ruleId === 'ol-bold-labels') {
-          const olItems = doc.querySelectorAll('ol > li');
-          olItems.forEach(li => {
-            // Skip list items in the Sources section
-            if (isInSourcesList(li)) {
-              return;
-            }
-            const text = li.textContent || '';
-            if (text.includes(':') && !li.querySelector('strong')) {
-              li.setAttribute('data-warning', 'Missing bold label before colon');
-            }
-          });
+          getOlBoldLabelItems(doc).missingBold.forEach(li => li.setAttribute('data-warning', 'Missing bold label before colon'));
         }
         
         // Remove sources links - flag all links in sources
@@ -954,20 +945,9 @@ export function WordToHtmlConverter() {
         
         // Key takeaways - flag key takeaways heading AND the list below it (only if failed)
         if (result.ruleId === 'key-takeaways' && !result.passed) {
-          const headings = doc.querySelectorAll('h2, h3');
-          headings.forEach(h => {
-            const text = h.textContent?.toLowerCase() || '';
-            if (text.includes('key takeaways')) {
-              h.setAttribute('data-warning', result.message);
-              let next = h.nextElementSibling;
-              while (next && next.tagName.toLowerCase() !== 'ul' && next.tagName.toLowerCase() !== 'ol') {
-                next = next.nextElementSibling;
-              }
-              if (next) {
-                next.setAttribute('data-warning', result.message);
-              }
-            }
-          });
+          const section = findKeyTakeawaysSection(doc);
+          section?.heading.setAttribute('data-warning', result.message);
+          section?.list.setAttribute('data-warning', result.message);
         }
         
         // Link attributes - flag links missing proper attributes (only if failed)
@@ -985,51 +965,23 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // Spacing rules - parse details and highlight the target element (not spacing elements)
+        // Spacing rules - highlight the elements behind the validator messages (not spacing elements)
         if (result.ruleId === 'spacing-rules') {
           const details = result.details || [];
           if (features.spacing === false) {
             getUnexpectedSpacingIssues(doc, effectiveFeatures).forEach(issue => issue.element.setAttribute('data-warning', issue.message));
           }
-          getHeadingSpacingIssues(doc, effectiveFeatures.customSpacer).forEach(issue => {
+          [
+            ...getHeadingSpacingIssues(doc, effectiveFeatures.customSpacer),
+            ...getSectionSpacingIssues(doc, effectiveFeatures.customSpacer),
+          ].forEach(issue => {
             if (details.includes(issue.message)) issue.element.setAttribute('data-warning', issue.message);
           });
-          
-          details.forEach((message: string) => {
-            // Parse message formats:
-            // - 'Missing spacing before heading: "..."'
-            // - 'Missing spacing before Sources: section'
-            // - 'Missing spacing before Disclaimer: section'
-            // - 'Missing spacing before Alt Image Text: paragraph'
-            // - 'Missing spacing before "...'
-            
-            // Handle section/paragraph messages: 'Missing spacing before "X:" section' or 'Missing spacing before "X:" paragraph'
-            const sectionMatch = message.match(/Missing spacing before "([^"]+):?"?\s*(section|paragraph)?"?$/i);
-            if (sectionMatch) {
-              const targetText = sectionMatch[1].toLowerCase();
-              const paragraphs = doc.querySelectorAll('p');
-              paragraphs.forEach(p => {
-                const text = p.textContent?.trim().toLowerCase() || '';
-                if (text === targetText || text.startsWith(targetText + ':') || text.startsWith(targetText + ' ')) {
-                  p.setAttribute('data-warning', message);
-                }
-              });
-              return;
-            }
-            
-            // Handle read also/read more messages: 'Missing spacing before "..."'
-            const readMoreMatch = message.match(/Missing spacing before "([^"]+\.\.\.)"/);
-            if (readMoreMatch) {
-              const readMoreText = readMoreMatch[1].toLowerCase();
-              const paragraphs = doc.querySelectorAll('p');
-              paragraphs.forEach(p => {
-                const text = p.textContent?.trim().toLowerCase() || '';
-                if (text.includes(readMoreText.replace('...', ''))) {
-                  p.setAttribute('data-warning', message);
-                }
-              });
-            }
-          });
+        }
+
+        // Link spacing - flag the links the validator counts
+        if (result.ruleId === 'link-spacing') {
+          getLinkSpacingIssues(doc).forEach(issue => issue.element.setAttribute('data-warning', issue.message));
         }
         
         // OL header conversion - flag the header lists the validator counted (only if failed)
