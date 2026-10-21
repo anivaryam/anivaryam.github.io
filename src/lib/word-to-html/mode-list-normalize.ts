@@ -16,6 +16,8 @@
  * This is inline text normalization, not structural list normalization.
  */
 
+import { findSourcesSections } from './mode-sources-section';
+
 /**
  * Google Docs places a sub-list directly inside its parent list
  * (<ul><li>Parent</li><ul>…</ul></ul>). Move it into the preceding item, or
@@ -35,6 +37,19 @@ function nestSubListsInItems(doc: Document): void {
   });
 }
 
+/** The next sibling of `node`, skipping whitespace-only text. */
+function nextNonBlankSibling(node: Node): Node | null {
+  let sibling = node.nextSibling;
+  while (
+    sibling &&
+    sibling.nodeType === Node.TEXT_NODE &&
+    !sibling.textContent?.trim()
+  ) {
+    sibling = sibling.nextSibling;
+  }
+  return sibling;
+}
+
 function mergeAdjacentUl(doc: Document): void {
   let hasChanges = true;
   
@@ -46,16 +61,7 @@ function mergeAdjacentUl(doc: Document): void {
       const currentUl = uls[i];
       const nextUl = uls[i + 1];
 
-      let sibling: Node | null = currentUl.nextSibling;
-      while (
-        sibling &&
-        sibling.nodeType === Node.TEXT_NODE &&
-        !sibling.textContent?.trim()
-      ) {
-        sibling = sibling.nextSibling;
-      }
-
-      if (sibling === nextUl) {
+      if (nextNonBlankSibling(currentUl) === nextUl) {
         // Preserve every node, even if malformed input contains a wrapper.
         // Structural validation can flag it; merging must never delete content.
         while (nextUl.firstChild) currentUl.appendChild(nextUl.firstChild);
@@ -64,6 +70,37 @@ function mergeAdjacentUl(doc: Document): void {
       }
     }
   }
+}
+
+/** The number an <ol> gives its first item; the sanitizer keeps `start` canonical. */
+function listStart(list: Element): number {
+  const start = parseInt(list.getAttribute('start') || '', 10);
+  return Number.isNaN(start) ? 1 : start;
+}
+
+/**
+ * Word Online pastes a numbered Sources list as one <ol start="N"> per item.
+ * Merge each list that continues the count into the list after the label, so
+ * the Sources steps and checks, which take that list, cover every item. A
+ * list that restarts or skips the numbering, or uses another marker `type`,
+ * is a separate list and stays. Other chains keep their own <ol start="N">
+ * elements, which number correctly.
+ */
+function mergeSourcesListChains(doc: Document): void {
+  findSourcesSections(doc).forEach(({ list }) => {
+    if (!list?.matches('ol:not([reversed])')) return;
+    let next = nextNonBlankSibling(list);
+    while (
+      next?.nodeType === Node.ELEMENT_NODE &&
+      (next as Element).matches('ol:not([reversed])') &&
+      (next as Element).getAttribute('type') === list.getAttribute('type') &&
+      listStart(next as Element) === listStart(list) + list.querySelectorAll(':scope > li').length
+    ) {
+      while (next.firstChild) list.appendChild(next.firstChild);
+      (next as Element).remove();
+      next = nextNonBlankSibling(list);
+    }
+  });
 }
 
 /**
@@ -83,7 +120,10 @@ export function normalizeLists(html: string, mergeLists: boolean = true): string
     nestSubListsInItems(doc);
 
     // Merge adjacent ul elements first
-    if (mergeLists) mergeAdjacentUl(doc);
+    if (mergeLists) {
+      mergeAdjacentUl(doc);
+      mergeSourcesListChains(doc);
+    }
     
     // List item normalization: just clean up spacing, don't wrap with EM
     // (style attribute will be removed elsewhere in the pipeline)

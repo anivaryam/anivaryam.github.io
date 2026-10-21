@@ -1334,6 +1334,40 @@ describe('Sources content preservation', () => {
     expect(validateMode(output, 'shoppables', {}).summary.failed).toBe(0);
   });
 
+  it.each(['blogs', 'shoppables'] as const)('normalizes every item of a Word Online Sources list split into one <ol> per item in %s', (mode) => {
+    const item = (n: number, href: string, text: string) => `<div class="ListContainerWrapper"><ol start="${n}" role="list"><li role="listitem" data-aria-posinset="${n}" data-aria-level="1"><p class="Paragraph"><a href="${href}" class="Hyperlink"><span style="color:#0563c1;text-decoration:underline">${text}</span></a></p></li></ol></div>`;
+    const input = '<div class="OutlineElement"><p class="Paragraph"><span style="font-weight:bold">Sources:</span></p></div>' +
+      item(1, 'https://nih.gov/a', 'NIH: article') + item(2, 'https://cdc.gov/b', 'CDC: page') + item(3, 'https://who.int/c', 'WHO report');
+    const output = convertToHtml(cleanWordHtml(input), mode);
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const items = Array.from(doc.querySelectorAll('ol > li'));
+      expect(doc.querySelectorAll('ol')).toHaveLength(1);
+      expect(items.map(li => li.textContent?.trim())).toEqual(['NIH: article', 'CDC: page', 'WHO report']);
+      expect(doc.querySelector('a')).toBeNull();
+      expect(items.every(li => li.getAttribute('style') === 'font-style: italic' && li.querySelector(':scope > em')?.textContent?.trim() === li.textContent?.trim())).toBe(true);
+    }
+    const results = validateMode(output.unformatted, mode, {});
+    expect(results.results.find(r => r.ruleId === 'ol-bold-labels')?.passed).toBe(true);
+    expect(results.summary.failed).toBe(0);
+  });
+
+  it.each(['<ol><li>Unrelated</li></ol>', '<ol start="5"><li>Unrelated</li></ol>'])('keeps a list that restarts its numbering out of the Sources list: %s', (restart) => {
+    const output = getUnformattedHtml(`<p><b>Sources:</b></p><ol><li><a href="https://nih.gov/a">NIH article</a></li></ol>${restart}`, 'shoppables');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(Array.from(doc.querySelectorAll('ol')).map(ol => Array.from(ol.children).map(li => li.hasAttribute('style')))).toEqual([[true], [false]]);
+  });
+
+  it.each([
+    ['', ' type="a"', 2],
+    [' type="i"', '', 2],
+    [' type="a"', ' type="A"', 2],
+    [' type="a"', ' type="a"', 1],
+  ])('merges a continuing Sources list only with the same marker type: <ol%s> then <ol%s>', (first, next, lists) => {
+    const output = normalizeLists(`<p>Sources:</p><ol${first}><li>One</li></ol><ol start="2"${next}><li>Two</li></ol>`);
+    expect(new DOMParser().parseFromString(output, 'text/html').querySelectorAll('ol')).toHaveLength(lists);
+  });
+
   it('removes source links independently of label normalization and supports heading BR spacing', () => {
     const features = { sourcesNormalize: false, brBeforeSources: true };
     const output = getUnformattedHtml('<p>Body.</p><h2>Sources:</h2><ul><li><a href="/study">Study</a></li></ul>', 'shoppables', features);
