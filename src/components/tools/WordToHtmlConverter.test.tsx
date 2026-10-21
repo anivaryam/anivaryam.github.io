@@ -477,7 +477,8 @@ describe('WordToHtmlConverter', () => {
 
   it('copies a selection of the rendered preview without warning highlights or spacer markers', () => {
     render(<WordToHtmlConverter />);
-    enterHtml('<p>Intro.</p><h2>Products</h2><ol><li>Option: <a href="/product">Buy product</a></li></ol>');
+    // A label split across elements is left unbolded, so the preview keeps a warning to strip.
+    enterHtml('<p>Intro.</p><h2>Products</h2><ol><li><em>Top</em> option: <a href="/product">Buy product</a></li></ol>');
     fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
     fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), {
@@ -502,7 +503,7 @@ describe('WordToHtmlConverter', () => {
     expect(all['text/html']).toContain('<a href="/product"');
     expect(all['text/plain']).toContain('Buy product');
     const part = copySelection(range => range.selectNodeContents(item.firstChild!));
-    expect(part['text/html']).toBe('<ol><li>Option: </li></ol>');
+    expect(part['text/html']).toBe('<ol><li><em>Top</em></li></ol>');
     for (const html of [all['text/html'], part['text/html']]) {
       expect(html).not.toContain('data-warning');
       expect(html).not.toContain('data-w2h-spacer');
