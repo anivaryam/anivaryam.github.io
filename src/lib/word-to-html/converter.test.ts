@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convertToHtml, convertWordToHtml, getUnformattedHtml, type OutputMode } from './converter';
 import { cleanHtml } from './html-cleaner';
 import { formatCompact } from './html-formatter';
 import { sanitizeHtml } from './html-sanitizer';
 import { cleanWordHtml } from './word-html-cleaner';
+import { createInertContainer } from './word-source-formatting';
 import { normalizeSources } from './mode-sources-normalize';
 import { validateMode } from './validator';
 import { normalizeLists } from './mode-list-normalize';
@@ -308,6 +309,40 @@ describe('structural and formatting regressions', () => {
       expect(new DOMParser().parseFromString(html, 'text/html').body.textContent).toBe('Hello world today.');
     }
   });
+
+  it('keeps the numbering of a Word Online list split into one <ol> per item', () => {
+    const item = (n: number, text: string) => `<div class="ListContainerWrapper"><ol start="${n}" role="list"><li role="listitem" data-aria-posinset="${n}" data-aria-level="1"><p class="Paragraph"><span>${text}</span></p></li></ol></div>`;
+    const input = item(1, 'One') + item(2, 'Two') + item(3, 'Three');
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('ol')).map(ol => ol.getAttribute('start'))).toEqual([null, '2', '3']);
+        expect(Array.from(doc.querySelectorAll('ol > li')).map(li => li.textContent)).toEqual(['One', 'Two', 'Three']);
+      }
+      expect(validateMode(output.unformatted, mode, {}).results.find(r => r.ruleId === 'sanitized-structure')?.passed).toBe(true);
+    }
+  });
+
+  it('resumes an interrupted list at its source number', () => {
+    const input = '<ol><li>One</li></ol><p>Note between.</p><ol start="2"><li>Two</li></ol>';
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.querySelectorAll('ol')).map(ol => ol.getAttribute('start'))).toEqual([null, '2']);
+      }
+    }
+  });
+
+  it.each([
+    ['<ol><li>A</li></ol><ol><li>B</li></ol>', '<ol><li>A</li></ol><ol><li>B</li></ol>', '<ol>\n  <li>A</li>\n</ol>\n<ol>\n  <li>B</li>\n</ol>'],
+    ['<ol start="1"><li>A</li></ol>', '<ol><li>A</li></ol>', '<ol>\n  <li>A</li>\n</ol>'],
+  ])('keeps output unchanged when list numbering is the default: %s', (input, unformatted, formatted) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      expect(convertToHtml(cleanWordHtml(input), mode)).toEqual({ formatted, unformatted });
+    }
+  });
 });
 
 describe('URL preservation', () => {
@@ -529,6 +564,35 @@ describe('Word-to-HTML pipeline regressions', () => {
     expect(doc.querySelector('a')?.getAttribute('rel')).toBe('noopener');
   });
 
+  it.each([
+    ['abc', null], [' 4 ', '4'], ['007', '7'], ['+3', '3'], ['2.5', '2'], ['0', '0'], ['-2', '-2'],
+    ['99999999999', null], ['', null], ['3abc', '3'], ['1e3', null], ['0x10', '0'],
+    ['2147483647', '2147483647'], ['2147483648', null], ['-2147483648', '-2147483648'], ['-2147483649', null],
+  ])('reduces <ol start="%s"> to the browser-rendered integer', (value, expected) => {
+    const ol = new DOMParser().parseFromString(sanitizeHtml(`<ol start="${value}"><li>x</li></ol>`), 'text/html').querySelector('ol');
+    expect(ol?.textContent).toBe('x');
+    expect(ol?.getAttribute('start')).toBe(expected);
+  });
+
+  it.each([
+    ['<ol reversed start="3"><li>x</li></ol>', '3'],
+    ['<ol reversed><li>x</li></ol>', null],
+    ['<ol reversed start="1"><li>x</li></ol>', '1'],
+    ['<ol reversed="reversed"><li>x</li></ol>', null],
+  ])('keeps reversed numbering on %s', (input, start) => {
+    const ol = new DOMParser().parseFromString(sanitizeHtml(input), 'text/html').querySelector('ol');
+    expect(ol?.getAttribute('reversed')).toBe('');
+    expect(ol?.getAttribute('start')).toBe(start);
+  });
+
+  it.each([
+    ['<ul start="2" reversed><li>x</li></ul>', '<ul><li>x</li></ul>'],
+    ['<ol><li start="2" reversed>x</li></ol>', '<ol><li>x</li></ol>'],
+    ['<p start="2" reversed>x</p>', '<p>x</p>'],
+  ])('removes list numbering attributes outside <ol>: %s', (input, expected) => {
+    expect(sanitizeHtml(input)).toBe(expected);
+  });
+
   it('preserves combined bold and italic Word formatting', () => {
     const output = getUnformattedHtml('<p><span style="font-weight: bold; font-style: italic">Both</span></p>');
     const doc = new DOMParser().parseFromString(output, 'text/html');
@@ -709,5 +773,81 @@ describe('trailing whitespace before block end tags', () => {
     }
     const results = validateMode(output.unformatted, 'blogs', {});
     expect(results.results.find(result => result.ruleId === 'list-normalization')?.passed).toBe(true);
+  });
+});
+
+describe('inert parsing of untrusted markup', () => {
+  // jsdom runs inline handlers; <details open> fires toggle without user interaction.
+  const marker = (id: string) => `data-bug1-${id}`;
+  const details = (id: string) => `<details open ontoggle="document.documentElement.setAttribute('${marker(id)}','1')">x</details>`;
+  const settle = () => new Promise(resolve => setTimeout(resolve, 100));
+  const handlerRan = (id: string) => document.documentElement.hasAttribute(marker(id));
+
+  // Positive control: the same payload runs its handler when parsed in the live document.
+  async function expectHandlerToRunInLiveDocument(id: string, html: string) {
+    const live = document.createElement('div');
+    live.innerHTML = html;
+    await settle();
+    expect(handlerRan(id)).toBe(true);
+  }
+
+  afterEach(() => {
+    for (const { name } of Array.from(document.documentElement.attributes)) {
+      if (name.startsWith('data-bug1-')) document.documentElement.removeAttribute(name);
+    }
+  });
+
+  it('parses untrusted markup in an inert no-quirks container', async () => {
+    const container = createInertContainer();
+    // Quirks mode would keep a <table> inside an open <p>, unlike the live document.
+    expect(container.ownerDocument.compatMode).toBe('CSS1Compat');
+    const html = details('container');
+    container.innerHTML = html;
+    await settle();
+    expect(handlerRan('container')).toBe(false);
+    await expectHandlerToRunInLiveDocument('container', html);
+  });
+
+  it('runs no inline handler from cleanWordHtml input', async () => {
+    const html = `<p>Hello</p>${details('clean')}`;
+    cleanWordHtml(html);
+    await settle();
+    expect(handlerRan('clean')).toBe(false);
+    await expectHandlerToRunInLiveDocument('clean', html);
+  });
+
+  // Each site re-parses serialized content into a replacement element.
+  const REPARSE_SITES = [
+    ['font', `<font color="red">${details('font')}</font>`,
+      '<p><font color="red">a<noscript><b>x</b></noscript></font></p>',
+      '<p><span style="color: red">a<noscript><b>x</b></noscript></span></p>'],
+    ['italic', `<div><span style="font-style:italic">${details('italic')}</span></div>`,
+      '<p><span style="font-style:italic">a<noscript><b>x</b></noscript></span></p>',
+      '<p><em>a<noscript><b>x</b></noscript></em></p>'],
+    ['bold', `<div><span style="font-weight:bold">${details('bold')}</span></div>`,
+      '<p><span style="font-weight:bold">a<noscript><b>x</b></noscript></span></p>',
+      '<p><strong>a<noscript><b>x</b></noscript></strong></p>'],
+  ] as const;
+
+  it.each(REPARSE_SITES)('runs no inline handler at the %s re-parse site', async (id, payload) => {
+    cleanWordHtml(payload);
+    await settle();
+    expect(handlerRan(id)).toBe(false);
+    await expectHandlerToRunInLiveDocument(id, payload);
+  });
+
+  it.each(REPARSE_SITES)('re-parses %s content with the same <noscript> semantics as the first parse', (_id, _payload, input, expected) => {
+    // Mixing scripting-disabled and scripting-enabled parses serializes <noscript> children as escaped text.
+    expect(cleanWordHtml(input)).toBe(expected);
+  });
+
+  describe.each(['regular', 'blogs', 'shoppables'] as const)('in %s mode', (mode) => {
+    it.each([
+      ['11', '<p>Body</p><noscript><p class=MsoNormal><font color=red>legacy</font></p></noscript>', '<p>Body</p>', '<p>Body</p>'],
+      ['N1', '<p>Intro</p><p><noscript><img src="/lazy.jpg"></noscript></p><p>After</p>', '<p>Intro</p>\n<p>After</p>', '<p>Intro</p><p>After</p>'],
+      ['S7', '<font color="red"><noscript><!--</noscript><img src="/nope.png" alt="hidden">--></noscript></font>', '', ''],
+    ])('preserves the final output of <noscript> input %s', (_id, input, formatted, unformatted) => {
+      expect(convertToHtml(cleanWordHtml(input), mode)).toEqual({ formatted, unformatted });
+    });
   });
 });

@@ -101,6 +101,11 @@ describe('validateSanitizedStructure', () => {
     expectPass(results, 'sanitized-structure');
   });
 
+  it('allows list numbering attributes on <ol>', () => {
+    const results = validateMode('<ol start="2" reversed><li>x</li></ol>', 'blogs', defaultFeatures);
+    expectPass(results, 'sanitized-structure');
+  });
+
   it('flags disallowed elements that share prefix (<unknown>)', () => {
     const html = '<p><unknown>x</unknown></p>';
     const results = validateMode(html, 'blogs', defaultFeatures);

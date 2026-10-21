@@ -5,7 +5,7 @@
  */
 
 import { removeSpacingParagraphs, removeLayoutBreaks } from './html-spacing';
-import { prepareWordSource } from './word-source-formatting';
+import { createInertContainer, prepareWordSource } from './word-source-formatting';
 
 function escapeHtml(text: string): string {
   const map: Record<string, string> = {
@@ -200,7 +200,7 @@ function removeWordSpecificAttributes(element: Element): void {
 function convertFontTagsToSpans(tempDiv: Element): void {
   const fontTags = tempDiv.querySelectorAll('font');
   fontTags.forEach(font => {
-    const span = document.createElement('span');
+    const span = font.ownerDocument.createElement('span');
     
     Array.from(font.attributes).forEach(attr => {
       if (attr.name.toLowerCase() === 'color') {
@@ -247,7 +247,7 @@ function normalizeFormattingTags(element: Element): void {
     
     if (styleObj['font-style'] && styleObj['font-style'].toLowerCase().includes('italic')) {
       if (otherStyles.length <= 1) {
-        const italic = document.createElement('em');
+        const italic = el.ownerDocument.createElement('em');
         if (otherStyles.length > 0) {
           const preservedStyle = otherStyles.map(k => `${k}: ${styleObj[k]}`).join('; ');
           if (preservedStyle) italic.setAttribute('style', preservedStyle);
@@ -279,7 +279,7 @@ function normalizeFormattingTags(element: Element): void {
       );
       
       if (otherStyles.length <= 1) {
-        const bold = document.createElement('strong');
+        const bold = el.ownerDocument.createElement('strong');
         if (otherStyles.length > 0) {
           const preservedStyle = otherStyles.map(k => `${k}: ${styleObj[k]}`).join('; ');
           if (preservedStyle) bold.setAttribute('style', preservedStyle);
@@ -473,7 +473,7 @@ function getLastTextNode(element: Element): Text | null {
 export function cleanWordHtml(html: string): string {
   if (!html || typeof html !== 'string') return '';
 
-  const tempDiv = document.createElement('div');
+  const tempDiv = createInertContainer();
   tempDiv.innerHTML = html;
 
   removeImages(tempDiv);

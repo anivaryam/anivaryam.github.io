@@ -8,6 +8,16 @@ interface LinkRun {
 }
 
 /**
+ * Container for parsing untrusted markup: handlers and resource loads stay inert.
+ * The doctype keeps the document in no-quirks mode, so fragment parsing matches
+ * the live document (a quirks-mode document keeps <table> inside an open <p>).
+ * Code that re-parses descendants must create elements from their ownerDocument.
+ */
+export function createInertContainer(): HTMLDivElement {
+  return new DOMParser().parseFromString('<!doctype html>', 'text/html').createElement('div');
+}
+
+/**
  * Resolve source link appearance and article titles before cleanup drops CSS.
  * An isolated document is necessary: the application's preview styles would
  * otherwise make even deliberately plain source links look like links.

@@ -181,6 +181,31 @@ describe('WordToHtmlConverter', () => {
     expect(Array.from(preview.querySelectorAll('a')).map(a => a.textContent)).toEqual(['Closet Measurements']);
   });
 
+  it.each([
+    ['declined', '<p>Hello</p>', ''],
+    ['handled', '<p>See <a href="/x" style="color:black;text-decoration:none">plain</a></p>', 'See plainx'],
+  ])('runs no inline handler from pasted clipboard HTML (%s paste)', async (branch, content, insertedText) => {
+    const marker = `data-bug1-paste-${branch}`;
+    const html = `${content}<details open ontoggle="document.documentElement.setAttribute('${marker}','1')">x</details>`;
+    try {
+      render(<WordToHtmlConverter />);
+      const input = screen.getByRole('textbox', { name: 'Word document content' });
+      fireEvent.paste(input, { clipboardData: { getData: (type: string) => type === 'text/html' ? html : '' } });
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+      expect(document.documentElement.hasAttribute(marker)).toBe(false);
+      expect(input.textContent).toBe(insertedText);
+      expect(input.innerHTML).not.toContain('ontoggle');
+
+      // Positive control: the same payload runs its handler when parsed in the live document.
+      const live = document.createElement('div');
+      live.innerHTML = html;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(document.documentElement.hasAttribute(marker)).toBe(true);
+    } finally {
+      document.documentElement.removeAttribute(marker);
+    }
+  });
+
   it('copies a complete inline sentence as one paragraph', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');

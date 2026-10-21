@@ -33,6 +33,7 @@ export const ALLOWED_ELEMENTS = [
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   'a': ['href', 'target', 'rel'],
   'img': ['src', 'alt'],
+  'ol': ['start', 'reversed'],
   '*': []
 };
 
@@ -418,6 +419,24 @@ function sanitizeAttributes(element: Element, tagName: string): void {
       if (!isValidRel) {
         attrsToRemove.push(attr.name);
       }
+    }
+
+    if (tagName === 'ol' && attrName === 'start') {
+      // Keep the number browsers render: the integer prefix of the value, which
+      // DOMPurify has already trimmed. NaN and values outside the signed 32-bit
+      // range fail the `| 0` round-trip and fall back to the default, as in
+      // browsers. start="1" is the default for a non-reversed list, so dropping
+      // it leaves unchanged numbering byte-identical.
+      const start = parseInt(attr.value, 10);
+      if (start !== (start | 0) || (start === 1 && !element.hasAttribute('reversed'))) {
+        attrsToRemove.push(attr.name);
+      } else if (String(start) !== attr.value) {
+        element.setAttribute(attr.name, String(start));
+      }
+    }
+
+    if (tagName === 'ol' && attrName === 'reversed' && attr.value !== '') {
+      element.setAttribute(attr.name, '');
     }
   });
 
