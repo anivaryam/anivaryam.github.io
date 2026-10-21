@@ -22,6 +22,8 @@ function isInlineElement(node: Node | null): boolean {
   return node?.nodeType === Node.ELEMENT_NODE && !BLOCK_ELEMENTS.includes((node as Element).tagName.toLowerCase());
 }
 
+// Written as &nbsp;, as DOM serialization (the unformatted output) does, so
+// the copied code shows it instead of an invisible character.
 function escapeHtml(str: unknown): string {
   if (str == null) return '';
   return String(str)
@@ -29,7 +31,13 @@ function escapeHtml(str: unknown): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/\u00A0/g, '&nbsp;');
+}
+
+/** Text other than collapsible formatting whitespace; &nbsp; is content. */
+function hasRenderedText(text: string): boolean {
+  return /[^\t\n\f\r ]/.test(text);
 }
 
 function isSpacingParagraph(node: Element): boolean {
@@ -141,7 +149,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0, spac
       const nextSibling = node.nextSibling;
       const isBetweenElements = isInlineElement(prevSibling) || isInlineElement(nextSibling);
       
-      if (text.trim() || (isSpaceOnly && isBetweenElements)) {
+      if (hasRenderedText(text) || (isSpaceOnly && isBetweenElements)) {
         content += escapeHtml(text);
         hasContent = true;
       }

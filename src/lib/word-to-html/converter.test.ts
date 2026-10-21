@@ -93,6 +93,22 @@ describe('formatted-output content parity', () => {
   });
 
   it.each([
+    '<p>Take 10&nbsp;kg <b>daily&nbsp;</b>now</p>',
+    '<ul><li>a</li><li>&nbsp;</li></ul>',
+    '<table><tr><td>&nbsp;</td><td>a&nbsp;b</td></tr></table>',
+    '<p>x</p><h2>&nbsp;</h2><p>y</p>',
+    '<p>First.</p><p>Second.</p><h2>Section</h2><p>Body.</p>',
+  ])('writes every non-breaking space of the preview as &nbsp; in the formatted output: %s', (input) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      const count = (html: string) => html.split('&nbsp;').length - 1;
+      expect(output.formatted).not.toContain('\u00A0');
+      expect(count(output.formatted)).toBe(count(output.unformatted));
+      expect(output.formatted).not.toMatch(/(&nbsp;|\s)+\n\s*<\//);
+    }
+  });
+
+  it.each([
     '<ol><li>a</li><li></li><li>c</li></ol>',
     '<ul><li>a</li><li><strong></strong></li><li>c</li></ul>',
     '<ol><li>a<ul><li></li></ul></li></ol>',
