@@ -15,7 +15,7 @@ import { getHeadingSpacingIssues } from './mode-spacing';
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
 import { isHeaderList } from './mode-ol-header-conversion';
 import { findListLabel } from './mode-list-normalize';
-import { isFootnoteLink } from './mode-link-spacing';
+import { isFootnoteLink, LINK_CONTINUES_TEXT_RE } from './mode-link-spacing';
 import { isDisclaimerParagraph, isDisclaimerSectionStart } from './mode-disclaimer-normalize';
 
 /**
@@ -667,6 +667,10 @@ export function getLinkSpacingIssues(doc: Document): { element: Element; message
     if (TRAILING_PUNCT.test(trimmedEnd)) {
       return;
     }
+    /* A link that continues a word or token ("non-<a>", "$<a>") needs no space. */
+    if (LINK_CONTINUES_TEXT_RE.test(previousText)) {
+      return;
+    }
     const lastChar = previousText.slice(-1);
     if (lastChar !== ' ' && lastChar !== '\u00A0') {
       issues.push({ element: link, message: `Missing space before link: "${trimmedEnd.slice(-30)}..."` });
@@ -693,7 +697,7 @@ function validateLinkSpacing(doc: Document, mode: OutputMode, features?: Feature
       ? `Link spacing correctly applied (${links.length} link(s) checked)`
       : `${issues.length} spacing issue(s): ${issues.join('; ')}`,
     severity: issues.length === 0 ? 'info' : 'warning',
-    expected: 'Links preceded by space (except after opening/closing punctuation)',
+    expected: 'Links preceded by space (except after opening/closing punctuation or a word or token the link continues)',
     actual: issues.length === 0
       ? `All ${links.length} link(s) have proper spacing`
       : `${issues.length} link(s) have spacing issues`,
