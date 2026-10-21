@@ -7,6 +7,11 @@ describe('trimTrailingBlockWhitespace', () => {
     ['<h1>What is Happening  </h1>', '<h1>What is Happening</h1>'],
     ['<p>Hello <strong>World   </strong></p>', '<p>Hello <strong>World</strong></p>'],
     ['<p>Hello <strong>x</strong>   </p>', '<p>Hello <strong>x</strong></p>'],
+    ['<p>Text <strong>Bold </strong> </p>', '<p>Text <strong>Bold</strong></p>'],
+    ['<p>Text <strong> </strong></p>', '<p>Text</p>'],
+    ['<p><em>Last word </em><em> <u> </u></em></p>', '<p><em>Last word</em></p>'],
+    ['<p>Word <em></em> </p>', '<p>Word<em></em></p>'],
+    ['<p>Text <img src="x.png"> </p>', '<p>Text <img src="x.png"></p>'],
     ['<div><p>Nested   </p></div>', '<div><p>Nested</p></div>'],
     ['<div><p>foo </p>bar </div>', '<div><p>foo</p>bar</div>'],
     ['<ul><li>Item   </li></ul>', '<ul><li>Item</li></ul>'],
@@ -32,6 +37,8 @@ describe('trimTrailingBlockWhitespace', () => {
 
   it('keeps the intentional space after a colon label at the end of a list item', () => {
     expect(trimTrailingBlockWhitespace('<ul><li><strong>Label:</strong> </li></ul>'))
+      .toBe('<ul><li><strong>Label:</strong> </li></ul>');
+    expect(trimTrailingBlockWhitespace('<ul><li><strong>Label:</strong> <em> </em></li></ul>'))
       .toBe('<ul><li><strong>Label:</strong> </li></ul>');
   });
 

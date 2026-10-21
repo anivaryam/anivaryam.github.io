@@ -1518,6 +1518,17 @@ describe('trailing whitespace before block end tags', () => {
     },
   );
 
+  it.each(['regular', 'blogs', 'shoppables'] as const)(
+    'keeps trimming past whitespace-only trailing nodes in %s mode',
+    (mode) => {
+      const output = convertToHtml(cleanWordHtml('<p>Text <b>Bold </b> </p><p>Last <i>word </i><i> </i></p>'), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(html).toContain('<p>Text <strong>Bold</strong></p>');
+        expect(html).toContain('<p>Last <em>word</em></p>');
+      }
+    },
+  );
+
   it('keeps inline spacing that separates words', () => {
     const output = convertToHtml(cleanWordHtml('<p>Hello <strong>World </strong>more</p>'), 'regular');
     for (const html of [output.formatted, output.unformatted]) {

@@ -33,6 +33,9 @@ export const BLOCK_ELEMENTS = [
 // Set for O(1) lookups in hot loops
 export const BLOCK_ELEMENT_SET = new Set(BLOCK_ELEMENTS);
 
+// Void elements have no content or end tag; each renders as content of its own
+export const VOID_ELEMENTS = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'];
+
 /**
  * IMPORTANT: This cleaner is order-dependent.
  * The passes must run in this specific order:
@@ -365,9 +368,11 @@ const WHITESPACE_PRESERVING_TAGS = new Set(['pre', 'code']);
  * Trailing whitespace at the end of a block is discarded by HTML whitespace
  * collapsing, so removing it does not change rendering. The walk descends
  * through trailing inline wrappers (e.g. <p>Hello <strong>World   </strong></p>)
- * but stops at nested block boundaries, since each block is handled by its own
- * pass. Inline whitespace that separates words is never touched, and neither is
- * &nbsp; or the contents of <pre>/<code>.
+ * and continues past whitespace-only text and empty wrappers until it reaches
+ * content, but stops at nested block boundaries, since each block is handled
+ * by its own pass. Wrappers the trim leaves empty are removed. Inline
+ * whitespace that separates words is never touched, and neither is &nbsp; or
+ * the contents of <pre>/<code>.
  */
 export function trimTrailingWhitespaceInBlocks(root: Element): void {
   if (!root || root.nodeType !== Node.ELEMENT_NODE) {
@@ -404,33 +409,51 @@ function isListLabelSeparator(block: Element, node: Node): boolean {
 }
 
 function trimBlockEnd(block: Element): void {
-  let node: Node | null = block.lastChild;
+  trimContainerEnd(block, block);
+}
+
+/**
+ * Trims the end of `container`, walking back from its last child. Returns
+ * true once content ends the walk: text that keeps characters, a void element,
+ * a nested block, <pre>/<code>, or the list-label separator.
+ */
+function trimContainerEnd(block: Element, container: Node): boolean {
+  let node: Node | null = container.lastChild;
   while (node) {
+    const previous: Node | null = node.previousSibling;
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent || '';
       const trimmed = text.replace(TRAILING_HTML_WHITESPACE, '');
-      if (trimmed === text) {
-        return;
-      }
       if (trimmed) {
-        node.textContent = trimmed;
-      } else if (isListLabelSeparator(block, node)) {
-        node.textContent = ' ';
-      } else {
-        node.parentNode?.removeChild(node);
+        if (trimmed !== text) node.textContent = trimmed;
+        return true;
       }
-      return;
+      if (isListLabelSeparator(block, node)) {
+        node.textContent = ' ';
+        return true;
+      }
+      node.parentNode?.removeChild(node);
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as Element;
+      const childTag = element.tagName.toLowerCase();
+      if (BLOCK_ELEMENT_SET.has(childTag) || WHITESPACE_PRESERVING_TAGS.has(childTag) || VOID_ELEMENTS.includes(childTag)) {
+        return true;
+      }
+      const hadChildren = element.hasChildNodes();
+      if (trimContainerEnd(block, element)) {
+        return true;
+      }
+      // A wrapper that held only whitespace renders nothing once trimmed.
+      // Links keep their element, as the anchor trim does.
+      if (hadChildren && childTag !== 'a') {
+        element.parentNode?.removeChild(element);
+      }
+    } else {
+      return true;
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-      return;
-    }
-    const element = node as Element;
-    const childTag = element.tagName.toLowerCase();
-    if (BLOCK_ELEMENT_SET.has(childTag) || WHITESPACE_PRESERVING_TAGS.has(childTag)) {
-      return;
-    }
-    node = element.lastChild;
+    node = previous;
   }
+  return false;
 }
 
 /**
