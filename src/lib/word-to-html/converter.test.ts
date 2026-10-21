@@ -580,6 +580,34 @@ describe('Word desktop list paragraphs', () => {
     }
   });
 
+  it.each([
+    ['MsoListBullet', '<span style="font-family: Symbol;">·</span>', '<span style="font-family: Symbol;">·</span>', 'ul'],
+    ['MsoListNumber', '1.', '2.', 'ol'],
+    ['MsoListBullet2', 'o', 'o', 'ul'],
+  ])('turns Word %s style paragraphs into lists', (cls, first, second, tag) => {
+    const style = 'margin: 0in 0in 0in 0.25in; text-indent: -0.25in;';
+    const input = `<p class="${cls}" style="${style}">${first}${spacer(7)}First</p><p class="${cls}" style="${style}">${second}${spacer(7)}Second</p>` +
+      `<p class="${cls}" style="${style}">A. Smith, without a spacer</p>`;
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual([`${tag}: First | Second`, 'p: A. Smith, without a spacer']);
+      }
+    }
+  });
+
+  it('keeps a Word numbered heading with its number and a single space', () => {
+    const style = 'margin-left: .25in; text-indent: -.25in;';
+    const input = `<h2>Steps</h2><h3 style="${style}"><span>1.${spacer(5)}</span>Vacuum the seat</h3><p class="MsoNormal">Body one.</p>` +
+      `<h3 style="${style}">2.${spacer(5)}Spray the cleaner</h3><h3>3. Typed number</h3>`;
+    for (const mode of modes) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(blocks(html)).toEqual(['h2: Steps', 'h3: 1. Vacuum the seat', 'p: Body one.', 'h3: 2. Spray the cleaner', 'h3: 3. Typed number']);
+      }
+    }
+  });
+
   it('keeps the inline formatting and links of bulleted items', () => {
     const input = item('CxSpFirst', '·', 'See <a href="https://example.com/guide">the guide</a> now') +
       item('CxSpLast', '<span style="font-family: Symbol;">·</span>', '<b>Bold</b> lead');

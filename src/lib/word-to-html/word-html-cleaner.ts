@@ -499,8 +499,10 @@ const ROMAN_DIGITS: Record<string, number> = { i: 1, v: 5, x: 10 };
 const POINTS_PER_UNIT: Record<string, number> = { in: 72, pt: 1, px: 0.75, cm: 72 / 2.54, mm: 72 / 25.4 };
 const INDENT_TOLERANCE = 1;
 
+// List Paragraph, and the built-in List Bullet and List Number styles (with
+// their numbered levels, e.g. MsoListBullet2).
 function isWordListParagraph(paragraph: Element): boolean {
-  return Array.from(paragraph.classList).some(name => /^MsoListParagraph/.test(name)) ||
+  return Array.from(paragraph.classList).some(name => /^MsoList(?:Paragraph|Bullet|Number)/.test(name)) ||
     /mso-list\s*:\s*l\d/i.test(paragraph.getAttribute('style') || '');
 }
 
@@ -559,15 +561,24 @@ function lengthInPoints(value: string): number | null {
   return amount === 0 ? 0 : match[2] in POINTS_PER_UNIT ? amount * POINTS_PER_UNIT[match[2]] : null;
 }
 
-/** Remove a text prefix that may span several nodes, with the wrappers it empties. */
-function removeLeadingText(element: Element, length: number): void {
+/**
+ * Replace a text range that may span several nodes, removing the wrappers it
+ * empties. The replacement goes into the first node of the range.
+ */
+function replaceTextRange(element: Element, start: number, end: number, replacement = ''): void {
   const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
   const emptied: Text[] = [];
-  for (let node = walker.nextNode() as Text | null; node && length > 0; node = walker.nextNode() as Text | null) {
-    const removed = Math.min(length, node.data.length);
-    node.data = node.data.slice(removed);
-    length -= removed;
-    if (!node.data) emptied.push(node);
+  let offset = 0;
+  for (let node = walker.nextNode() as Text | null; node && offset < end; node = walker.nextNode() as Text | null) {
+    const length = node.data.length;
+    const from = Math.max(start - offset, 0);
+    const to = Math.min(end - offset, length);
+    if (from < to) {
+      node.data = node.data.slice(0, from) + replacement + node.data.slice(to);
+      replacement = '';
+      if (!node.data) emptied.push(node);
+    }
+    offset += length;
   }
   for (const node of emptied) {
     let parent = node.parentElement;
@@ -636,7 +647,7 @@ function buildWordLists(items: WordListItem[]): void {
 
     const listItem = doc.createElement('li');
     for (const attr of Array.from(item.paragraph.attributes)) listItem.setAttribute(attr.name, attr.value);
-    removeLeadingText(item.paragraph, item.markerLength);
+    replaceTextRange(item.paragraph, 0, item.markerLength);
     listItem.append(...Array.from(item.paragraph.childNodes));
     item.paragraph.remove();
     level.list.append(listItem);
@@ -665,6 +676,20 @@ function convertWordListParagraphs(root: HTMLElement): void {
   if (run.length) buildWordLists(run);
 }
 
+/**
+ * Word numbered headings stay headings, but paste keeps their marker and its
+ * spacer as text. Keep the number with a single space after it.
+ */
+function normalizeWordHeadingNumbers(root: HTMLElement): void {
+  for (const heading of Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'))) {
+    if (heading.closest('li')) continue;
+    const marker = parseWordListMarker(heading);
+    if (marker?.markers[0].tag !== 'ol') continue;
+    const prefix = (heading.textContent || '').slice(0, marker.markerLength);
+    replaceTextRange(heading, prefix.trimEnd().length, marker.markerLength, ' ');
+  }
+}
+
 export function cleanWordHtml(html: string): string {
   if (!html || typeof html !== 'string') return '';
 
@@ -675,6 +700,7 @@ export function cleanWordHtml(html: string): string {
   // Before cleanup drops the classes, and before title detection looks for a
   // Key Takeaways list.
   convertWordListParagraphs(tempDiv);
+  normalizeWordHeadingNumbers(tempDiv);
   prepareWordSource(tempDiv);
   // Style cleanup drops `font-style: normal`; resolve the overrides it marks first.
   splitEmphasisOverrides(tempDiv);
