@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { WordToHtmlConverter } from './WordToHtmlConverter';
 import { toast } from '@/hooks/use-toast';
 import { getUnformattedHtml } from '@/lib/word-to-html/converter';
+import { stripSpacerMarkers } from '@/lib/word-to-html/spacer';
 
 vi.mock('lenis', () => ({
   default: class {
@@ -436,6 +437,39 @@ describe('WordToHtmlConverter', () => {
     expect(screen.queryByText(/^Failed:/)).toBeNull();
   });
 
+  it('shows and copies the custom spacer markup without the internal marker', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      const customSpacer = '<div style="height:10px;"></div>';
+      render(<WordToHtmlConverter />);
+      enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+      fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), {
+        target: { value: customSpacer },
+      });
+
+      const preview = document.querySelector('.output-preview')!;
+      expect(preview.innerHTML).toContain(customSpacer);
+      expect(preview.innerHTML).not.toContain('data-w2h-spacer');
+
+      fireEvent.click(screen.getByTitle('Copy HTML'));
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      fireEvent.click(screen.getAllByTitle('Preview')[0]);
+      fireEvent.click(screen.getByTitle('Copy Formatted HTML'));
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+      for (const [html] of writeText.mock.calls) {
+        expect(html).toContain(customSpacer);
+        expect(html).not.toContain('data-w2h-spacer');
+      }
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
   it('keeps the custom spacer in the copyable blocks', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
@@ -453,8 +487,9 @@ describe('WordToHtmlConverter', () => {
 
       const payloads = copyAllBlocks(writeText);
       await waitFor(() => expect(writeText).toHaveBeenCalled());
-      expect(payloads.join('')).toBe(getUnformattedHtml(input, 'blogs', { customSpacer }));
+      expect(payloads.join('')).toBe(stripSpacerMarkers(getUnformattedHtml(input, 'blogs', { customSpacer })));
       expect(payloads.join('').match(/height:10px/g)).toHaveLength(1);
+      expect(payloads.join('')).not.toContain('data-w2h-spacer');
       expect(payloads.join('')).not.toContain('&nbsp;');
       expect(payloads.every(hasText)).toBe(true);
     } finally {

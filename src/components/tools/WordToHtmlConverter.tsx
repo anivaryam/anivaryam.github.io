@@ -19,7 +19,7 @@ import { findKeyTakeawaysSection } from "@/lib/word-to-html/mode-key-takeaways";
 import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph, isSpacerElement } from "@/lib/word-to-html/html-spacing";
-import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup } from "@/lib/word-to-html/spacer";
+import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "@/lib/word-to-html/spacer";
 import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -368,7 +368,9 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
     }
   }
 
-  return blocks;
+  // Blocks are copied as they are, so they carry the configured spacer markup
+  // without the converter's marker.
+  return blocks.map(block => ({ ...block, html: stripSpacerMarkers(block.html) }));
 };
 
 export function WordToHtmlConverter() {
@@ -756,7 +758,7 @@ export function WordToHtmlConverter() {
   // only supports plain text.
   const copyOutput = async (rich: boolean) => {
     if (!outputHtml) return;
-    const html = rich ? previewHtml : getHtmlWithCSS(outputHtml);
+    const html = rich ? stripSpacerMarkers(previewHtml) : getHtmlWithCSS(outputHtml);
     try {
       let copiedRichHtml = false;
       if (rich) {
@@ -1171,6 +1173,10 @@ export function WordToHtmlConverter() {
       return previewHtml;
     }
   }, [previewHtml, validationResults, showValidationWarnings, features, effectiveFeatures]);
+
+  // The rendered preview can be selected and copied, so it shows the configured
+  // spacer markup without the converter's marker.
+  const displayedPreviewHtml = useMemo(() => stripSpacerMarkers(previewHtmlWithWarnings), [previewHtmlWithWarnings]);
 
   return (
     <div className="flex flex-col gap-3 md:gap-4 w-full max-w-full">
@@ -1839,7 +1845,7 @@ export function WordToHtmlConverter() {
                 fontFamily: 'var(--font-sans)',
               }}
               dangerouslySetInnerHTML={{ 
-                __html: previewHtmlWithWarnings || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
+                __html: displayedPreviewHtml || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>' 
               }}
             />
             <style>{`
@@ -2512,7 +2518,7 @@ export function WordToHtmlConverter() {
                   fontFamily: 'var(--font-sans)',
                 }}
                 dangerouslySetInnerHTML={{
-                  __html: previewHtmlWithWarnings || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>'
+                  __html: displayedPreviewHtml || '<p style="color: hsl(var(--muted-foreground));">// Preview will appear here...</p>'
                 }}
               />
             ) : maximizedOutputView === 'blocks' ? (

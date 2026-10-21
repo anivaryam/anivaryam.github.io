@@ -4,7 +4,7 @@
  */
 
 import { BLOCK_ELEMENTS } from './html-cleaner';
-import { isCustomSpacerElement, parseCustomSpacer, type CustomSpacer } from './spacer';
+import { isCustomSpacerElement, parseCustomSpacer, unmarkedSpacerElement, type CustomSpacer } from './spacer';
 
 const INLINE_ELEMENTS = [
   'a', 'em', 'i', 'strong', 'b', 'span', 'code', 'sup', 'sub',
@@ -59,7 +59,7 @@ function formatElement(element: Element, insideLi = false, indentLevel = 0, spac
   // own markup instead of the canonical spacer.
   if (isCustomSpacerElement(element, spacer)) {
     const indent = '  '.repeat(indentLevel);
-    return '\n' + indent + element.outerHTML;
+    return '\n' + indent + unmarkedSpacerElement(element).outerHTML;
   }
 
   if (isSpacingParagraph(element)) {

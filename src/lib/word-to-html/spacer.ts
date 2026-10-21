@@ -63,6 +63,25 @@ export function markSpacerElement(element: Element): void {
   element.setAttribute(SPACER_MARKER_ATTRIBUTE, SPACER_MARKER_VALUE);
 }
 
+/**
+ * Copy of a spacer element without the converter's marker. The marker only
+ * serves recognition inside the tool, so displayed and copied HTML carries
+ * exactly the configured spacer markup.
+ */
+export function unmarkedSpacerElement(element: Element): Element {
+  const copy = element.cloneNode(true) as Element;
+  copy.removeAttribute(SPACER_MARKER_ATTRIBUTE);
+  return copy;
+}
+
+/** Remove the converter's spacer markers from HTML that leaves the tool. */
+export function stripSpacerMarkers(html: string): string {
+  if (!html || !html.includes(SPACER_MARKER_ATTRIBUTE)) return html;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll(`[${SPACER_MARKER_ATTRIBUTE}]`).forEach(element => element.removeAttribute(SPACER_MARKER_ATTRIBUTE));
+  return doc.body.innerHTML;
+}
+
 /** True when the element carries the converter's spacer marker. */
 export function isMarkedSpacerElement(element: Element | null): boolean {
   return !!element && element.getAttribute(SPACER_MARKER_ATTRIBUTE) === SPACER_MARKER_VALUE;
