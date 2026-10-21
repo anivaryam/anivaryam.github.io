@@ -13,12 +13,25 @@ vi.mock('lenis', () => ({
 }));
 vi.mock('@/hooks/use-toast', () => ({ toast: vi.fn() }));
 
+/** Output a test stands in for the converter's; null runs the real converter. */
+const converterOutput = vi.hoisted(() => ({ html: null as string | null }));
+vi.mock('@/lib/word-to-html/converter', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/word-to-html/converter')>();
+  return {
+    ...actual,
+    convertToHtml: (...args: Parameters<typeof actual.convertToHtml>) => converterOutput.html === null
+      ? actual.convertToHtml(...args)
+      : { formatted: converterOutput.html, unformatted: converterOutput.html },
+  };
+});
+
 beforeEach(() => {
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
 });
 
 afterEach(() => {
+  converterOutput.html = null;
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -316,6 +329,15 @@ describe('WordToHtmlConverter', () => {
     const bulleted = Array.from(document.querySelector('.output-preview')!.querySelectorAll('ul > li'));
     expect(bulleted.map(li => li.getAttribute('data-warning'))).toEqual(['Missing bold label before colon', null, null]);
     expect(bulleted[2].querySelector('strong')?.textContent).toBe('Step two:');
+  });
+
+  it('highlights the list items the list-normalization rule counts', () => {
+    // Converter output always spaces a bold label, so stand in output that does not.
+    converterOutput.html = '<ul><li><strong>Tip:</strong>glued</li><li><strong>Done:</strong> dry</li></ul>';
+    render(<WordToHtmlConverter />);
+    enterHtml('<ul><li>Tip: glued</li></ul>');
+    const items = Array.from(document.querySelector('.output-preview')!.querySelectorAll('li'));
+    expect(items.map(li => li.getAttribute('data-warning'))).toEqual(['List item missing space after </strong> in "Tip:..."', null]);
   });
 
   it('does not highlight a source Disclaimer that is already normalized when normalization is off', () => {

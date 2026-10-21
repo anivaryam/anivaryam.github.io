@@ -707,25 +707,16 @@ function trailingSpaceBeforeStrong(html: string): boolean {
   return trimmed.endsWith(': ') || trimmed.match(/:\s+$/) !== null;
 }
 
-function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
+/**
+ * List items outside Sources whose bold label (a <strong> ending in ":") has
+ * a trailing space inside it, or not exactly one space after it.
+ * Element-level diagnostics, shared with preview highlights.
+ */
+export function getListNormalizationIssues(doc: Document): { element: Element; message: string }[] {
   const sourcesSections = findSourcesSections(doc);
+  const issues: { element: Element; message: string }[] = [];
 
-  const listItems = doc.querySelectorAll('li');
-
-  if (listItems.length === 0) {
-    return {
-      ruleId: 'list-normalization',
-      feature: 'List Normalization',
-      mode,
-      passed: true,
-      message: 'No list items found (skipped)',
-      severity: 'info',
-    };
-  }
-
-  const issues: string[] = [];
-
-  listItems.forEach((li) => {
+  doc.querySelectorAll('li').forEach((li) => {
     if (sourcesSections.some(section => section.list?.contains(li))) {
       return;
     }
@@ -737,9 +728,10 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
 
       if (strongText.trim().endsWith(':')) {
         if (trailingSpaceBeforeStrong(strong.innerHTML)) {
-          issues.push(
-            `List item has trailing space before </strong> in "${strongText.trim().substring(0, 30)}..."`
-          );
+          issues.push({
+            element: li,
+            message: `List item has trailing space before </strong> in "${strongText.trim().substring(0, 30)}..."`,
+          });
         }
 
         const nextNode = strong.nextSibling;
@@ -747,22 +739,42 @@ function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
         if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
           const text = (nextNode as Text).textContent || '';
           if (text.length === 0 || (!text.startsWith(' ') && !text.startsWith('\u00A0'))) {
-            issues.push(
-              `List item missing space after </strong> in "${strongText.trim().substring(0, 30)}..."`
-            );
+            issues.push({
+              element: li,
+              message: `List item missing space after </strong> in "${strongText.trim().substring(0, 30)}..."`,
+            });
           } else if (/^\s{2,}/.test(text)) {
-            issues.push(
-              `List item has multiple spaces after </strong> in "${strongText.trim().substring(0, 30)}..."`
-            );
+            issues.push({
+              element: li,
+              message: `List item has multiple spaces after </strong> in "${strongText.trim().substring(0, 30)}..."`,
+            });
           }
         } else {
-          issues.push(
-            `List item missing text node with space after </strong> in "${strongText.trim().substring(0, 30)}..."`
-          );
+          issues.push({
+            element: li,
+            message: `List item missing text node with space after </strong> in "${strongText.trim().substring(0, 30)}..."`,
+          });
         }
       }
     });
   });
+
+  return issues;
+}
+
+function validateListNormalize(doc: Document, mode: OutputMode): TestResult {
+  if (doc.querySelectorAll('li').length === 0) {
+    return {
+      ruleId: 'list-normalization',
+      feature: 'List Normalization',
+      mode,
+      passed: true,
+      message: 'No list items found (skipped)',
+      severity: 'info',
+    };
+  }
+
+  const issues = getListNormalizationIssues(doc).map(issue => issue.message);
 
   return {
     ruleId: 'list-normalization',

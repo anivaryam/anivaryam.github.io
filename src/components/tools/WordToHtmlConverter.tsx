@@ -20,7 +20,7 @@ import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph, isSpacerElement } from "@/lib/word-to-html/html-spacing";
 import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "@/lib/word-to-html/spacer";
-import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
+import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "next-themes";
@@ -960,22 +960,9 @@ export function WordToHtmlConverter() {
           });
         }
         
-        // List normalization - only flag list items with specific issues
+        // List normalization - flag the list items the validator counts
         if (result.ruleId === 'list-normalization') {
-          const details = result.details || [];
-          
-          const listItems = doc.querySelectorAll('li');
-          listItems.forEach(li => {
-            if (isInSourcesList(li)) {
-              return;
-            }
-            const liText = li.textContent || '';
-            details.forEach((detail: string) => {
-              if (detail.includes(liText.substring(0, 30))) {
-                li.setAttribute('data-warning', detail);
-              }
-            });
-          });
+          getListNormalizationIssues(doc).forEach(issue => issue.element.setAttribute('data-warning', issue.message));
         }
         
         // Sources normalization - flag sources section and list

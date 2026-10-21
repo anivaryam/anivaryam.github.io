@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getLinkSpacingIssues, getOlBoldLabelItems, getSectionSpacingIssues, validateMode, type ValidationResults } from './validator';
+import { getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, validateMode, type ValidationResults } from './validator';
 import type { FeatureFlags, OutputMode } from './converter';
 
 function getResult(results: ValidationResults, ruleId: string) {
@@ -563,6 +563,15 @@ describe('validateListNormalize (D14)', () => {
     const html = '<p><strong><em>Sources:</em></strong></p><ol><li><em>src 1</em></li></ol><ul><li><strong>Bad:</strong></li></ul>';
     const results = validateMode(html, 'blogs', defaultFeatures);
     expectFail(results, 'list-normalization');
+  });
+
+  it('reports the items it counts for preview highlighting', () => {
+    const doc = new DOMParser().parseFromString('<p><strong><em>Sources:</em></strong></p><ol><li><strong>Src:</strong>one</li></ol><ul><li><strong>Tip:</strong>glued</li><li><strong>Done:</strong> dry</li></ul>', 'text/html');
+    const issues = getListNormalizationIssues(doc);
+    expect(issues.map(issue => [issue.element.textContent, issue.message])).toEqual([
+      ['Tip:glued', 'List item missing space after </strong> in "Tip:..."'],
+    ]);
+    expect(getResult(validateMode(doc.body.innerHTML, 'blogs', defaultFeatures), 'list-normalization').details).toEqual(issues.map(issue => issue.message));
   });
 });
 
