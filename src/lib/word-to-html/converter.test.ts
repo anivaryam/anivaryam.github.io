@@ -1125,6 +1125,27 @@ describe('spacing within formatted links', () => {
     }
   });
 
+  it.each([
+    ['<p><b>Bold </b>after.</p>', 'Bold after.', '<strong>Bold</strong> after.'],
+    ['<p><i>x </i>y</p>', 'x y', '<em>x</em> y'],
+    ['<p><u><b>x </b></u>y</p>', 'x y', '<u><strong>x</strong></u> y'],
+    ['<p>before<b> bold</b></p>', 'before bold', 'before <strong>bold</strong>'],
+    ['<p><strong><a href="https://example.com/a">x </a></strong>today</p>', 'x today', '</a></strong> today'],
+    ['<p>a<b> </b>b</p>', 'a b', '<p>a b</p>'],
+    ['<p>Text <b>Bold </b></p>', 'Text Bold', '<p>Text <strong>Bold</strong></p>'],
+    ['<h2><b><i>Heading </i></b></h2>', 'Heading', 'Heading</'],
+    ['<ul><li><b>Label: </b>value</li></ul>', 'Label: value', '<strong>Label:</strong> value'],
+  ])('moves edge spaces of inline formatting outside without joining words: %s', (input, text, snippet) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        expect(new DOMParser().parseFromString(html, 'text/html').body.textContent?.replace(/\s*\n\s*/g, '')).toBe(text);
+        expect(html).toContain(snippet);
+        expect(html).not.toMatch(/\s<\/(strong|em|u|a)>|<(strong|em|u)>\s/);
+      }
+    }
+  });
+
   it('trims only outer anchor padding while keeping inner separators', () => {
     const input = '<p><a href="/how-it-works">  <strong>How</strong> It <em>Works</em>  </a></p>';
     const output = cleanHtml(input);
@@ -1589,7 +1610,7 @@ describe('trailing whitespace before block end tags', () => {
   it('keeps inline spacing that separates words', () => {
     const output = convertToHtml(cleanWordHtml('<p>Hello <strong>World </strong>more</p>'), 'regular');
     for (const html of [output.formatted, output.unformatted]) {
-      expect(html).toContain('World </strong>more');
+      expect(html).toContain('World</strong> more');
     }
   });
 
