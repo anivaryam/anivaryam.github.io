@@ -789,6 +789,18 @@ describe('Sources content preservation', () => {
     }
   });
 
+  it('leaves no link styling on Sources citations when links are wrapped', () => {
+    const input = '<p>Read the <a href="https://example.com/body">guide</a>.</p><p>Sources:</p><ol><li><a href="https://example.com/nih">NIH article</a></li></ol>';
+    const features = { wrapLinksStrongUnderline: true };
+    for (const mode of ['blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml(input, mode, features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('li')?.innerHTML).toBe('<em>NIH article</em>');
+      expect(doc.querySelector('a > strong > u')?.textContent).toBe('guide');
+      expect(validateMode(output, mode, features).summary.failed).toBe(0);
+    }
+  });
+
   it('preserves source links when removal is disabled', () => {
     const output = getUnformattedHtml('<h2>Sources:</h2><ol><li><a href="/study">Study</a></li></ol>', 'shoppables', { removeSourcesLinks: false });
     expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')?.getAttribute('href')).toBe('/study');

@@ -192,14 +192,15 @@ function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags 
     // Link spacing (must run before removeSourcesLinks to preserve whitespace)
     processedHtml = addLinkSpacing(processedHtml);
 
+    // Remove links in Sources section (before wrapping, so plain citations
+    // do not keep link styling)
+    if (features.removeSourcesLinks !== false) {
+      processedHtml = removeSourcesLinks(processedHtml);
+    }
+
     // Wrap non-alt-text links in <strong><u> (disabled by default)
     if (features.wrapLinksStrongUnderline === true) {
       processedHtml = wrapLinksStrongUnderline(processedHtml);
-    }
-
-    // Remove links in Sources section
-    if (features.removeSourcesLinks !== false) {
-      processedHtml = removeSourcesLinks(processedHtml);
     }
 
     // Final list normalization pass (after all processing that might modify list items)
@@ -263,14 +264,15 @@ function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags 
     // Link spacing (must run before removeSourcesLinks to preserve whitespace)
     processedHtml = addLinkSpacing(processedHtml);
 
+    // Remove links in Sources section (before wrapping, so plain citations
+    // do not keep link styling)
+    if (features.removeSourcesLinks !== false) {
+      processedHtml = removeSourcesLinks(processedHtml);
+    }
+
     // Wrap non-alt-text links in <strong><u> (disabled by default)
     if (features.wrapLinksStrongUnderline === true) {
       processedHtml = wrapLinksStrongUnderline(processedHtml);
-    }
-
-    // Remove links in Sources section
-    if (features.removeSourcesLinks !== false) {
-      processedHtml = removeSourcesLinks(processedHtml);
     }
 
     // Final list normalization pass (after all processing that might modify list items)
