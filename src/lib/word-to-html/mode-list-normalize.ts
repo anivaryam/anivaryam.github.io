@@ -5,13 +5,10 @@
  * Assumes <strong> ending with ':' represents a label that should have a space
  * before the following content.
  * 
- * IMPORTANT: This function ONLY processes existing <strong> tags.
- * It does NOT create new <strong> tags for list items with colons.
- * List items with colons that are not originally bold will NOT be wrapped in <strong>.
- * 
- * If you see list items with colons being wrapped in <strong> tags when they weren't
- * originally bold, the wrapping is happening elsewhere in the pipeline (likely in
- * word-html-cleaner.ts normalizeFormattingTags or html-sanitizer.ts).
+ * IMPORTANT: Regular mode ONLY processes existing <strong> tags; list items
+ * with colons that are not originally bold are NOT wrapped in <strong>.
+ * Blogs and Shoppables bold an unbolded label (`boldLabels`, see
+ * findListLabel for what counts as one) outside Sources lists.
  * 
  * This is inline text normalization, not structural list normalization.
  */
@@ -103,12 +100,109 @@ function mergeSourcesListChains(doc: Document): void {
   });
 }
 
+/** A list item's label colon ("Tip: …"), as found by findListLabel. */
+export interface ListLabel {
+  /** The text run holding the colon. */
+  text: Text;
+  /** Offset of the colon in `text`. */
+  colon: number;
+  /** The item's text before `text`; blank when the colon is in its first text run. */
+  before: string;
+  /** True when a <strong> or <b> holds the colon. */
+  bold: boolean;
+}
+
 /**
- * `mergeLists` is for the first pass only: lists that become adjacent later,
- * because a mode step removed what separated them (the article title), are
- * separate lists in the source and must stay apart.
+ * The label colon of a list item: its first colon followed by whitespace or
+ * the end of its text run, with label text before it and no sentence end
+ * (`.`, `!`, `?`) in that text, so "9:30 am", "1:2 ratio" and URLs never
+ * match. Nested lists hold their own items' text. Shared by the converter,
+ * which bolds such labels, and the ol-bold-labels check.
  */
-export function normalizeLists(html: string, mergeLists: boolean = true): string {
+export function findListLabel(li: Element): ListLabel | null {
+  const walker = li.ownerDocument.createTreeWalker(li, NodeFilter.SHOW_TEXT);
+  let before = '';
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.parentElement?.closest('li') !== li) continue;
+    const text = node as Text;
+    const match = /:(?=\s|$)/.exec(text.data);
+    if (!match) {
+      before += text.data;
+      continue;
+    }
+    const label = before + text.data.slice(0, match.index);
+    if (!label.trim() || /[.!?]/.test(label)) return null;
+    const bold = text.parentElement?.closest('strong, b');
+    return { text, colon: match.index, before, bold: !!bold && li.contains(bold) };
+  }
+  return null;
+}
+
+/** True when only emphasis or underline lies between `node` and its item. */
+function isInItemText(node: Node, li: Element): boolean {
+  for (let parent = node.parentElement; parent !== li; parent = parent?.parentElement ?? null) {
+    if (!parent?.matches('em, u')) return false;
+  }
+  return true;
+}
+
+/**
+ * Bold each unbolded list label outside Sources, with the colon inside the
+ * bold: "Tip: Try" and "<strong>Tip</strong>: Try" both become
+ * "<strong>Tip:</strong> Try". Only a label in the item's first text run (or
+ * in a leading bold) inside the item itself or its emphasis/underline is
+ * changed; a label split across other elements stays as it is (never break
+ * markup) and the ol-bold-labels check reports it.
+ */
+function boldListLabels(doc: Document): void {
+  const sourcesLists = findSourcesSections(doc).flatMap(({ list }) => list ? [list] : []);
+  doc.querySelectorAll('li').forEach(li => {
+    if (sourcesLists.some(list => list.contains(li))) return;
+    const label = findListLabel(li);
+    if (!label || label.bold || !isInItemText(label.text, li)) return;
+    const { text, colon } = label;
+
+    if (!label.before.trim()) {
+      // Leading whitespace stays outside the label; the rest of the run follows it.
+      const leading = text.data.length - text.data.trimStart().length;
+      const labelText = leading ? text.splitText(leading) : text;
+      labelText.splitText(colon - leading + 1);
+      const strong = doc.createElement('strong');
+      labelText.replaceWith(strong);
+      strong.appendChild(labelText);
+      return;
+    }
+
+    // A leading bold label followed by its colon: move the colon inside.
+    const strong = text.previousSibling;
+    if (
+      text.data.slice(0, colon).trim() ||
+      strong?.nodeType !== Node.ELEMENT_NODE ||
+      !(strong as Element).matches('strong, b') ||
+      label.before.trim() !== strong.textContent?.trim()
+    ) return;
+    text.deleteData(0, colon + 1);
+    const last = strong.lastChild;
+    if (last?.nodeType === Node.TEXT_NODE) {
+      last.textContent = (last.textContent || '').trimEnd() + ':';
+    } else {
+      strong.appendChild(doc.createTextNode(':'));
+    }
+  });
+}
+
+export interface ListNormalizeOptions {
+  /**
+   * First pass only: lists that become adjacent later, because a mode step
+   * removed what separated them (the article title), are separate lists in
+   * the source and must stay apart.
+   */
+  mergeLists?: boolean;
+  /** Blogs and Shoppables: bold unbolded list labels (boldListLabels). */
+  boldLabels?: boolean;
+}
+
+export function normalizeLists(html: string, { mergeLists = true, boldLabels = false }: ListNormalizeOptions = {}): string {
   if (!html || typeof html !== 'string') {
     return '';
   }
@@ -125,6 +219,8 @@ export function normalizeLists(html: string, mergeLists: boolean = true): string
       mergeSourcesListChains(doc);
     }
     
+    if (boldLabels) boldListLabels(doc);
+
     // List item normalization: just clean up spacing, don't wrap with EM
     // (style attribute will be removed elsewhere in the pipeline)
     const normalizedListItems = doc.querySelectorAll('li');

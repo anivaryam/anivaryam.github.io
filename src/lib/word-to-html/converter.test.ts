@@ -392,6 +392,56 @@ describe('structural and formatting regressions', () => {
     expect(new DOMParser().parseFromString(takeaways, 'text/html').querySelector('li')?.textContent).toBe('Tip: Try the fresh one');
   });
 
+  it.each(['ol', 'ul'])('bolds unbolded <%s> item labels in Blogs and Shoppables only, outside Sources', (tag) => {
+    const input = `<h2>Key Takeaways</h2><ul><li>Act fast: blot the stain.</li></ul><p>Intro.</p>` +
+      `<${tag}><li>Tip: try the <i>blue</i> one</li><li><i>Note: keep it dry</i></li><li><b>Done:</b> already bold</li></${tag}>` +
+      '<p><b>Sources:</b></p><ol><li>Smith J: Cleaning Science</li></ol>';
+    for (const [mode, labels] of [
+      ['blogs', ['Act fast:', 'Tip:', 'Note:', 'Done:', undefined]],
+      ['shoppables', ['Act fast:', 'Tip:', 'Note:', 'Done:', undefined]],
+      ['regular', [undefined, undefined, undefined, 'Done:', undefined]],
+    ] as const) {
+      const output = convertToHtml(cleanWordHtml(input), mode);
+      for (const html of [output.formatted, output.unformatted]) {
+        const items = Array.from(new DOMParser().parseFromString(html, 'text/html').querySelectorAll('li'));
+        expect(items.map(li => li.querySelector('strong')?.textContent)).toEqual(labels);
+        expect(items.map(li => li.textContent?.trim())).toEqual(['Act fast: blot the stain.', 'Tip: try the blue one', 'Note: keep it dry', 'Done: already bold', 'Smith J: Cleaning Science']);
+      }
+      if (mode !== 'regular') expect(output.unformatted).toContain('<li><em><strong>Note:</strong> keep it dry</em></li>');
+      const results = validateMode(output.unformatted, mode, {}).results;
+      expect(results.filter(r => r.ruleId === 'ol-bold-labels' || r.ruleId === 'list-normalization').every(r => r.passed)).toBe(true);
+    }
+  });
+
+  it.each([
+    '<strong>Tip</strong>: Try the <i>blue</i> one',
+    '<b>Tip</b> : Try the <i>blue</i> one',
+    '<b>Tip </b>: Try the <i>blue</i> one',
+  ])('moves the colon after a bold list label inside the bold in Blogs and Shoppables: %s', (item) => {
+    for (const tag of ['ol', 'ul']) {
+      for (const mode of ['blogs', 'shoppables'] as const) {
+        const output = getUnformattedHtml(`<${tag}><li>${item}</li></${tag}>`, mode);
+        expect(output).toBe(`<${tag}><li><strong>Tip:</strong> Try the <em>blue</em> one</li></${tag}>`);
+        const results = validateMode(output, mode, {}).results;
+        expect(results.filter(r => r.ruleId === 'ol-bold-labels' || r.ruleId === 'list-normalization').every(r => r.passed)).toBe(true);
+      }
+      const regular = getUnformattedHtml(`<${tag}><li>${item}</li></${tag}>`, 'regular');
+      expect(new DOMParser().parseFromString(regular, 'text/html').querySelector('strong')?.textContent?.trim()).toBe('Tip');
+    }
+  });
+
+  it.each([
+    'Meet at 9:30 am',
+    'Mix a 1:2 ratio',
+    'Visit https://example.com today',
+    'Rinse well. Then: dry it',
+    '<em>Pro</em> tip: rinse',
+    '<b>Done:</b> already bold',
+  ])('leaves an item without an unbolded label in its first text run as it is: %s', (item) => {
+    const listItem = (mode: OutputMode) => new DOMParser().parseFromString(getUnformattedHtml(`<ul><li>${item}</li></ul>`, mode), 'text/html').querySelector('li')?.innerHTML;
+    for (const mode of ['blogs', 'shoppables'] as const) expect(listItem(mode)).toBe(listItem('regular'));
+  });
+
   it('does not discard content when merging a pre-existing malformed list', () => {
     const output = normalizeLists('<ul><li>First</li></ul><ul><strong><li>Second</li></strong></ul>');
     expect(new DOMParser().parseFromString(output, 'text/html').body.textContent).toBe('FirstSecond');

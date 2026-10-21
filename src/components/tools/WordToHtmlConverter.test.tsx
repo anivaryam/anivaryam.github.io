@@ -194,7 +194,8 @@ describe('WordToHtmlConverter', () => {
 
   it('keeps unrelated product links and highlights their own list-label warnings', () => {
     render(<WordToHtmlConverter />);
-    enterHtml('<p>Sources: Citation.</p><h2>Products</h2><ol><li>Option: <a href="/product">Buy product</a></li></ol>');
+    // A label split across elements is left for the warning rather than bolded.
+    enterHtml('<p>Sources: Citation.</p><h2>Products</h2><ol><li><em>Best</em> option: <a href="/product">Buy product</a></li></ol>');
     fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
     const preview = document.querySelector('.output-preview')!;
     expect(preview.querySelector('a')?.getAttribute('href')).toBe('/product');
@@ -307,7 +308,7 @@ describe('WordToHtmlConverter', () => {
 
   it('highlights the list items the bold-label rule counts', () => {
     render(<WordToHtmlConverter />);
-    enterHtml('<ol><li><strong>Step one</strong>: preheat</li><li><strong>Step two:</strong> serve</li></ol>');
+    enterHtml('<ol><li><em>Step</em> one: preheat</li><li><strong>Step two:</strong> serve</li></ol>');
     fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
     const items = Array.from(document.querySelector('.output-preview')!.querySelectorAll('li'));
     expect(items.map(li => li.getAttribute('data-warning'))).toEqual(['Missing bold label before colon', null]);
