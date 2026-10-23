@@ -38,6 +38,8 @@ export interface FeatureFlags {
   brBeforeReadMore?: boolean;
   brBeforeSources?: boolean;
   wrapLinksStrongUnderline?: boolean;
+  /** Shoppables only: converts tables into headings and lists (Shopify collection pages do not render tables). */
+  tablesToLists?: boolean;
   /** Custom spacer markup replacing the default `<p>&nbsp;</p>` spacer. */
   customSpacer?: string;
 }

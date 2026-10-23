@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 import { convertToHtml, type OutputMode, type FeatureFlags } from "@/lib/word-to-html/converter";
 import { resolveFeatures } from "@/lib/word-to-html/mode-processor";
@@ -403,6 +404,8 @@ export function WordToHtmlConverter() {
   const [features, setFeatures] = useState<FeatureFlags>(() => resolveFeatures('regular'));
   // The optional sanitizing of the configured spacer markup.
   const [sanitizeSpacer, setSanitizeSpacer] = useState(false);
+  // Pastes that held a table; each one asks about the Shoppables table conversion again.
+  const [tablePasteCount, setTablePasteCount] = useState(0);
 
   // Use the same defaults as the conversion and validation pipelines.
   // The custom spacer is a text setting, so it survives a mode switch.
@@ -669,6 +672,7 @@ export function WordToHtmlConverter() {
 
     const handlePaste = (e: ClipboardEvent) => {
       const sourceHtml = e.clipboardData?.getData('text/html');
+      const pastesTable = /<table\b/i.test(sourceHtml || '');
       if (sourceHtml || e.clipboardData?.getData('text/plain')) prepareFullReplacement();
       if (sourceHtml) {
         const source = createInertContainer();
@@ -701,6 +705,7 @@ export function WordToHtmlConverter() {
           }
           removePasteBoundaries();
           setInputHtml(inputArea.innerHTML);
+          if (pastesTable) setTablePasteCount(count => count + 1);
           return;
         }
       }
@@ -712,6 +717,7 @@ export function WordToHtmlConverter() {
         const content = inputArea.innerHTML;
         if (content.trim()) {
           setInputHtml(content);
+          if (pastesTable) setTablePasteCount(count => count + 1);
         }
       }, 10);
     };
@@ -756,6 +762,20 @@ export function WordToHtmlConverter() {
   }, [inputHtml, outputFormat, effectiveFeatures]);
   const outputHtml = conversionResult.formatted;
   const previewHtml = conversionResult.unformatted;
+
+  // Shopify collection pages do not render tables, so Shoppables asks about
+  // the table to list conversion each time a paste brings a table, and when
+  // the input gains a table some other way (an edit, a switch to Shoppables).
+  const shoppablesTableCount = outputFormat === 'shoppables' ? (inputHtml.match(/<table\b/gi) || []).length : 0;
+  const promptedTablesRef = useRef({ count: 0, pastes: 0 });
+  const [showTablePrompt, setShowTablePrompt] = useState(false);
+  useEffect(() => {
+    const prompted = promptedTablesRef.current;
+    if (shoppablesTableCount > 0 && (tablePasteCount !== prompted.pastes || shoppablesTableCount > prompted.count)) {
+      setShowTablePrompt(true);
+    }
+    promptedTablesRef.current = { count: shoppablesTableCount, pastes: tablePasteCount };
+  }, [shoppablesTableCount, tablePasteCount]);
 
   useEffect(() => {
     linkCheckAbortRef.current?.abort();
@@ -1517,6 +1537,13 @@ export function WordToHtmlConverter() {
                         onCheckedChange={(checked) => setFeatures({ ...features, brBeforeSources: checked as boolean })}
                       />
                       <span className="text-sm">Add BR Before Sources</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <Checkbox
+                        checked={features.tablesToLists === true}
+                        onCheckedChange={(checked) => setFeatures({ ...features, tablesToLists: checked as boolean })}
+                      />
+                      <span className="text-sm">Convert Tables to Lists</span>
                     </label>
                       </>
                     )}
@@ -2701,6 +2728,26 @@ export function WordToHtmlConverter() {
         </DialogContent>
       </Dialog>
       
+      {/* Shoppables table to list prompt */}
+      <AlertDialog open={showTablePrompt} onOpenChange={setShowTablePrompt}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Convert tables to lists?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Shopify collection pages don&apos;t render tables. Convert the {shoppablesTableCount === 1 ? 'table' : `${shoppablesTableCount} tables`} in this content into structured lists? Each row becomes a heading followed by a list of its column values.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setFeatures(previous => ({ ...previous, tablesToLists: false }))}>
+              No, keep tables
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => setFeatures(previous => ({ ...previous, tablesToLists: true }))}>
+              Yes, convert to lists
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Link Check Results Dialog */}
       <Dialog open={showLinkResults} onOpenChange={setShowLinkResults}>
         <DialogContent

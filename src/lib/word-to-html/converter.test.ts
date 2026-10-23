@@ -1765,3 +1765,48 @@ describe('inert parsing of untrusted markup', () => {
     });
   });
 });
+
+describe('Shoppables table to list conversion', () => {
+  // Google Docs clipboard markup: the table sits in a layout <div> inside the
+  // docs-internal-guid wrapper, with the header row bolded by span styles.
+  const cell = (text: string, bold = false) => `<td style="border:solid #000000 1pt;padding:5pt"><p dir="ltr" style="line-height:1.2;margin-top:0pt;margin-bottom:0pt;"><span style="font-size:11pt;font-family:Arial,sans-serif;font-weight:${bold ? 700 : 400};">${text}</span></p></td>`;
+  const googleDocsTable = '<meta charset="utf-8"><b style="font-weight:normal;" id="docs-internal-guid-1a2b3c"><h2 dir="ltr"><span style="font-size:16pt;font-weight:400;">Shop Bulk Candy</span></h2>'
+    + '<div dir="ltr" style="margin-left:0pt;" align="left"><table style="border:none;border-collapse:collapse;"><colgroup><col width="156"><col width="156"><col width="156"></colgroup><tbody>'
+    + `<tr style="height:0pt">${cell('Product', true)}${cell('Package Capacity', true)}${cell('Price', true)}</tr>`
+    + `<tr style="height:0pt">${cell('Skittles Candy (3lb bag)')}${cell('3 lbs.')}${cell('$18.00')}</tr>`
+    + `<tr style="height:0pt">${cell('M&amp;M&#39;s Plain Milk Chocolate Candy - 38 oz Bag')}${cell('38 oz.')}${cell('$21.00')}</tr>`
+    + '</tbody></table></div><p dir="ltr"><span style="font-size:11pt;">These choices help.</span></p></b>';
+
+  it('converts a pasted Google Docs table into row headings and labelled lists', () => {
+    const features = { tablesToLists: true };
+    const output = getUnformattedHtml(googleDocsTable, 'shoppables', features);
+    expect(output).toBe(
+      '<h2><strong>Shop Bulk Candy</strong></h2>'
+      + '<h3><strong>Skittles Candy (3lb bag)</strong></h3><ul><li><strong>Package Capacity:</strong> 3 lbs.</li><li><strong>Price:</strong> $18.00</li></ul>'
+      + '<h3><strong>M&amp;M\'s Plain Milk Chocolate Candy - 38 oz Bag</strong></h3><ul><li><strong>Package Capacity:</strong> 38 oz.</li><li><strong>Price:</strong> $21.00</li></ul>'
+      + '<p>These choices help.</p>'
+    );
+    expect(validateMode(output, 'shoppables', features).summary.failed).toBe(0);
+  });
+
+  it('keeps a callout box as blocks and a key/value table as one list, with clean validation', () => {
+    const callout = `<div dir="ltr" align="left"><table><tbody><tr>${cell('Tip: rotate stock weekly.', true)}</tr></tbody></table></div>`;
+    const specs = `<div dir="ltr" align="left"><table><tbody><tr>${cell('Weight')}${cell('3 lbs.')}</tr><tr>${cell('Price')}${cell('$18.00')}</tr></tbody></table></div>`;
+    const features = { tablesToLists: true };
+    const output = getUnformattedHtml(`<b style="font-weight:normal;" id="docs-internal-guid-1a2b3c">${callout}<p dir="ltr"><span>Specs:</span></p>${specs}</b>`, 'shoppables', features);
+    expect(output).toBe(
+      '<p><strong>Tip: rotate stock weekly.</strong></p><p>Specs:</p>'
+      + '<ul><li><strong>Weight:</strong> 3 lbs.</li><li><strong>Price:</strong> $18.00</li></ul>'
+    );
+    expect(validateMode(output, 'shoppables', features).summary.failed).toBe(0);
+  });
+
+  it('keeps tables unless the conversion is enabled, and only converts in Shoppables mode', () => {
+    const runs: [OutputMode, { tablesToLists?: boolean }][] = [['shoppables', {}], ['regular', { tablesToLists: true }], ['blogs', { tablesToLists: true }]];
+    for (const [mode, features] of runs) {
+      const doc = new DOMParser().parseFromString(getUnformattedHtml(googleDocsTable, mode, features), 'text/html');
+      expect(doc.querySelectorAll('table tr')).toHaveLength(3);
+      expect(doc.querySelector('h3')).toBeNull();
+    }
+  });
+});
