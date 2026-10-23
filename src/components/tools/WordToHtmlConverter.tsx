@@ -466,12 +466,25 @@ export function WordToHtmlConverter() {
 
     // Initialize Lenis for output preview
     if (outputPreviewRef.current) {
-      const outputLenis = new Lenis({
+      const outputLenis: Lenis = new Lenis({
         wrapper: outputPreviewRef.current,
         content: outputPreviewRef.current,
         duration: 1.2,
         easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
         smoothWheel: true,
+        naiveDimensions: true,
+        virtualScroll: ({ deltaY, event }) => {
+          if (event.type !== 'wheel' || event.ctrlKey || deltaY === 0 || outputLenis.isStopped || outputLenis.isLocked) return true;
+          const limit = outputLenis.limit;
+          // Shrinking content can leave inertia beyond the live limit and let a
+          // reversing wheel escape to the page. Rebase only invalid state before
+          // Lenis handles this gesture; valid coasting keeps its existing target.
+          if (outputLenis.animatedScroll < 0 || outputLenis.animatedScroll > limit ||
+              outputLenis.targetScroll < 0 || outputLenis.targetScroll > limit) {
+            outputLenis.resize();
+          }
+          return true;
+        },
       });
       lenisInstances.push(outputLenis);
     }
@@ -1189,7 +1202,23 @@ export function WordToHtmlConverter() {
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
     const container = document.createElement('div');
     for (let i = 0; i < selection.rangeCount; i++) {
-      const range = selection.getRangeAt(i);
+      const originalRange = selection.getRangeAt(i);
+      let range = originalRange.cloneRange();
+      const end = range.endContainer;
+      // cloneContents includes a following ancestor's empty shell at an inside-zero
+      // endpoint. Lift only first-child boundaries; even nontext siblings are selected.
+      // Direct empty/void endpoints are ambiguous and keep their existing serialization.
+      if (!range.collapsed && event.currentTarget.contains(range.startContainer) && event.currentTarget.contains(end) &&
+          range.endOffset === 0 && (end.nodeType === Node.TEXT_NODE ? !!end.textContent?.length :
+            end.nodeType === Node.ELEMENT_NODE && end.hasChildNodes())) {
+        for (let node: Node | null = end; node && node !== event.currentTarget; node = node.parentNode) {
+          const candidate = range.cloneRange();
+          candidate.setEndBefore(node);
+          if (candidate.collapsed || candidate.compareBoundaryPoints(Range.START_TO_START, originalRange) !== 0) break;
+          range = candidate;
+          if (node.previousSibling) break;
+        }
+      }
       let copied: Node = range.cloneContents();
       for (let node: Node | null = range.commonAncestorContainer; node && node !== event.currentTarget && event.currentTarget.contains(node); node = node.parentNode) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
