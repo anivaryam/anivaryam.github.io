@@ -4,12 +4,10 @@ import { WordToHtmlConverter } from './WordToHtmlConverter';
 import { toast } from '@/hooks/use-toast';
 import { getUnformattedHtml } from '@/lib/word-to-html/converter';
 import { stripSpacerMarkers } from '@/lib/word-to-html/spacer';
+import Lenis, { type LenisOptions } from 'lenis';
 
 vi.mock('lenis', () => ({
-  default: class {
-    raf = vi.fn();
-    destroy = vi.fn();
-  },
+  default: vi.fn(),
 }));
 vi.mock('@/hooks/use-toast', () => ({ toast: vi.fn() }));
 
@@ -26,6 +24,17 @@ vi.mock('@/lib/word-to-html/converter', async (importOriginal) => {
 });
 
 beforeEach(() => {
+  vi.mocked(Lenis).mockImplementation((options: LenisOptions) => ({
+    options,
+    limit: 0,
+    animatedScroll: 0,
+    targetScroll: 0,
+    isStopped: false,
+    isLocked: false,
+    raf: vi.fn(),
+    destroy: vi.fn(),
+    resize: vi.fn(),
+  } as unknown as Lenis));
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
 });
@@ -56,7 +65,152 @@ function hasText(html: string): boolean {
   return !!new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim();
 }
 
+function copySelection(preview: Element, select: (range: Range) => void, reverse = false): Record<string, string> {
+  const range = document.createRange();
+  select(range);
+  const selection = window.getSelection()!;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  if (reverse) selection.setBaseAndExtent(range.endContainer, range.endOffset, range.startContainer, range.startOffset);
+  const liveRange = selection.getRangeAt(0);
+  const endpoints = [liveRange.startContainer, liveRange.startOffset, liveRange.endContainer, liveRange.endOffset];
+  const direction = [selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset];
+  const plain = selection.toString();
+  const previewHtml = preview.innerHTML;
+  const input = screen.getByRole('textbox', { name: 'Word document content' });
+  const inputHtml = input.innerHTML;
+  const setData = vi.fn();
+  expect(fireEvent.copy(preview, { clipboardData: { setData } })).toBe(false);
+  const payload = Object.fromEntries(setData.mock.calls) as Record<string, string>;
+  expect(payload['text/plain']).toBe(plain);
+  expect(selection.getRangeAt(0)).toBe(liveRange);
+  expect([liveRange.startContainer, liveRange.startOffset, liveRange.endContainer, liveRange.endOffset]).toEqual(endpoints);
+  expect([selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset]).toEqual(direction);
+  expect(preview.innerHTML).toBe(previewHtml);
+  expect(input.innerHTML).toBe(inputHtml);
+  return payload;
+}
+
 describe('WordToHtmlConverter', () => {
+  describe('normal-preview wheel limits', () => {
+    function previewLenis(): Lenis {
+      return vi.mocked(Lenis).mock.results.map(result => result.value as Lenis)
+        .find(instance => instance.options.wrapper === document.querySelector('.output-preview'))!;
+    }
+
+    it('uses live dimensions and reconciliation only for the normal preview', () => {
+      render(<WordToHtmlConverter />);
+      const instances = vi.mocked(Lenis).mock.results.map(result => result.value as Lenis);
+      expect(instances).toHaveLength(3);
+      const preview = previewLenis();
+      expect(preview.options.naiveDimensions).toBe(true);
+      expect(preview.options.virtualScroll).toBeTypeOf('function');
+      for (const instance of instances) {
+        expect(instance.options.content).toBe(instance.options.wrapper);
+        expect(instance.options.duration).toBe(1.2);
+        expect(instance.options.smoothWheel).toBe(true);
+        expect(instance.options.easing?.(0.5)).toBe(Math.min(1, 1.001 - Math.pow(2, -5)));
+        expect(instance.options.autoRaf).toBeUndefined();
+        if (instance !== preview) {
+          expect(instance.options.naiveDimensions).toBeUndefined();
+          expect(instance.options.virtualScroll).toBeUndefined();
+        }
+      }
+    });
+
+    it.each([
+      [-1, 300], [200, -1], [1001, 800], [400, 1001], [4309, 4309],
+    ])('rebases invalid animated/target state (%s, %s) before an ordinary wheel without integrating its delta', (animatedScroll, targetScroll) => {
+      render(<WordToHtmlConverter />);
+      const preview = previewLenis();
+      Object.assign(preview, { limit: 1000, animatedScroll, targetScroll });
+      vi.mocked(preview.resize).mockImplementation(() => {
+        preview.animatedScroll = preview.targetScroll = 800;
+      });
+      const event = new WheelEvent('wheel', { deltaY: -100, cancelable: true });
+      expect(preview.options.virtualScroll).toBeTypeOf('function');
+      expect(preview.options.virtualScroll!({ deltaX: 0, deltaY: -100, event })).toBe(true);
+      expect(preview.resize).toHaveBeenCalledTimes(1);
+      expect([preview.animatedScroll, preview.targetScroll]).toEqual([800, 800]);
+      expect(event.defaultPrevented).toBe(false);
+      expect(event).not.toHaveProperty('lenisStopPropagation');
+    });
+
+    it.each([[0, 0], [1000, 1000], [400, 900], [900, 400], [0, 1000]])('preserves valid coasting and boundary state (%s, %s)', (animatedScroll, targetScroll) => {
+      render(<WordToHtmlConverter />);
+      const preview = previewLenis();
+      Object.assign(preview, { limit: 1000, animatedScroll, targetScroll });
+      expect(preview.options.virtualScroll).toBeTypeOf('function');
+      for (const deltaY of [100, -100]) {
+        expect(preview.options.virtualScroll!({ deltaX: 0, deltaY, event: new WheelEvent('wheel', { deltaY }) })).toBe(true);
+      }
+      expect(preview.resize).not.toHaveBeenCalled();
+      expect([preview.animatedScroll, preview.targetScroll]).toEqual([animatedScroll, targetScroll]);
+    });
+
+    it.each(['ctrl', 'zero', 'horizontal', 'touch', 'stopped', 'locked'])('does not reconcile an excluded %s gesture/state even when positions are invalid', (state) => {
+      render(<WordToHtmlConverter />);
+      const preview = previewLenis();
+      Object.assign(preview, { animatedScroll: 1200, targetScroll: 1500, isStopped: state === 'stopped', isLocked: state === 'locked' });
+      const readLimit = vi.fn(() => 1000);
+      Object.defineProperty(preview, 'limit', { get: readLimit });
+      const deltaX = state === 'horizontal' ? 100 : 0;
+      const deltaY = state === 'horizontal' || state === 'zero' ? 0 : 100;
+      const event = state === 'touch' ? new TouchEvent('touchmove') : new WheelEvent('wheel', { deltaX, deltaY, ctrlKey: state === 'ctrl' });
+      expect(preview.options.virtualScroll).toBeTypeOf('function');
+      expect(preview.options.virtualScroll!({ deltaX, deltaY, event })).toBe(true);
+      expect(readLimit).not.toHaveBeenCalled();
+      expect(preview.resize).not.toHaveBeenCalled();
+      expect([preview.animatedScroll, preview.targetScroll]).toEqual([1200, 1500]);
+    });
+
+    it('reads the current limit on each wheel, including empty and re-grown output', () => {
+      render(<WordToHtmlConverter />);
+      const preview = previewLenis();
+      Object.assign(preview, { limit: 1000, animatedScroll: 400, targetScroll: 900 });
+      const gesture = { deltaX: 0, deltaY: -100, event: new WheelEvent('wheel', { deltaY: -100 }) };
+      expect(preview.options.virtualScroll).toBeTypeOf('function');
+      preview.options.virtualScroll!(gesture);
+      expect(preview.resize).not.toHaveBeenCalled();
+      Object.assign(preview, { limit: 0 });
+      vi.mocked(preview.resize).mockImplementation(() => {
+        preview.animatedScroll = preview.targetScroll = 0;
+      });
+      preview.options.virtualScroll!(gesture);
+      expect(preview.resize).toHaveBeenCalledTimes(1);
+      preview.options.virtualScroll!(gesture);
+      expect(preview.resize).toHaveBeenCalledTimes(1);
+      Object.assign(preview, { limit: 2000, animatedScroll: 400, targetScroll: 1900 });
+      preview.options.virtualScroll!(gesture);
+      expect(preview.resize).toHaveBeenCalledTimes(1);
+      expect(preview.targetScroll).toBe(1900);
+    });
+
+    it('retains one shared RAF and destroys the same instances once after view/content changes', () => {
+      const view = render(<WordToHtmlConverter />);
+      const instances = vi.mocked(Lenis).mock.results.map(result => result.value as Lenis);
+      // Radix also schedules frames; identify the converter's shared loop.
+      const loops = vi.mocked(requestAnimationFrame).mock.calls.filter(([callback]) => callback.name === 'raf');
+      expect(loops).toHaveLength(1);
+      const raf = loops[0][0];
+      vi.mocked(requestAnimationFrame).mockReturnValueOnce(2);
+      act(() => raf(16));
+      instances.forEach(instance => {
+        expect(instance.raf).toHaveBeenCalledTimes(1);
+        expect(instance.raf).toHaveBeenCalledWith(16);
+      });
+      enterHtml('<h2>Section</h2><p>Body</p>');
+      fireEvent.click(screen.getByTitle('Preview'));
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+      fireEvent.click(screen.getByTitle('Code'));
+      expect(Lenis).toHaveBeenCalledTimes(3);
+      expect(vi.mocked(requestAnimationFrame).mock.calls.filter(([callback]) => callback === raf)).toHaveLength(2);
+      view.unmount();
+      expect(cancelAnimationFrame).toHaveBeenCalledWith(2);
+      instances.forEach(instance => expect(instance.destroy).toHaveBeenCalledTimes(1));
+    });
+  });
+
   it('adds link underline markup only when the explicit wrapping option is enabled', () => {
     render(<WordToHtmlConverter />);
     enterHtml('<p><u>Plain text</u> <a href="/products"><span style="text-decoration:underline">Products</span></a></p>');
@@ -525,27 +679,192 @@ describe('WordToHtmlConverter', () => {
     const item = preview.querySelector('li')!;
     expect(item.getAttribute('data-warning')).toBe('Missing bold label before colon');
 
-    const copySelection = (select: (range: Range) => void) => {
-      const range = document.createRange();
-      select(range);
-      window.getSelection()!.removeAllRanges();
-      window.getSelection()!.addRange(range);
-      const setData = vi.fn();
-      fireEvent.copy(preview, { clipboardData: { setData } });
-      return Object.fromEntries(setData.mock.calls) as Record<string, string>;
-    };
-
-    const all = copySelection(range => range.selectNodeContents(preview));
+    const all = copySelection(preview, range => range.selectNodeContents(preview));
     expect(all['text/html']).toContain('<div style="height:10px;"></div>');
     expect(all['text/html']).toContain('<a href="/product"');
     expect(all['text/plain']).toContain('Buy product');
-    const part = copySelection(range => range.selectNodeContents(item.firstChild!));
+    const part = copySelection(preview, range => range.selectNodeContents(item.firstChild!));
     expect(part['text/html']).toBe('<ol><li><em>Top</em></li></ol>');
     for (const html of [all['text/html'], part['text/html']]) {
       expect(html).not.toContain('data-warning');
       expect(html).not.toContain('data-w2h-spacer');
     }
     expect(item.getAttribute('data-warning')).toBe('Missing bold label before colon');
+  });
+
+  describe('preview selection copy boundaries', () => {
+    function renderPreview(html: string) {
+      // Keep structural/empty-node fixtures intact instead of testing conversion cleanup.
+      converterOutput.html = html;
+      render(<WordToHtmlConverter />);
+      enterHtml(html);
+      return document.querySelector('.output-preview')!;
+    }
+
+    it.each(['p', 'h2'])('excludes an endpoint-only following %s shell', (tag) => {
+      render(<WordToHtmlConverter />);
+      enterHtml(`<p>Alpha selected paragraph.</p><${tag}>Beta following section.</${tag}>`);
+      const preview = document.querySelector('.output-preview')!;
+      const following = preview.children[1];
+      for (const end of [following, following.firstChild!]) {
+        const payload = copySelection(preview, range => {
+          range.setStart(preview.firstChild!.firstChild!, 0);
+          range.setEnd(end, 0);
+        });
+        expect(payload['text/html']).toBe('<p>Alpha selected paragraph.</p>');
+      }
+    });
+
+    it('excludes nested following list shells without flattening selected ancestry', () => {
+      const preview = renderPreview('<ol><li><em>Top</em></li><li><strong><span>Following</span></strong></li></ol>');
+      const payload = copySelection(preview, range => {
+        range.setStart(preview.querySelector('em')!.firstChild!, 0);
+        range.setEnd(preview.querySelector('span')!.firstChild!, 0);
+      });
+      expect(payload['text/html']).toBe('<ol><li><em>Top</em></li></ol>');
+    });
+
+    it('lifts first-child inline endpoints only as far as selected preceding text', () => {
+      const preview = renderPreview('<p>Alpha <strong><em>Following</em></strong></p>');
+      const payload = copySelection(preview, range => {
+        range.setStart(preview.querySelector('p')!.firstChild!, 0);
+        range.setEnd(preview.querySelector('em')!.firstChild!, 0);
+      });
+      expect(payload['text/html']).toBe('<p>Alpha </p>');
+    });
+
+    it.each(['<br><hr>', ' \n', '<!--selected-->', '<i></i>', '<img alt="Selected">'])('preserves selected predecessors and their outer DIV: %s', (predecessors) => {
+      const preview = renderPreview(`<p>Alpha</p><div style="height:10px;">${predecessors}<span>Spacer label</span></div>`);
+      const payload = copySelection(preview, range => {
+        range.setStart(preview.querySelector('p')!.firstChild!, 0);
+        range.setEnd(preview.querySelector('span')!.firstChild!, 0);
+      });
+      expect(payload['text/html']).toBe(`<p>Alpha</p><div style="height:10px;">${predecessors}</div>`);
+    });
+
+    it('retains fully selected empty paragraphs, spacers, breaks and media', () => {
+      const selected = '<p>Alpha</p><p></p><div style="height:10px;"></div><br><hr><img alt="Selected">';
+      const preview = renderPreview(`${selected}<p>Following</p>`);
+      const payload = copySelection(preview, range => {
+        range.setStart(preview.firstChild!.firstChild!, 0);
+        range.setEnd(preview.lastChild!.firstChild!, 0);
+      });
+      expect(payload['text/html']).toBe(selected);
+    });
+
+    it.each(['<p></p>', '<div style="height:10px;"></div>', '<br>', '<hr>', '<img alt="Selected">'])('leaves an ambiguous direct empty/void endpoint unchanged: %s', (leaf) => {
+      const preview = renderPreview(`<p>Alpha</p>${leaf}<p>Following</p>`);
+      const payload = copySelection(preview, range => {
+        range.setStart(preview.firstChild!.firstChild!, 0);
+        range.setEnd(preview.childNodes[1], 0);
+      });
+      expect(payload['text/html']).toBe(`<p>Alpha</p>${leaf}`);
+    });
+
+    it('preserves root-end, before-node and ordinary partial-word selections', () => {
+      const html = '<p>Alpha selected paragraph.</p><p>Beta following paragraph.</p>';
+      const preview = renderPreview(html);
+      expect(copySelection(preview, range => range.selectNodeContents(preview))['text/html']).toBe(html);
+      expect(copySelection(preview, range => {
+        range.setStart(preview.firstChild!.firstChild!, 0);
+        range.setEndBefore(preview.lastChild!);
+      })['text/html']).toBe('<p>Alpha selected paragraph.</p>');
+      expect(copySelection(preview, range => {
+        range.setStart(preview.firstChild!.firstChild!, 2);
+        range.setEnd(preview.firstChild!.firstChild!, 5);
+      })['text/html']).toBe('<p>pha</p>');
+    });
+
+    it('retains the first selected following character', () => {
+      const preview = renderPreview('<p>Alpha</p><p>Beta</p>');
+      const payload = copySelection(preview, range => {
+        range.setStart(preview.firstChild!.firstChild!, 0);
+        range.setEnd(preview.lastChild!.firstChild!, 1);
+      });
+      expect(payload['text/html']).toBe('<p>Alpha</p><p>B</p>');
+    });
+
+    it('normalizes reverse selections without changing live anchor/focus or plain text', () => {
+      const preview = renderPreview('<p>Alpha</p><p>Beta</p>');
+      const payload = copySelection(preview, range => {
+        range.setStart(preview.firstChild!.firstChild!, 0);
+        range.setEnd(preview.lastChild!, 0);
+      }, true);
+      expect(payload['text/html']).toBe('<p>Alpha</p>');
+    });
+
+    it('does not move before the original start or collapse a structural selection', () => {
+      const preview = renderPreview('<p><span>Following</span></p>');
+      expect(copySelection(preview, range => {
+        range.setStart(preview, 0);
+        range.setEnd(preview.firstChild!, 0);
+        expect(range.collapsed).toBe(false);
+      })['text/html']).toBe('<p></p>');
+      expect(copySelection(preview, range => {
+        range.setStart(preview.querySelector('span')!, 0);
+        range.setEnd(preview.querySelector('span')!.firstChild!, 0);
+        expect(range.collapsed).toBe(false);
+      })['text/html']).toBe('<p><span></span></p>');
+    });
+
+    it('leaves wholly outside and cross-boundary ranges on the existing serialization path', () => {
+      const preview = renderPreview('<p>Alpha</p><p>Beta</p>');
+      const input = screen.getByRole('textbox', { name: 'Word document content' });
+      expect(copySelection(preview, range => {
+        range.setStart(input.firstChild!.firstChild!, 0);
+        range.setEnd(input.lastChild!, 0);
+      })['text/html']).toBe('<p>Alpha</p><p></p>');
+      const outside = document.createElement('p');
+      outside.textContent = 'Outside';
+      preview.before(outside);
+      let originalHtml = '';
+      const payload = copySelection(preview, range => {
+        range.setStart(outside.firstChild!, 0);
+        range.setEnd(preview.firstChild!, 0);
+        const container = document.createElement('div');
+        container.appendChild(range.cloneContents());
+        originalHtml = container.innerHTML;
+      });
+      expect(payload['text/html']).toBe(originalHtml);
+    });
+
+    it.each(['missing', 'empty', 'collapsed'])('does not intercept a %s selection', (state) => {
+      const preview = renderPreview('<p>Alpha</p>');
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      if (state === 'missing') vi.spyOn(window, 'getSelection').mockReturnValue(null);
+      if (state === 'collapsed') selection.collapse(preview.firstChild!.firstChild!, 0);
+      const setData = vi.fn();
+      expect(fireEvent.copy(preview, { clipboardData: { setData } })).toBe(true);
+      expect(setData).not.toHaveBeenCalled();
+    });
+
+    it('continues serializing every range and uses the original multi-range plain text', () => {
+      const preview = renderPreview('<p>Alpha</p><p>Beta</p><p>Gamma</p>');
+      const ranges = [0, 1].map(index => {
+        const range = document.createRange();
+        range.setStart(preview.childNodes[index].firstChild!, 0);
+        range.setEnd(preview.childNodes[index + 1], 0);
+        return range;
+      });
+      vi.spyOn(window, 'getSelection').mockReturnValue({
+        isCollapsed: false, rangeCount: ranges.length,
+        getRangeAt: (index: number) => ranges[index],
+        toString: () => 'Original multi-range plain text',
+      } as unknown as Selection);
+      const setData = vi.fn();
+      fireEvent.copy(preview, { clipboardData: { setData } });
+      expect(Object.fromEntries(setData.mock.calls)).toEqual({
+        'text/html': '<p>Alpha</p><p>Beta</p>',
+        'text/plain': 'Original multi-range plain text',
+      });
+      ranges.forEach((range, index) => {
+        expect(range.startContainer).toBe(preview.childNodes[index].firstChild);
+        expect(range.endContainer).toBe(preview.childNodes[index + 1]);
+        expect(range.startOffset).toBe(0);
+        expect(range.endOffset).toBe(0);
+      });
+    });
   });
 
   it('keeps the custom spacer in the copyable blocks', async () => {
