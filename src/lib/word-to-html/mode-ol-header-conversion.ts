@@ -14,9 +14,10 @@
 
 /**
  * Blank Word filler (whitespace, empty paragraphs, line breaks) that the
- * conversion can drop without losing content
+ * conversion can drop without losing content. Shared with the table to list
+ * conversion, which drops the same filler from table cells.
  */
-function isBlankNode(node: Node): boolean {
+export function isBlankNode(node: Node): boolean {
   if (node.nodeType === Node.COMMENT_NODE) return true;
   if ((node.textContent || '').trim()) return false;
   if (node.nodeType !== Node.ELEMENT_NODE) return true;

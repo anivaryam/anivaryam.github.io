@@ -228,6 +228,41 @@ describe('WordToHtmlConverter', () => {
     expect(preview.querySelector('p > u')?.textContent).toContain('Plain text');
   });
 
+  it('asks about converting tables to lists for each Shoppables paste that holds a table', async () => {
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
+    const input = screen.getByRole('textbox', { name: 'Word document content' });
+    const preview = document.querySelector('.output-preview')!;
+    // The concealed link sends the paste through the prepared (synchronous) paste path.
+    const pasteDocument = (name: string) => {
+      const range = document.createRange();
+      range.selectNodeContents(input);
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+      const html = `<p style="color:black">Shop <a href="/shop" style="color:black;text-decoration:none">${name}</a>.</p><table><tr><th>Product</th><th>Price</th></tr><tr><td>${name} candy</td><td>$18.00</td></tr></table>`;
+      fireEvent.paste(input, { clipboardData: { getData: (type: string) => type === 'text/html' ? html : '' } });
+    };
+
+    pasteDocument('First');
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Yes, convert to lists' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(preview.querySelector('table')).toBeNull();
+    expect(preview.querySelector('h3')?.textContent).toBe('First candy');
+
+    // A new document with the same number of tables asks again, and "no" keeps them.
+    pasteDocument('Second');
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'No, keep tables' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(preview.querySelector('th')?.textContent).toBe('Product');
+    fireEvent.click(screen.getByRole('button', { name: 'Shoppables Features:' }));
+    expect(screen.getByRole('checkbox', { name: 'Convert Tables to Lists' }).getAttribute('aria-checked')).toBe('false');
+
+    // Editing the document, or pasting content without a table, does not ask again.
+    enterHtml(input.innerHTML.replace('Second candy', 'Second candy bag'));
+    fireEvent.paste(input, { clipboardData: { getData: (type: string) => type === 'text/html' ? '<p style="color:black">See <a href="/more" style="color:black;text-decoration:none">more</a>.</p>' : '' } });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
   it('replaces a fully selected document and removes paste-boundary nodes restored by undo', () => {
     render(<WordToHtmlConverter />);
     const input = screen.getByRole('textbox', { name: 'Word document content' });

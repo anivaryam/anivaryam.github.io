@@ -17,6 +17,7 @@ import { addSpacing, addSpacingBetweenParagraphs } from './mode-spacing';
 import { addLinkSpacing } from './mode-link-spacing';
 import { addBrBeforeReadMore, addBrBeforeSources } from './mode-br-spacing';
 import { wrapLinksStrongUnderline } from './mode-wrap-links-strong-underline';
+import { convertTablesToLists } from './mode-table-to-list';
 import { applyCustomSpacer } from './html-spacing';
 import type { OutputMode, FeatureFlags } from './converter';
 
@@ -38,6 +39,7 @@ export function resolveFeatures(mode: OutputMode, features: FeatureFlags = {}): 
     brBeforeReadMore: features.brBeforeReadMore ?? false,
     brBeforeSources: features.brBeforeSources ?? false,
     wrapLinksStrongUnderline: features.wrapLinksStrongUnderline ?? false,
+    tablesToLists: features.tablesToLists ?? false,
     customSpacer: features.customSpacer ?? '',
   };
 }
@@ -213,6 +215,12 @@ function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags 
 
   // Shoppables mode features
   if (mode === 'shoppables') {
+    // Table to list conversion (disabled by default, before Heading Strong so
+    // the row headings and their lists get the same processing as the rest)
+    if (features.tablesToLists === true) {
+      processedHtml = convertTablesToLists(processedHtml);
+    }
+
     // Heading strong tags (must be first to wrap headings before other processing)
     processedHtml = applyHeadingStrong(processedHtml, features);
 
