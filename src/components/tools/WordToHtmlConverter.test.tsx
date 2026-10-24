@@ -501,6 +501,175 @@ describe('WordToHtmlConverter', () => {
     expect(screen.queryByText(/^Failed:/)).toBeNull();
   });
 
+  it.each([
+    [false, ''], [true, ''], [false, '<div style="height:10px;"></div>'], [true, '<div style="height:10px;"></div>'],
+  ] as const)('keeps fully bold paragraph spacing in Code/preview/selection/Blocks (first: %s, spacer: %s)', async (first, customSpacer) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      render(<WordToHtmlConverter />);
+      const prefix = first ? '' : '<p>Intro.</p>';
+      const bold = '<p><strong>Something</strong></p>';
+      enterHtml(prefix + bold + '<p>After.</p>');
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+      if (customSpacer) {
+        fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+        fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), { target: { value: customSpacer } });
+      }
+      const expected = prefix + (customSpacer || '<p>&nbsp;</p>') + bold + '<p>After.</p>';
+      const preview = document.querySelector('.output-preview')!;
+      expect(preview.innerHTML).toBe(expected);
+      expect(preview.querySelector('[data-warning]')).toBeNull();
+      expect(screen.queryByText(/^Failed:/)).toBeNull();
+      fireEvent.click(screen.getByTitle('Copy HTML'));
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      expect(writeText.mock.calls[0][0].replace(/>\s+</g, '><')).toBe(expected);
+      fireEvent.click(screen.getAllByTitle('Preview')[0]);
+      expect(copySelection(preview, range => range.selectNodeContents(preview))['text/html']).toBe(expected);
+      fireEvent.click(screen.getByTitle('Copy Formatted HTML'));
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+      expect(writeText.mock.calls[1][0]).toBe(expected);
+      writeText.mockClear();
+      const payloads = copyAllBlocks(writeText);
+      await waitFor(() => expect(writeText).toHaveBeenCalled());
+      // Preserve the existing Blocks representation, including leading spacing.
+      expect(payloads.join('')).toBe(expected);
+      expect(payloads).toHaveLength(1);
+      expect(payloads.join('')).not.toMatch(/data-warning|data-w2h-spacer/);
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
+  it.each(['Blogs', 'Shoppables'])('highlights only truly missing fully bold paragraph spacing in %s and strips it on selection copy', (mode) => {
+    converterOutput.html = '<p><strong>Whole.</strong></p><p><strong>Part</strong> body.</p><p>&nbsp;</p><p><strong>Spaced.</strong></p>';
+    render(<WordToHtmlConverter />);
+    enterHtml(converterOutput.html);
+    fireEvent.click(screen.getByRole('radio', { name: mode }));
+    if (mode === 'Shoppables') {
+      fireEvent.click(screen.getByRole('button', { name: 'Shoppables Features:' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Spacing Rules' }));
+    }
+    const preview = document.querySelector('.output-preview')!;
+    expect(Array.from(preview.querySelectorAll('p')).map(p => p.getAttribute('data-warning'))).toEqual([
+      'Missing spacing before fully bold paragraph: "Whole...."', null, null, null,
+    ]);
+    expect(copySelection(preview, range => range.selectNodeContents(preview))['text/html']).toBe(converterOutput.html);
+  });
+
+  it('amended blank/text toggling shares warning eligibility while heading/section warnings remain', () => {
+    converterOutput.html = '<p><strong>Whole.</strong></p><h2><strong>Section</strong></h2><p>Body.</p><p><strong>Sources:</strong></p><ol><li>Citation.</li></ol>';
+    render(<WordToHtmlConverter />);
+    enterHtml(converterOutput.html);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    const field = screen.getByRole('textbox', { name: 'Custom Spacer' });
+    for (const [customSpacer, generic] of [['<p>Gap</p>', false], ['<div style="height:10px;"></div>', true], ['<p><strong>G</strong>ap</p>', false], ['<p>&#8203;</p>', true]] as const) {
+      fireEvent.change(field, { target: { value: customSpacer } });
+      const preview = document.querySelector('.output-preview')!;
+      expect(preview.firstElementChild?.getAttribute('data-warning')?.includes('fully bold paragraph') || false).toBe(generic);
+      expect(preview.querySelector('h2')?.getAttribute('data-warning')).toContain('Missing spacing before heading');
+      expect(Array.from(preview.querySelectorAll('p')).find(p => p.textContent === 'Sources:')?.getAttribute('data-warning')).toContain('Missing spacing before "Sources:" section');
+      expect(copySelection(preview, range => range.selectNodeContents(preview))['text/html']).toBe(converterOutput.html);
+    }
+  });
+
+  it.each(['links', 'trim'])('does not falsely highlight fully bold paragraph spacing after late %s normalization', (kind) => {
+    render(<WordToHtmlConverter />);
+    enterHtml(kind === 'links' ? '<p><a href="/guide">Something</a></p>' : '<p><strong>Something</strong>\u200B</p>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    if (kind === 'links') {
+      fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Wrap Links Strong & Underline' }));
+    }
+    const preview = document.querySelector('.output-preview')!;
+    expect(preview.firstElementChild?.innerHTML).toBe('&nbsp;');
+    expect(preview.lastElementChild?.textContent).toBe('Something');
+    expect(preview.querySelector('[data-warning]')).toBeNull();
+    expect(screen.queryByText(/^Failed:/)).toBeNull();
+  });
+
+  it.each(['<div><p><strong>Gap</strong></p></div>', '<p style="height:10px"><strong>Gap</strong></p>'])('amended text setting retains legacy content through UI selection/Code/Blocks copies: %s', async (customSpacer) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      render(<WordToHtmlConverter />);
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+      fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), { target: { value: customSpacer } });
+      const source = '<p><strong>First.</strong></p><p>After.</p>';
+      enterHtml(source);
+      expect(document.querySelector('.output-preview')!.innerHTML).toBe(source);
+      let input = customSpacer + source;
+      const expected = '<p><strong>Gap</strong></p>' + source;
+      for (let cycle = 0; cycle < 3; cycle++) {
+        enterHtml(input);
+        const preview = document.querySelector('.output-preview')!;
+        expect(preview.innerHTML).toBe(expected);
+        expect(preview.querySelector('[data-warning]')).toBeNull();
+        expect(screen.queryByText(/^Failed:/)).toBeNull();
+        input = copySelection(preview, range => range.selectNodeContents(preview))['text/html'];
+        expect(input).toBe(expected);
+        expect(input).not.toMatch(/data-warning|data-w2h-spacer/);
+      }
+      fireEvent.click(screen.getByTitle('Copy HTML'));
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      expect(writeText.mock.calls[0][0].replace(/>\s+</g, '><')).toBe(expected);
+      writeText.mockClear();
+      expect(copyAllBlocks(writeText).join('')).toBe(expected);
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
+  it.each(['', '<div style="height:10px;"></div>'])('keeps consecutive headings adjacent in preview and copied blocks: %s', async (customSpacer) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      render(<WordToHtmlConverter />);
+      enterHtml('<H2>Hello World</H2>\n<H3>The world is beautiful</H3><p>Actual body.</p><h3>Later section</h3>');
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+      if (customSpacer) {
+        fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+        fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), { target: { value: customSpacer } });
+      }
+      const preview = document.querySelector('.output-preview')!;
+      expect(preview.querySelector('h2')?.nextElementSibling).toBe(preview.querySelector('h3'));
+      expect(Array.from(preview.children).map(node => node.tagName)).toEqual(['H2', 'H3', 'P', customSpacer ? 'DIV' : 'P', 'H3']);
+      expect(preview.querySelector('[data-warning]')).toBeNull();
+      expect(screen.queryByText(/^Failed:/)).toBeNull();
+      const expected = '<h2><strong>Hello World</strong></h2>\n<h3><strong>The world is beautiful</strong></h3><p>Actual body.</p>'
+        + (customSpacer || '<p>&nbsp;</p>') + '<h3><strong>Later section</strong></h3>';
+      expect(copySelection(preview, range => range.selectNodeContents(preview))['text/html']).toBe(expected);
+      const payloads = copyAllBlocks(writeText);
+      await waitFor(() => expect(writeText).toHaveBeenCalled());
+      expect(payloads.join('')).toBe(expected.replace(/>\s+</g, '><'));
+      expect(payloads.every(hasText)).toBe(true);
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
+  it.each(['Blogs', 'Shoppables'])('maps consecutive-heading validation warnings only to real missing body separation in %s', (mode) => {
+    // Stand in unspaced output to exercise both the no-warning and real-warning paths.
+    converterOutput.html = '<h2><strong>Hello World</strong></h2><h3><strong>The world is beautiful</strong></h3><p>Actual body.</p><h3><strong>Later section</strong></h3>';
+    render(<WordToHtmlConverter />);
+    enterHtml(converterOutput.html);
+    fireEvent.click(screen.getByRole('radio', { name: mode }));
+    if (mode === 'Shoppables') {
+      fireEvent.click(screen.getByRole('button', { name: 'Shoppables Features:' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Spacing Rules' }));
+    }
+    const headings = document.querySelector('.output-preview')!.querySelectorAll('h3');
+    expect(Array.from(headings).map(node => node.getAttribute('data-warning'))).toEqual([null, 'Missing spacing before heading: "Later section..."']);
+  });
+
   it('highlights structural failures using the same detection as the validator', () => {
     render(<WordToHtmlConverter />);
     enterHtml('<ol><strong><li>Item</li></strong></ol>');

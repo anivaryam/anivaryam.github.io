@@ -10,6 +10,7 @@ import { validateMode } from './validator';
 import { normalizeLists } from './mode-list-normalize';
 import { convertOlHeaders } from './mode-ol-header-conversion';
 import { removeH1AfterKeyTakeaways } from './mode-h1-removal';
+import { stripSpacerMarkers } from './spacer';
 
 describe('text preservation during structural cleanup', () => {
   it.each([
@@ -376,6 +377,281 @@ describe('accepted spacing formats with Word clipboard markup', () => {
       expect(p.previousElementSibling?.innerHTML).toBe('<br>');
     }
     expect(validateMode(output, 'shoppables', features).summary.failed).toBe(0);
+  });
+});
+
+describe('fully bold paragraph spacing through conversion', () => {
+  const core = '<p>Intro.</p><p><strong>Something</strong></p><p>After.</p>';
+
+  it.each<OutputMode>(['blogs', 'regular', 'shoppables'])('adds exactly one before-only gap in both enabled %s outputs', (mode) => {
+    const features = mode === 'blogs' ? {} : { spacing: true };
+    const output = convertToHtml(cleanWordHtml(core), mode, features);
+    for (const html of [output.formatted, output.unformatted]) {
+      expect(html.replace(/>\s+</g, '><')).toBe('<p>Intro.</p><p>&nbsp;</p><p><strong>Something</strong></p><p>After.</p>');
+      expect(validateMode(html, mode, features).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+    }
+  });
+
+  it.each<OutputMode>(['blogs', 'regular', 'shoppables'])('keeps %s defaults, spacing OFF and independent Paragraph Spacing', (mode) => {
+    expect(getUnformattedHtml(core, mode, { spacing: false })).toBe(core);
+    if (mode !== 'blogs') expect(getUnformattedHtml(core, mode)).toBe(core);
+    for (const spacing of [false, true]) {
+      expect(getUnformattedHtml(core, mode, { spacing, paragraphSpacing: true })).toBe(
+        '<p>Intro.</p><p>&nbsp;</p><p><strong>Something</strong></p><p>&nbsp;</p><p>After.</p>');
+    }
+  });
+
+  it.each([
+    '<p><strong>Something</strong></p>',
+    '<p><b>Something</b></p>',
+    '<p style="font-weight:bold">Something</p>',
+    '<p class="MsoNormal"><span style="font-weight:700">Something</span></p>',
+    '<p> <strong>Some</strong> <em><strong>thing</strong></em> </p>',
+    '<p><strong><em>Some</em><u>thing</u></strong></p>',
+    '<p><strong>Run <code>sample()</code></strong></p>',
+    '<code><p><strong>Something</strong></p></code>',
+  ])('qualifies all meaningful supported bold runs without promoting the paragraph: %s', (input) => {
+    const output = convertToHtml(cleanWordHtml(input), 'blogs');
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(Array.from(doc.body.children).map(p => p.tagName)).toEqual(['P', 'P']);
+      expect(doc.body.firstElementChild?.innerHTML).toBe('&nbsp;');
+      expect(doc.body.lastElementChild?.querySelector('strong')).not.toBeNull();
+      expect(doc.querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
+      expect(validateMode(html, 'blogs', {}).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+    }
+  });
+
+  it.each([
+    '<p><strong>Some</strong> thing</p>', '<p>Normal.</p>', '<p><strong></strong></p>',
+    '<p><strong>&nbsp;</strong></p>', '<p> \t </p>',
+    '<p><strong>Some<span style="font-weight:normal">thing</span></strong></p>',
+    '<p style="font-weight:bold">Some<span style="font-weight:400">thing</span></p>',
+    '<p style="font-weight:600">Something</p>', '<p style="font-weight:bolder">Something</p>',
+    '<style>.bold {font-weight:bold}</style><p class="bold">Something</p>',
+  ])('does not introduce a gap for partial, cancelled, empty or unsupported bold: %s', (input) => {
+    const enabled = convertToHtml(cleanWordHtml(input), 'blogs');
+    expect(enabled).toEqual(convertToHtml(cleanWordHtml(input), 'blogs', { spacing: false }));
+  });
+
+  it('includes the first paragraph, after headings, and every consecutive bold paragraph', () => {
+    const input = '<p><strong>First.</strong></p><h2>Section</h2><p><strong>Second.</strong></p><p><strong>Third.</strong></p><p>Body.</p>';
+    const output = convertToHtml(cleanWordHtml(input), 'blogs');
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      for (const p of Array.from(doc.querySelectorAll('p')).filter(p => p.querySelector('strong'))) {
+        expect(p.previousElementSibling?.innerHTML).toBe('&nbsp;');
+      }
+      expect(doc.body.lastElementChild?.previousElementSibling?.textContent).toBe('Third.');
+      expect(doc.querySelector('h2')?.previousElementSibling?.innerHTML).toBe('&nbsp;');
+      expect(validateMode(html, 'blogs', {}).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+    }
+  });
+
+  it.each(['td', 'th', 'pre', 'code'])('excludes paragraphs with a %s ancestor', (tag) => {
+    const content = '<blockquote><p><strong>Something</strong></p></blockquote>';
+    const input = tag === 'td' || tag === 'th' ? `<table><tr><${tag}>${content}</${tag}></tr></table>`
+      : tag === 'code' ? `<pre><code>${content}</code></pre>` : `<${tag}>${content}</${tag}>`;
+    const output = convertToHtml(cleanWordHtml(input), 'blogs');
+    expect(output).toEqual(convertToHtml(cleanWordHtml(input), 'blogs', { spacing: false }));
+    expect(new DOMParser().parseFromString(output.unformatted, 'text/html').querySelector(`${tag} p strong`)?.textContent).toBe('Something');
+  });
+
+  it('includes ordinary blockquotes but uses cleaned list/table transformation boundaries', () => {
+    const input = '<blockquote><p><strong>Quote.</strong></p></blockquote><ul><li><p><strong>List.</strong></p></li></ul>'
+      + '<table><tr><td><p><strong>Callout.</strong></p></td></tr></table>';
+    for (const tablesToLists of [false, true]) {
+      const features = { spacing: true, tablesToLists };
+      const output = convertToHtml(cleanWordHtml(input), 'shoppables', features);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.querySelector('blockquote p strong')?.parentElement?.previousElementSibling?.innerHTML).toBe('&nbsp;');
+        expect(doc.querySelector('li p')).toBeNull();
+        expect(doc.querySelector('li')?.textContent).toBe('List.');
+        if (tablesToLists) {
+          expect(doc.querySelector('table')).toBeNull();
+          expect(doc.body.lastElementChild?.previousElementSibling?.innerHTML).toBe('&nbsp;');
+        } else {
+          expect(doc.querySelector('td')?.children).toHaveLength(1);
+        }
+        expect(validateMode(html, 'shoppables', features).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+      }
+    }
+  });
+
+  it.each([
+    ['<p><a href="/guide">Something</a></p>', { wrapLinksStrongUnderline: true }],
+    ['<p><strong>Something</strong>\u200B</p>', {}],
+  ] as const)('classifies the normalized tail after late link wrapping and Unicode trimming: %s', (input, features) => {
+    const output = convertToHtml(cleanWordHtml(input), 'blogs', features);
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(doc.body.firstElementChild?.innerHTML).toBe('&nbsp;');
+      expect(doc.body.lastElementChild?.textContent).toBe('Something');
+      expect(validateMode(html, 'blogs', features).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+    }
+  });
+
+  it.each(['', '<p>&nbsp;</p>', '<hr>', '<br>', '<p><br></p>', '<p>&#8203;</p>', '<div style="height:10px;"></div>', '<p class="gap">&nbsp;</p>'])('amended blank configuration uses/reuses %j without self-generated chains on reconversion', (customSpacer) => {
+    const features = { customSpacer, spacing: true };
+    const input = '<p><strong>First.</strong></p><p><strong>Second.</strong></p><p>Body.</p>';
+    const gap = new DOMParser().parseFromString(customSpacer || '<p>&nbsp;</p>', 'text/html').body.innerHTML;
+    const expected = gap + '<p><strong>First.</strong></p>' + gap + '<p><strong>Second.</strong></p><p>Body.</p>';
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      for (const representation of ['formatted', 'unformatted'] as const) {
+        let source = input;
+        for (let cycle = 0; cycle < 3; cycle++) {
+          const output = convertToHtml(cleanWordHtml(source), mode, features);
+          const exported = stripSpacerMarkers(output[representation]);
+          expect(exported.replace(/>\s+</g, '><')).toBe(expected);
+          expect(exported).not.toMatch(/data-w2h-spacer|data-warning/);
+          expect(validateMode(output.unformatted, mode, features).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+          source = exported;
+        }
+      }
+    }
+  });
+
+  it.each(['', 'not markup <', '<hr><hr>'])('uses the default tail gap for empty or unusable custom markup: %j', (customSpacer) => {
+    expect(getUnformattedHtml(core, 'blogs', { customSpacer })).toBe('<p>Intro.</p><p>&nbsp;</p><p><strong>Something</strong></p><p>After.</p>');
+  });
+
+  it('retains special labels, opt-in BR precedence, FAQ and Takeaways contracts', () => {
+    const input = '<h2>Key Takeaways</h2><ul><li>Point.</li></ul><p><strong>Body.</strong></p>'
+      + '<h2>FAQ</h2><h3>Question?</h3><p><strong>Paragraph question?</strong></p>'
+      + '<p><strong>Read more:</strong> Details.</p><p><strong>Sources:</strong></p><ol><li>Citation.</li></ol>'
+      + '<p><strong>Disclaimer:</strong> Not advice.</p>';
+    for (const customSpacer of ['', '<p><strong>Gap</strong></p>']) {
+      const features = { spacing: true, brBeforeReadMore: true, brBeforeSources: true, customSpacer };
+      const output = getUnformattedHtml(input, 'shoppables', features);
+      const doc = new DOMParser().parseFromString(output, 'text/html');
+      expect(doc.querySelector('h3')?.previousElementSibling?.textContent).toBe('FAQ');
+      for (const label of ['Read more:', 'Sources:']) {
+        const p = Array.from(doc.querySelectorAll('p')).find(p => p.textContent?.startsWith(label));
+        expect(p?.previousElementSibling?.innerHTML).toBe('<br>');
+      }
+      expect(validateMode(output, 'shoppables', features).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+      expect(stripSpacerMarkers(getUnformattedHtml(stripSpacerMarkers(output), 'shoppables', features))).toBe(stripSpacerMarkers(output));
+    }
+  });
+});
+
+// Ticket 3 explicitly withdraws exact text-custom identity preservation. Keep
+// every D3-1/D3-2 fixture as legacy-parity evidence, not a repaired-old-AC-5 claim.
+describe.each([
+  '<div><p><strong>Gap</strong></p></div>',
+  '<p style="height:10px"><strong>Gap</strong></p>',
+  '<p style="height:calc(10px)"><strong>Gap</strong></p>',
+  '<p style="color:rgb(0,0,0)"><strong>Gap</strong></p>',
+  '<div><p><b>Gap</b></p></div>',
+  '<p style="height:clamp(8px,calc(2 * 5px),12px);color:hsl(0 0% 0%)"><strong>Gap</strong></p>',
+  '<p style="HEIGHT : MIN(20px, MAX(10px, 5px)); COLOR: RGB(0, 0, 0)"><strong>Gap</strong></p>',
+  '<div><p><b><i>Gap</i></b></p></div>',
+  '<div><p><strong><span>Gap</span></strong></p></div>',
+  '<p class="gap" style="height:10px"><strong>Gap</strong></p>',
+])('amended historical text-spacer legacy parity: %s', (customSpacer) => {
+  it.each<[OutputMode, 'formatted' | 'unformatted']>([
+    ['blogs', 'formatted'], ['blogs', 'unformatted'], ['regular', 'formatted'],
+    ['regular', 'unformatted'], ['shoppables', 'formatted'], ['shoppables', 'unformatted'],
+  ])('preserves seeded content but adds no generic gap over three conversions in %s/%s', (mode, representation) => {
+    const features = { spacing: true, customSpacer };
+    const source = '<p><strong>First.</strong></p><p>After.</p>';
+    // Fixed outputs independently confirmed with HEAD + accepted heading fix.
+    const legacyGap = customSpacer === '<div><p><b><i>Gap</i></b></p></div>'
+      ? '<p><strong><em>Gap</em></strong></p>' : '<p><strong>Gap</strong></p>';
+    for (const seeded of [false, true]) {
+      const expected = (seeded ? legacyGap : '') + source;
+      let input = (seeded ? customSpacer : '') + source;
+      for (let cycle = 1; cycle <= 3; cycle++) {
+        const exported = representation === 'formatted'
+          ? convertWordToHtml(input, mode, features)
+          : stripSpacerMarkers(getUnformattedHtml(input, mode, features));
+        const doc = new DOMParser().parseFromString(exported, 'text/html');
+        expect(Array.from(doc.querySelectorAll('p')).filter(p => p.textContent === 'Gap'), `${seeded}/${representation}/${cycle}`).toHaveLength(seeded ? 1 : 0);
+        expect(exported.replace(/>\s+</g, '><')).toBe(expected);
+        expect(exported).not.toMatch(/data-w2h-spacer|data-warning/);
+        const direct = convertToHtml(cleanWordHtml(input), mode, features);
+        expect(stripSpacerMarkers(direct[representation])).toBe(exported);
+        expect(validateMode(direct.unformatted, mode, features).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+        input = exported;
+      }
+    }
+  });
+});
+
+describe('consecutive heading spacing through conversion', () => {
+  it.each<OutputMode>(['blogs', 'regular', 'shoppables'])('keeps the supplied uppercase headings adjacent in both %s outputs with default/custom spacing', (mode) => {
+    const input = '<H2>Hello World</H2>\n<H3>The world is beautiful</H3>';
+    for (const customSpacer of ['', '<div style="height:10px;"></div>']) {
+      const features = mode === 'blogs' ? { customSpacer } : { spacing: true, customSpacer };
+      const output = convertToHtml(cleanWordHtml(input), mode, features);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.body.children).map(node => [node.tagName, node.textContent])).toEqual([
+          ['H2', 'Hello World'], ['H3', 'The world is beautiful'],
+        ]);
+        expect(doc.querySelectorAll('strong')).toHaveLength(mode === 'regular' ? 0 : 2);
+        expect(validateMode(html, mode, features).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+      }
+    }
+  });
+
+  it.each([
+    '<h2>First</h2><p><span>&nbsp;</span></p><p><br></p><h3><em>Next</em></h3>',
+    '<div><h2>First</h2></div><div><h3><em>Next</em></h3></div>',
+  ])('uses adjacency after existing cleanup without changing its normalization: %s', (input) => {
+    const output = convertToHtml(cleanWordHtml(input), 'blogs');
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(Array.from(doc.body.children).map(node => node.tagName)).toEqual(['H2', 'H3']);
+      expect(doc.querySelector('h3 em')?.textContent).toBe('Next');
+    }
+  });
+
+  it.each(['<p>Actual body.</p>', '<ul><li>Actual body.</li></ul>', 'Actual body.'])('keeps required separation after body content in every mode: %s', (body) => {
+    for (const mode of ['blogs', 'regular', 'shoppables'] as const) {
+      for (const customSpacer of ['', '<div style="height:10px;"></div>']) {
+        const features = { spacing: true, customSpacer };
+        const output = convertToHtml(cleanWordHtml(`<h2>First</h2>${body}<h3>Next</h3>`), mode, features);
+        for (const html of [output.formatted, output.unformatted]) {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          expect(doc.querySelector('h3')?.previousElementSibling?.tagName).toBe(customSpacer ? 'DIV' : 'P');
+          expect(doc.querySelector('h3')?.previousElementSibling?.textContent?.trim()).toBe('');
+          expect(doc.body.textContent).toContain('Actual body.');
+          expect(doc.querySelectorAll('li')).toHaveLength(body.startsWith('<ul>') ? 1 : 0);
+          expect(validateMode(html, mode, features).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
+        }
+      }
+    }
+  });
+
+  it.each<OutputMode>(['blogs', 'regular', 'shoppables'])('leaves disabled spacing and %s defaults unchanged', (mode) => {
+    for (const features of mode === 'blogs' ? [{ spacing: false }] : [{}, { spacing: false }]) {
+      const output = convertToHtml(cleanWordHtml('<h2>First</h2><h3>Next</h3><p>Body.</p><h3>Later</h3>'), mode, features);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(Array.from(doc.body.children).map(node => node.tagName)).toEqual(['H2', 'H3', 'P', 'H3']);
+        expect(doc.querySelector('p')?.textContent).toBe('Body.');
+      }
+    }
+  });
+
+  it.each(['<hr>', '<p>&#8203;</p>'])('retains an existing custom inter-heading spacer on copied-output round trips: %s', (customSpacer) => {
+    for (const mode of ['blogs', 'regular', 'shoppables'] as const) {
+      const features = { spacing: true, customSpacer };
+      const output = convertToHtml(cleanWordHtml(`<h2>First</h2>${customSpacer}<h3>Next</h3>`), mode, features);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(stripSpacerMarkers(html), 'text/html');
+        expect(doc.body.children).toHaveLength(3);
+        const expectedSpacer = new DOMParser().parseFromString(customSpacer, 'text/html').body.firstElementChild;
+        expect(doc.querySelector('h3')?.previousElementSibling?.outerHTML).toBe(expectedSpacer?.outerHTML);
+        const repeated = convertToHtml(cleanWordHtml(html), mode, features);
+        for (const roundTrip of [repeated.formatted, repeated.unformatted]) {
+          const copy = new DOMParser().parseFromString(stripSpacerMarkers(roundTrip), 'text/html');
+          expect(Array.from(copy.body.children).map(node => node.outerHTML)).toEqual(Array.from(doc.body.children).map(node => node.outerHTML));
+        }
+      }
+    }
   });
 });
 
@@ -1058,7 +1334,8 @@ describe('source-visible link boundaries', () => {
       const output = convertToHtml(cleanWordHtml(html), mode, { wrapLinksStrongUnderline: true });
       for (const result of [output.formatted, output.unformatted]) {
         const doc = new DOMParser().parseFromString(result, 'text/html');
-        expect(doc.querySelector('p')?.textContent).toBe(text);
+        // Blogs may now lead with spacing when late wrapping bolds the whole link paragraph.
+        expect(Array.from(doc.querySelectorAll('p')).filter(p => p.textContent?.trim()).map(p => p.textContent)).toEqual([text]);
         expect(Array.from(doc.querySelectorAll('a')).map(a => a.textContent)).toEqual(links);
         doc.querySelectorAll('a').forEach(a => expect(a.getAttribute('href')).toBe(href));
       }
@@ -1787,6 +2064,25 @@ describe('Shoppables table to list conversion', () => {
       + '<p>These choices help.</p>'
     );
     expect(validateMode(output, 'shoppables', features).summary.failed).toBe(0);
+  });
+
+  it.each([true, false])('applies consecutive heading spacing only before products with preceding body lists (spacing: %s)', (spacing) => {
+    const features = { tablesToLists: true, spacing };
+    const output = convertToHtml(cleanWordHtml(googleDocsTable), 'shoppables', features);
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const products = doc.querySelectorAll('h3');
+      expect(doc.querySelector('h2')?.nextElementSibling).toBe(products[0]);
+      expect(products[1].previousElementSibling?.tagName).toBe(spacing ? 'P' : 'UL');
+      if (spacing) expect(products[1].previousElementSibling?.innerHTML).toBe('&nbsp;');
+      expect(Array.from(products).map(node => node.textContent)).toEqual(['Skittles Candy (3lb bag)', 'M&M\'s Plain Milk Chocolate Candy - 38 oz Bag']);
+      expect(Array.from(doc.querySelectorAll('ul')).map(node => Array.from(node.querySelectorAll('li')).map(item => item.textContent))).toEqual([
+        ['Package Capacity: 3 lbs.', 'Price: $18.00'], ['Package Capacity: 38 oz.', 'Price: $21.00'],
+      ]);
+      expect(Array.from(doc.querySelectorAll('p')).map(node => node.textContent?.trim())).toEqual(spacing ? ['', 'These choices help.'] : ['These choices help.']);
+      expect(doc.querySelector('table')).toBeNull();
+      expect(validateMode(html, 'shoppables', features).summary.failed).toBe(0);
+    }
   });
 
   it('keeps a callout box as blocks and a key/value table as one list, with clean validation', () => {

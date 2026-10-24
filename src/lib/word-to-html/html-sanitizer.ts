@@ -66,6 +66,19 @@ const STRUCTURAL_CHILDREN = new Map<string, readonly string[]>([
   ['tr', ['th', 'td']],
 ]);
 
+/** True when every meaningful text run has a bold ancestor inside the element. */
+export function isFullyBoldElement(cell: Element): boolean {
+  const walker = cell.ownerDocument.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+  let hasText = false;
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    if (!text.textContent?.trim()) continue;
+    hasText = true;
+    const bold = text.parentElement?.closest('strong, b');
+    if (!bold || !cell.contains(bold)) return false;
+  }
+  return hasText;
+}
+
 /** Shared by validation and preview highlights to catch structural cleanup failures. */
 export function getStructuralIssues(root: Element): { element: Element; message: string }[] {
   const issues: { element: Element; message: string }[] = [];

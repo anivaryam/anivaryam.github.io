@@ -760,6 +760,55 @@ describe('validateDisclaimerNormalize (D5)', () => {
 /* ------------------------------------------------------------------ */
 
 describe('validateSpacing (D9 / D11)', () => {
+  it.each(['<p>Gap</p>', '<p><strong>G</strong>ap</p>', '<p><strong>Gap</strong></p>'])('amended text configuration gates generic warnings but not heading/section diagnostics: %s', (customSpacer) => {
+    const html = '<p><strong>Whole.</strong></p><h2>Section</h2><p>Body.</p><p><strong>Sources:</strong></p><ol><li>Citation.</li></ol>';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    expect(getSectionSpacingIssues(doc, customSpacer).map(issue => issue.message)).toEqual(['Missing spacing before "Sources:" section']);
+    const result = getResult(validateMode(html, 'blogs', { spacing: true, customSpacer }), 'spacing-rules');
+    expect(result.passed).toBe(false);
+    expect(result.details).toEqual(expect.arrayContaining(['Missing spacing before heading: "Section..."', 'Missing spacing before "Sources:" section']));
+    expect(result.details?.some(message => message.includes('fully bold paragraph'))).toBe(false);
+  });
+
+  it.each<OutputMode>(['blogs', 'shoppables'])('reports missing fully bold paragraph gaps with one shared element/message in %s', (mode) => {
+    const html = '<p><strong>First.</strong></p><h2>Section</h2><p><strong>Second.</strong></p><p><strong>Some</strong> body.</p>';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const issues = getSectionSpacingIssues(doc);
+    expect(issues.map(issue => issue.element.textContent)).toEqual(['First.', 'Second.']);
+    expect(issues.every(issue => issue.element.tagName === 'P' && issue.message.includes('fully bold paragraph'))).toBe(true);
+    const result = getResult(validateMode(html, mode, { spacing: true }), 'spacing-rules');
+    expect(result.passed).toBe(false);
+    expect(result.details).toEqual(expect.arrayContaining(issues.map(issue => issue.message)));
+    expectSkipped(validateMode(html, 'regular', { spacing: true }), 'spacing-rules');
+  });
+
+  it('does not duplicate existing fully bold special-label diagnostics', () => {
+    const doc = new DOMParser().parseFromString('<p><strong>Read more:</strong></p><p><strong>Sources:</strong></p><p><strong>Disclaimer:</strong></p>', 'text/html');
+    const issues = getSectionSpacingIssues(doc);
+    expect(issues).toHaveLength(3);
+    expect(new Set(issues.map(issue => issue.element)).size).toBe(3);
+    expect(issues.every(issue => !issue.message.includes('fully bold paragraph'))).toBe(true);
+  });
+
+  it.each<OutputMode>(['blogs', 'shoppables'])('accepts consecutive headings and retained spacers but still rejects missing body separation in %s', (mode) => {
+    const heading = '<h2><strong>Hello World</strong></h2>';
+    const next = '<h3><strong>The world is beautiful</strong></h3>';
+    const features = { spacing: true, customSpacer: '<div style="height:10px;"></div>' };
+    expectPass(validateMode(`${heading}\n<!--no body-->${next}`, mode, features), 'spacing-rules');
+    for (const gap of ['<p>&nbsp;</p>', features.customSpacer]) {
+      expectPass(validateMode(`${heading}${gap}${next}`, mode, features), 'spacing-rules');
+    }
+    for (const body of ['<p>Actual body.</p>', '<ul><li>Actual body.</li></ul>', 'Actual body.']) {
+      const result = getResult(validateMode(`${heading}${body}${next}`, mode, features), 'spacing-rules');
+      expect(result.passed).toBe(false);
+      expect(result.details).toEqual(['Missing spacing before heading: "The world is beautiful..."']);
+    }
+  });
+
+  it('keeps consecutive-heading and body spacing validation skipped in Regular even when enabled', () => {
+    expectSkipped(validateMode('<h2>First</h2><h3>Next</h3><p>Body.</p><h3>Later</h3>', 'regular', { spacing: true }), 'spacing-rules');
+  });
+
   it.each(['<p>&nbsp;</p>', '<p><span> </span></p>', '<p><br></p>', '<br>'])('rejects spacing before the first FAQ question: %s', (gap) => {
     const html = `<h2><strong>Frequently Asked Questions About How Often Do Newborns Eat?</strong></h2>${gap}<h3><strong>First question?</strong></h3>`;
     expectFail(validateMode(html, 'blogs', defaultFeatures), 'spacing-rules');

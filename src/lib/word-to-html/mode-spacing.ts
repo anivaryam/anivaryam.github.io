@@ -4,7 +4,9 @@
  */
 
 import { isSpacingParagraph as isSpacingElement, isSpacerElement } from './html-spacing';
-import { parseCustomSpacer } from './spacer';
+import { createSpacerElement, markSpacerElement, parseCustomSpacer } from './spacer';
+import { isFullyBoldElement } from './html-sanitizer';
+import { isBlankBlockText } from './html-cleaner';
 import { findKeyTakeawaysSection } from './mode-key-takeaways';
 import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
 import { isReadMoreParagraph } from './mode-br-spacing';
@@ -43,6 +45,13 @@ export function getHeadingSpacingIssues(doc: Document, customSpacer?: string): {
       continue;
     }
     if (lowerText.includes('key takeaways') || !previous) continue;
+    // Only whitespace/comments may separate adjacent headings, never body text or elements.
+    let node = heading.previousSibling;
+    while (node && (node.nodeType === Node.COMMENT_NODE ||
+      (node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()))) {
+      node = node.previousSibling;
+    }
+    if (node?.nodeType === Node.ELEMENT_NODE && /^h[1-6]$/i.test((node as Element).tagName)) continue;
     if (!isSpacerElement(previous, spacer)) {
       issues.push({ element: heading, kind: 'missing', message: `Missing spacing before heading: "${text.substring(0, 30)}..."` });
     }
@@ -64,6 +73,50 @@ function addSpacingBeforeHeadings(doc: Document): void {
       spacing.innerHTML = '&nbsp;';
       issue.element.before(spacing);
     }
+  }
+}
+
+/** Shared missing-gap decision on the final, semantically normalized paragraphs. */
+export function getBoldParagraphSpacingIssues(doc: Document, customSpacer?: string): { element: Element; message: string }[] {
+  const spacer = parseCustomSpacer(customSpacer);
+  // Text-bearing settings keep legacy spacing, without generic bold-P gaps or
+  // an input-cleaning exemption to recover their identity after normalization.
+  if (spacer.root && !isBlankBlockText(spacer.root.textContent || '')) return [];
+  const issues: ReturnType<typeof getBoldParagraphSpacingIssues> = [];
+  for (const p of Array.from(doc.querySelectorAll('p'))) {
+    if (p.closest('td, th, pre, code') || isBlankBlockText(p.textContent || '') || !isFullyBoldElement(p)) continue;
+    // Spacer roots and their descendants are layout content, even if fully bold.
+    let ancestor: Element | null = p;
+    while (ancestor && !isSpacerElement(ancestor, spacer)) ancestor = ancestor.parentElement;
+    if (ancestor) continue;
+    let node = p.previousSibling;
+    while (node && (node.nodeType === Node.COMMENT_NODE ||
+      (node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()))) {
+      node = node.previousSibling;
+    }
+    if (node?.nodeType === Node.ELEMENT_NODE &&
+      (isSpacerElement(node as Element, spacer) || isSpacingElement(node as Element, isBlankBlockText))) continue;
+    issues.push({ element: p, message: `Missing spacing before fully bold paragraph: "${p.textContent?.trim().substring(0, 30)}..."` });
+  }
+  return issues;
+}
+
+/** Runs after late bolding/trimming, so it must create custom spacers directly. */
+export function addBoldParagraphSpacing(html: string, customSpacer?: string): string {
+  if (!html || typeof html !== 'string') return '';
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const spacer = parseCustomSpacer(customSpacer);
+    const template = createSpacerElement(doc, spacer) || doc.createElement('p');
+    if (spacer.root) markSpacerElement(template);
+    else template.innerHTML = '&nbsp;';
+    for (const issue of getBoldParagraphSpacingIssues(doc, customSpacer)) {
+      issue.element.before(template.cloneNode(true));
+    }
+    return doc.body.innerHTML;
+  } catch (e) {
+    console.warn('Bold paragraph spacing failed:', e);
+    return html;
   }
 }
 

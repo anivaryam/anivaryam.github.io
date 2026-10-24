@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { trimTrailingBlockWhitespace } from './html-cleaner';
+import { isBlankBlockText, trimTrailingBlockWhitespace } from './html-cleaner';
+import { isSpacingParagraph } from './html-spacing';
+
+describe('amended block-blank predicate and spacing recognizer compatibility', () => {
+  it.each([
+    ['<p>&nbsp;</p>', true, true], ['<p><br></p>', true, true],
+    ['<p><strong>\u200B</strong></p>', false, true], ['<p>\u1680</p>', true, false],
+    ['<p><img src="x"></p>', false, false], ['<p><img src="x">\u200B</p>', false, false],
+    ['<p>Text</p>', false, false], ['<div>&nbsp;</div>', false, false], ['<hr>', false, false],
+  ] as const)('keeps old trim behavior and explicit new-call behavior for %s', (html, original, blockBlank) => {
+    const element = new DOMParser().parseFromString(html, 'text/html').body.firstElementChild;
+    expect(isSpacingParagraph(element)).toBe(original);
+    expect(isSpacingParagraph(element, isBlankBlockText)).toBe(blockBlank);
+  });
+
+  it('retains IMG/HR exclusions even with an explicit blank predicate', () => {
+    const p = document.createElement('p');
+    for (const tag of ['img', 'hr']) {
+      p.replaceChildren(document.createElement(tag));
+      expect(isSpacingParagraph(p, isBlankBlockText)).toBe(false);
+    }
+    expect(isSpacingParagraph(null, isBlankBlockText)).toBe(false);
+  });
+});
 
 describe('trimTrailingBlockWhitespace', () => {
   it.each([

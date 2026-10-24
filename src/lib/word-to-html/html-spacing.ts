@@ -1,9 +1,9 @@
 import { createSpacerElement, isCustomSpacerElement, markSpacerElement, parseCustomSpacer, type CustomSpacer } from './spacer';
 
 /** Recognize blank Word paragraphs even when whitespace is wrapped in formatting. */
-export function isSpacingParagraph(element: Element | null): boolean {
+export function isSpacingParagraph(element: Element | null, isBlankText?: (text: string) => boolean): boolean {
   return !!element && element.tagName.toLowerCase() === 'p' &&
-    !(element.textContent || '').trim() && !element.querySelector('img, hr');
+    (isBlankText ? isBlankText(element.textContent || '') : !(element.textContent || '').trim()) && !element.querySelector('img, hr');
 }
 
 export function isBrSpacingParagraph(element: Element | null): boolean {

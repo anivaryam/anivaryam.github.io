@@ -17,7 +17,8 @@ function logError(message: string, error: unknown): void {
 import { cleanHtml, trimTrailingBlockWhitespace } from './html-cleaner';
 import { sanitizeHtml } from './html-sanitizer';
 import { formatCompact } from './html-formatter';
-import { processMode } from './mode-processor';
+import { processMode, resolveFeatures } from './mode-processor';
+import { addBoldParagraphSpacing } from './mode-spacing';
 import { cleanWordHtml } from './word-html-cleaner';
 
 export type OutputMode = 'regular' | 'blogs' | 'shoppables';
@@ -83,13 +84,18 @@ export function convertToHtml(
       return { formatted: '', unformatted: '' };
     }
 
+    // Classify after late link bolding and trailing Unicode whitespace removal.
+    const spaced = resolveFeatures(mode, features).spacing
+      ? addBoldParagraphSpacing(trimmed, features.customSpacer)
+      : trimmed;
+
     // Step 5: Format HTML for display
-    const formatted = formatCompact(trimmed, features.customSpacer);
+    const formatted = formatCompact(spaced, features.customSpacer);
     if (!formatted) {
       return { formatted: '', unformatted: '' };
     }
 
-    return { formatted, unformatted: trimmed };
+    return { formatted, unformatted: spaced };
   } catch (error) {
     logError('Conversion error:', error);
     throw error instanceof Error ? error : new Error(String(error));

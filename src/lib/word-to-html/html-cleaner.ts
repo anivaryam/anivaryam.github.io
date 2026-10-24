@@ -395,6 +395,11 @@ const BLOCK_END_SPACES = '\\t\\n\\r\\f\\v \\u00A0\\u2000-\\u200B\\u3000\\uFEFF';
 const TRAILING_BLOCK_END_SPACES = new RegExp(`[${BLOCK_END_SPACES}]+$`);
 const VISIBLE_CHARACTER = new RegExp(`[^${BLOCK_END_SPACES}]`);
 
+/** Text containing only the established Word/block whitespace characters. */
+export function isBlankBlockText(text: string): boolean {
+  return !VISIBLE_CHARACTER.test(text);
+}
+
 /** Elements whose interior whitespace is data, not layout. */
 const WHITESPACE_PRESERVING_TAGS = new Set(['pre', 'code']);
 
@@ -449,7 +454,7 @@ function isListLabelSeparator(block: Element, node: Node): boolean {
 }
 
 function trimBlockEnd(block: Element): void {
-  const trailing = VISIBLE_CHARACTER.test(block.textContent || '') ? TRAILING_BLOCK_END_SPACES : TRAILING_HTML_WHITESPACE;
+  const trailing = isBlankBlockText(block.textContent || '') ? TRAILING_HTML_WHITESPACE : TRAILING_BLOCK_END_SPACES;
   trimContainerEnd(block, block, trailing);
 }
 
