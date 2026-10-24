@@ -5,6 +5,7 @@ import { toast } from '@/hooks/use-toast';
 import { getUnformattedHtml } from '@/lib/word-to-html/converter';
 import { stripSpacerMarkers } from '@/lib/word-to-html/spacer';
 import Lenis, { type LenisOptions } from 'lenis';
+import { IMAGE_LIBRARY_ENABLED_KEY } from '@/hooks/use-image-library';
 
 vi.mock('lenis', () => ({
   default: vi.fn(),
@@ -37,11 +38,14 @@ beforeEach(() => {
   } as unknown as Lenis));
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+  // A returning visitor who declined the image library trial: the notice stays closed
+  localStorage.setItem(IMAGE_LIBRARY_ENABLED_KEY, 'false');
 });
 
 afterEach(() => {
   converterOutput.html = null;
   cleanup();
+  localStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
@@ -1228,5 +1232,77 @@ describe('WordToHtmlConverter', () => {
 
     expect(!!screen.queryByText(/The sanitizer changed the markup/)).toBe(changed);
     expect(screen.queryByText(/so the default spacer is used/)).toBeNull();
+  });
+
+  it('saves Shopify images in this browser and reuses them for matching Blogs image CTAs', () => {
+    localStorage.clear();
+    const src = 'https://cdn.shopify.com/s/files/1/0609/1168/1674/files/Kill_Weeds.png?v=1';
+    const href = 'https://lawnsynergy.com/collections/weed-killer-for-lawns';
+    const draft = (alt: string) => `<p>Body text.</p><p>Alt Image Text: ${alt}</p><p>Link to: <a href="${href}">${href}</a></p><h2>Final Thoughts</h2><p>Done.</p>`;
+    const { unmount } = render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Use Image Library' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    const shopifyHtml = `<div style="text-align: center;"><a href="${href}" target="_blank" rel="noopener"><img src="${src}" alt="Kill Weeds. Keep Your Lawn. Shop Weed Killer For Lawns." style="float: none;"></a></div>`;
+    fireEvent.change(screen.getByRole('textbox', { name: 'Shopify HTML' }), { target: { value: shopifyHtml } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save images' }));
+    expect(screen.getByText('Image Library (1)')).toBeTruthy();
+    expect(toast).toHaveBeenLastCalledWith({ title: '1 new image saved', description: undefined });
+    // Saving the same article again adds no duplicate
+    fireEvent.change(screen.getByRole('textbox', { name: 'Shopify HTML' }), { target: { value: shopifyHtml } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save images' }));
+    expect(screen.getByText('Image Library (1)')).toBeTruthy();
+    expect(toast).toHaveBeenLastCalledWith({ title: '0 new images saved', description: '1 already saved.' });
+    unmount();
+
+    // The saved image survives a reload and matches a punctuation variant
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    enterHtml(draft('Kill Weeds. Keep Your Lawn: Shop Weed Killer For Lawns'));
+    const preview = document.querySelector('.output-preview')!;
+    const image = preview.querySelector(`div[style="text-align: center;"] > a[href="${href}"] > img[style="float: none;"]`);
+    expect(image?.getAttribute('src')).toBe(src);
+    expect(preview.textContent).not.toMatch(/Alt Image Text|Link to/);
+    expect(preview.querySelector('[data-warning]')).toBeNull();
+    expect(screen.queryByText(/^Failed:/)).toBeNull();
+
+    // An image CTA without a saved image stays as text and is highlighted
+    enterHtml(draft('Shop Grass Seed'));
+    expect(preview.querySelector('img')).toBeNull();
+    expect(preview.querySelector('[data-warning]')?.getAttribute('data-warning'))
+      .toBe('No saved image for "Shop Grass Seed" on lawnsynergy.com');
+  });
+
+  it('asks about the image library trial only in Blogs mode and keeps it off when declined', () => {
+    localStorage.clear();
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([
+      { host: 'lawnsynergy.com', alt: 'Shop Grass Seed', src: 'https://cdn.shopify.com/s/files/1/seed.png' },
+    ]));
+    const { unmount } = render(<WordToHtmlConverter />);
+    enterHtml('<p>Body text.</p><p>Alt Image Text: Shop Grass Seed</p><p>Link to: <a href="https://lawnsynergy.com/collections/grass-seed">link</a></p>');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    const notice = screen.getByRole('alertdialog');
+    expect(notice.textContent).toMatch(/Shopify only/);
+    fireEvent.click(within(notice).getByRole('button', { name: 'Not now' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    // Off: the saved image is not used and no panel is shown
+    expect(document.querySelector('.output-preview img')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    expect(screen.queryByRole('textbox', { name: 'Shopify HTML' })).toBeNull();
+    unmount();
+
+    // The answer is remembered; the checkbox turns the library on later
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Body text.</p><p>Alt Image Text: Shop Grass Seed</p><p>Link to: <a href="https://lawnsynergy.com/collections/grass-seed">link</a></p>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image Library (Shopify only, trial)' }));
+    expect(document.querySelector('.output-preview img')?.getAttribute('src')).toBe('https://cdn.shopify.com/s/files/1/seed.png');
+    expect(screen.getByRole('textbox', { name: 'Shopify HTML' })).toBeTruthy();
   });
 });

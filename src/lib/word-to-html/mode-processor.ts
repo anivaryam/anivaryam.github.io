@@ -18,6 +18,7 @@ import { addLinkSpacing } from './mode-link-spacing';
 import { addBrBeforeReadMore, addBrBeforeSources } from './mode-br-spacing';
 import { wrapLinksStrongUnderline } from './mode-wrap-links-strong-underline';
 import { convertTablesToLists } from './mode-table-to-list';
+import { applyImageLibrary } from './image-library';
 import { applyCustomSpacer } from './html-spacing';
 import type { OutputMode, FeatureFlags } from './converter';
 
@@ -41,6 +42,7 @@ export function resolveFeatures(mode: OutputMode, features: FeatureFlags = {}): 
     wrapLinksStrongUnderline: features.wrapLinksStrongUnderline ?? false,
     tablesToLists: features.tablesToLists ?? false,
     customSpacer: features.customSpacer ?? '',
+    imageLibrary: features.imageLibrary ?? [],
   };
 }
 
@@ -167,6 +169,12 @@ function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags 
     if (features.spacing !== false) {
       processedHtml = addSpacing(processedHtml);
     }
+
+    // Saved Shopify images replace image CTAs after spacing, so the image keeps
+    // the spacer its "Alt Image Text:" paragraph got, and before paragraph
+    // spacing, which would split the alt text and link paragraphs. Relative
+    // paths still run afterwards.
+    processedHtml = applyImageLibrary(processedHtml, features.imageLibrary ?? [], features.linkAttributes !== false);
 
     // Paragraph spacing between consecutive paragraphs (disabled by default)
     if (features.paragraphSpacing === true) {

@@ -17,12 +17,13 @@ import { isHeaderList } from './mode-ol-header-conversion';
 import { findListLabel } from './mode-list-normalize';
 import { isFootnoteLink, LINK_CONTINUES_TEXT_RE } from './mode-link-spacing';
 import { isDisclaimerParagraph, isDisclaimerSectionStart } from './mode-disclaimer-normalize';
+import { getUnmatchedImageCtas, isShopifyImageBlock, isShopifyImageBlockStyled } from './image-library';
 
 /**
- * Feature flags that toggle behavior. The custom spacer is a text setting,
- * so it is not part of this set.
+ * Feature flags that toggle behavior. The custom spacer is a text setting
+ * and the image library is data, so they are not part of this set.
  */
-type BooleanFeatureKey = Exclude<keyof FeatureFlags, 'customSpacer'>;
+type BooleanFeatureKey = Exclude<keyof FeatureFlags, 'customSpacer' | 'imageLibrary'>;
 
 /**
  * Centralized feature flag check with explicit defaults
@@ -149,14 +150,14 @@ function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult
     if (isWithinInsertedSpacer(el)) return;
 
     const tagName = el.tagName.toLowerCase();
-    if (!ALLOWED_ELEMENTS.has(tagName)) {
+    if (!ALLOWED_ELEMENTS.has(tagName) && !(tagName === 'div' && isShopifyImageBlock(el))) {
       issues.push(`Disallowed element <${tagName}> present`);
     }
 
     for (const attr of Array.from(el.attributes)) {
       const name = attr.name.toLowerCase();
       if (ALWAYS_BANNED_ATTRIBUTES.has(name)) {
-        if (isAllowedSourcesItalicStyle(el, attr, sourcesLists)) {
+        if (isAllowedSourcesItalicStyle(el, attr, sourcesLists) || isAllowedImageBlockStyle(el, attr)) {
           continue;
         }
         issues.push(`Banned attribute "${name}" on <${tagName}>`);
@@ -178,7 +179,7 @@ function validateSanitizedStructure(doc: Document, mode: OutputMode): TestResult
         ? 'No disallowed elements or banned attributes'
         : `${issues.length} sanitizer issue(s) found`,
     severity: issues.length === 0 ? 'info' : 'error',
-    expected: 'Only allowed elements (h1-h6, p, br, ul/ol/li, em, strong, u, sup, sub, a, img, blockquote, pre, code, table*) and no banned attributes (style/class/id/dir/role/aria-level/data-*/on*), except style="font-style: italic" on Sources <li>',
+    expected: 'Only allowed elements (h1-h6, p, br, ul/ol/li, em, strong, u, sup, sub, a, img, blockquote, pre, code, table*) and no banned attributes (style/class/id/dir/role/aria-level/data-*/on*), except style="font-style: italic" on Sources <li> and the Shopify image block (<div style="text-align: center;"> with <img style="float: none;">)',
     actual: issues.length === 0
       ? 'Document structure matches sanitizer allowlist'
       : `${issues.length} issue(s) found`,
@@ -197,6 +198,14 @@ function isAllowedSourcesItalicStyle(el: Element, attr: Attr, sourcesLists: Elem
   if (!sourcesLists.some(list => list.contains(el))) return false;
   if (attr.name.toLowerCase() !== 'style') return false;
   return attr.value.trim().toLowerCase() === 'font-style: italic';
+}
+
+/**
+ * Allowlist exception for the image library's Shopify image block: only the
+ * style attribute of its <div> and <img>, and only in the exact block shape.
+ */
+function isAllowedImageBlockStyle(el: Element, attr: Attr): boolean {
+  return attr.name.toLowerCase() === 'style' && isShopifyImageBlockStyled(el);
 }
 
 function validateLinkSafety(doc: Document, mode: OutputMode): TestResult {
@@ -1668,6 +1677,7 @@ export function validateMode(html: string, mode: OutputMode, features: FeatureFl
   results.addResult(validateBrBeforeReadMore(doc, mode, features));
   results.addResult(validateBrBeforeSources(doc, mode, features));
   results.addResult(validateWrapLinksStrongUnderline(doc, mode, features));
+  results.addResult(validateImageLibrary(doc, mode, features));
 
   return results;
 }
@@ -1739,5 +1749,39 @@ function validateWrapLinksStrongUnderline(doc: Document, mode: OutputMode, featu
       ? `All ${anchors.length} link(s) wrapped correctly`
       : `${unwrapped.length} of ${anchors.length} link(s) missing wrap`,
     details: unwrapped.length > 0 ? [`${unwrapped.length} link(s) missing wrap`] : null,
+  };
+}
+
+function validateImageLibrary(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+  const library = features?.imageLibrary ?? [];
+  if (mode !== 'blogs' || library.length === 0) {
+    return {
+      ruleId: 'image-library',
+      feature: 'Image Library',
+      mode,
+      passed: true,
+      message: mode !== 'blogs'
+        ? 'Image library is a blogs feature (skipped)'
+        : 'No saved images (skipped)',
+      severity: 'info',
+    };
+  }
+
+  const issues = getUnmatchedImageCtas(doc, library).map(issue => issue.message);
+
+  return {
+    ruleId: 'image-library',
+    feature: 'Image Library',
+    mode,
+    passed: issues.length === 0,
+    message: issues.length === 0
+      ? 'Every image CTA uses a saved image'
+      : `${issues.length} image CTA(s) without a saved image`,
+    severity: issues.length === 0 ? 'info' : 'warning',
+    expected: 'Every "Alt Image Text:" + "Link to:" pair matches a saved image for the store of its link',
+    actual: issues.length === 0
+      ? 'All image CTAs replaced'
+      : `${issues.length} image CTA(s) left as text`,
+    details: issues.length > 0 ? issues : null,
   };
 }

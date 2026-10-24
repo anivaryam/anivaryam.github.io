@@ -21,6 +21,9 @@ import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph, isSpacerElement } from "@/lib/word-to-html/html-spacing";
 import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "@/lib/word-to-html/spacer";
+import { getUnmatchedImageCtas, isShopifyImageBlock, isShopifyImageBlockStyled } from "@/lib/word-to-html/image-library";
+import { ImageLibraryPanel } from "./WordToHtmlImageLibrary";
+import { useImageLibrary, useImageLibraryEnabled } from "@/hooks/use-image-library";
 import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -406,6 +409,10 @@ export function WordToHtmlConverter() {
   const [sanitizeSpacer, setSanitizeSpacer] = useState(false);
   // Pastes that held a table; each one asks about the Shoppables table conversion again.
   const [tablePasteCount, setTablePasteCount] = useState(0);
+  // Uploaded Shopify images, saved in this browser; Blogs mode reuses them
+  // only after the person opts in through the trial notice or the checkbox.
+  const [imageLibrary, setImageLibrary] = useImageLibrary();
+  const [imageLibraryEnabled, setImageLibraryEnabled] = useImageLibraryEnabled();
 
   // Use the same defaults as the conversion and validation pipelines.
   // The custom spacer is a text setting, so it survives a mode switch.
@@ -421,7 +428,8 @@ export function WordToHtmlConverter() {
     customSpacer: sanitizeSpacer
       ? sanitizeCustomSpacerMarkup(features.customSpacer)
       : features.customSpacer,
-  }), [features, sanitizeSpacer]);
+    imageLibrary: imageLibraryEnabled ? imageLibrary : [],
+  }), [features, sanitizeSpacer, imageLibrary, imageLibraryEnabled]);
 
   // The dangerous constructs in the markup that actually reaches the output.
   const spacerWarnings = useMemo(
@@ -1089,6 +1097,7 @@ export function WordToHtmlConverter() {
             if (tagMatch) {
               const tagName = tagMatch[1];
               doc.querySelectorAll(tagName).forEach((el) => {
+                if (tagName === 'div' && isShopifyImageBlock(el)) return;
                 el.setAttribute('data-warning', detail);
               });
               return;
@@ -1101,11 +1110,19 @@ export function WordToHtmlConverter() {
               doc.querySelectorAll(tagName).forEach((el) => {
                 if (tagName === 'li' && attrName === 'style' && isInSourcesList(el) &&
                     el.getAttribute('style')?.trim().toLowerCase() === 'font-style: italic') return;
+                if (attrName === 'style' && isShopifyImageBlockStyled(el)) return;
                 if (el.hasAttribute(attrName)) {
                   el.setAttribute('data-warning', detail);
                 }
               });
             }
+          });
+        }
+
+        // Image library - flag image CTAs without a saved image
+        if (result.ruleId === 'image-library') {
+          getUnmatchedImageCtas(doc, effectiveFeatures.imageLibrary ?? []).forEach(issue => {
+            issue.element.setAttribute('data-warning', issue.message);
           });
         }
 
@@ -1619,6 +1636,20 @@ export function WordToHtmlConverter() {
                           <span className="text-xs">Sanitize the spacer markup</span>
                         </label>
                       </div>
+                    )}
+                    {outputFormat === 'blogs' && (
+                      <>
+                        <label className="flex items-center space-x-2 cursor-pointer mt-2">
+                          <Checkbox
+                            checked={imageLibraryEnabled === true}
+                            onCheckedChange={(checked) => setImageLibraryEnabled(checked as boolean)}
+                          />
+                          <span className="text-sm">Image Library (Shopify only, trial)</span>
+                        </label>
+                        {imageLibraryEnabled && (
+                          <ImageLibraryPanel library={imageLibrary} onChange={setImageLibrary} />
+                        )}
+                      </>
                     )}
                   </CollapsibleContent>
                 </Collapsible>
@@ -2743,6 +2774,29 @@ export function WordToHtmlConverter() {
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => setFeatures(previous => ({ ...previous, tablesToLists: true }))}>
               Yes, convert to lists
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Image library trial notice: shown in Blogs mode until answered once */}
+      <AlertDialog
+        open={outputFormat === 'blogs' && imageLibraryEnabled === null}
+        onOpenChange={(open) => { if (!open) setImageLibraryEnabled(previous => previous ?? false); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Try the Image Library? (trial)</AlertDialogTitle>
+            <AlertDialogDescription>
+              Reuse images you already uploaded to Shopify. Save the Shopify editor HTML of an article that has the images, and in later drafts an &quot;Alt Image Text:&quot; paragraph followed by a &quot;Link to:&quot; paragraph becomes the saved image with the same alt text from the same store. It works with Shopify only: other CMSs are not supported yet, because this is a trial run. You can turn it on or off later in Blogs Features.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setImageLibraryEnabled(false)}>
+              Not now
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => setImageLibraryEnabled(true)}>
+              Use Image Library
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

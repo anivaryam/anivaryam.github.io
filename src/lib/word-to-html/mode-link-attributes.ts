@@ -14,28 +14,7 @@ export function addLinkAttributes(html: string): string {
     
     const links = doc.querySelectorAll('a[href]');
     
-    links.forEach(link => {
-      // The feature promises new-tab links, so a pasted target (e.g. _self) is replaced
-      link.setAttribute('target', '_blank');
-      
-      if (!link.hasAttribute('rel')) {
-        link.setAttribute('rel', 'noopener noreferrer');
-      } else {
-        const rel = link.getAttribute('rel') || '';
-        let newRel = rel;
-        
-        if (!rel.includes('noopener')) {
-          newRel = newRel ? newRel + ' noopener' : 'noopener';
-        }
-        if (!rel.includes('noreferrer')) {
-          newRel = newRel ? newRel + ' noreferrer' : 'noreferrer';
-        }
-        
-        if (newRel !== rel) {
-          link.setAttribute('rel', newRel);
-        }
-      }
-    });
+    links.forEach(setLinkAttributes);
     
     return doc.body.innerHTML;
   } catch (e) {
@@ -44,3 +23,26 @@ export function addLinkAttributes(html: string): string {
   }
 }
 
+/** Adds target="_blank" rel="noopener noreferrer" to one link. */
+export function setLinkAttributes(link: Element): void {
+  // The feature promises new-tab links, so a pasted target (e.g. _self) is replaced
+  link.setAttribute('target', '_blank');
+  
+  if (!link.hasAttribute('rel')) {
+    link.setAttribute('rel', 'noopener noreferrer');
+  } else {
+    const rel = link.getAttribute('rel') || '';
+    let newRel = rel;
+    
+    if (!rel.includes('noopener')) {
+      newRel = newRel ? newRel + ' noopener' : 'noopener';
+    }
+    if (!rel.includes('noreferrer')) {
+      newRel = newRel ? newRel + ' noreferrer' : 'noreferrer';
+    }
+    
+    if (newRel !== rel) {
+      link.setAttribute('rel', newRel);
+    }
+  }
+}
