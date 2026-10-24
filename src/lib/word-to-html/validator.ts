@@ -11,7 +11,7 @@ import { isCustomSpacerElement, isWithinInsertedSpacer, parseCustomSpacer, type 
 import { findKeyTakeawaysSection } from './mode-key-takeaways';
 import { findArticleTitleAfterKeyTakeaways } from './mode-h1-removal';
 import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
-import { getHeadingSpacingIssues } from './mode-spacing';
+import { getBoldParagraphSpacingIssues, getHeadingSpacingIssues } from './mode-spacing';
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
 import { isHeaderList } from './mode-ol-header-conversion';
 import { findListLabel } from './mode-list-normalize';
@@ -1171,13 +1171,15 @@ function validateSpecialParagraphSpacing(doc: Document, issues: { element: Eleme
 
 /**
  * Element-level diagnostics for the spacing after Key Takeaways and before
- * the labeled paragraphs. Shared with preview highlights.
+ * labeled and fully bold paragraphs. Shared with preview highlights.
  */
 export function getSectionSpacingIssues(doc: Document, customSpacer?: string): { element: Element; message: string }[] {
   const spacer = parseCustomSpacer(customSpacer);
   const issues: { element: Element; message: string }[] = [];
   validateKeyTakeawaySpacing(doc, issues, spacer);
   validateSpecialParagraphSpacing(doc, issues, spacer);
+  issues.push(...getBoldParagraphSpacingIssues(doc, customSpacer)
+    .filter(issue => !issues.some(existing => existing.element === issue.element)));
   return issues;
 }
 

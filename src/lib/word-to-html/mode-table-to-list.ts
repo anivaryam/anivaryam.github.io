@@ -22,7 +22,7 @@
  */
 
 import { BLOCK_ELEMENT_SET } from './html-cleaner';
-import { wrapInlineContent } from './html-sanitizer';
+import { isFullyBoldElement, wrapInlineContent } from './html-sanitizer';
 import { isBlankNode } from './mode-ol-header-conversion';
 
 /** Blocks unwrapped in a list item; lists stay as nested lists */
@@ -97,23 +97,10 @@ function labelText(cell: Element | undefined): string {
   return (cell?.textContent || '').replace(/\s+/g, ' ').trim().replace(/\s*:$/, '');
 }
 
-/** True when every text run of the cell is bold */
-function isBoldCell(cell: Element): boolean {
-  const walker = cell.ownerDocument.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
-  let hasText = false;
-  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
-    if (!text.textContent?.trim()) continue;
-    hasText = true;
-    const bold = text.parentElement?.closest('strong, b');
-    if (!bold || !cell.contains(bold)) return false;
-  }
-  return hasText;
-}
-
 function isHeaderRow(row: Grid[number]): boolean {
   const cells = row.filter(hasContent);
   return cells.length > 0 && cells.every(cell =>
-    cell.tagName.toLowerCase() === 'th' || cell.closest('thead') !== null || isBoldCell(cell)
+    cell.tagName.toLowerCase() === 'th' || cell.closest('thead') !== null || isFullyBoldElement(cell)
   );
 }
 

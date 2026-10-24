@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addSpacing, addSpacingBetweenParagraphs, getHeadingSpacingIssues } from "./mode-spacing";
+import { addBoldParagraphSpacing, addSpacing, addSpacingBetweenParagraphs, getBoldParagraphSpacingIssues, getHeadingSpacingIssues } from "./mode-spacing";
 import { convertWordToHtml, getUnformattedHtml } from "./converter";
 import { formatCompact } from "./html-formatter";
 import { getCustomSpacerWarnings, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "./spacer";
@@ -15,7 +15,7 @@ describe("spacing pipeline parity", () => {
   });
 
   it('does not carry the FAQ exception into a later section', () => {
-    const output = addSpacing('<h2>FAQ</h2><p>Introduction.</p><h2>Product details</h2><h3>First product</h3>');
+    const output = addSpacing('<h2>FAQ</h2><p>Introduction.</p><h2>Product details</h2><p>Product body.</p><h3>First product</h3>');
     const doc = new DOMParser().parseFromString(output, 'text/html');
     expect(doc.querySelector('h3')?.previousElementSibling?.innerHTML).toBe('&nbsp;');
   });
@@ -42,6 +42,135 @@ describe("spacing pipeline parity", () => {
     expect(doc.body.innerHTML).toBe('<p>A</p><p>&nbsp;</p><p>B</p><p>&nbsp;</p><p>C</p>');
     const validation = validateMode(doc.body.innerHTML, 'shoppables', { paragraphSpacing: true });
     expect(validation.results.find(result => result.ruleId === 'paragraph-spacing')?.passed).toBe(true);
+  });
+});
+
+describe('fully bold paragraph gap decisions', () => {
+  const paragraph = '<p><strong>Something</strong></p>';
+
+  it.each(['<p>Gap</p>', '<p><strong>G</strong>ap</p>', '<p><strong>Gap</strong></p>', '<blockquote><p><strong>Gap</strong></p></blockquote>'])('amended whole-configuration gate disables generic decisions for any text: %s', (customSpacer) => {
+    const doc = new DOMParser().parseFromString(paragraph + '<p><strong>Next.</strong></p>', 'text/html');
+    expect(getBoldParagraphSpacingIssues(doc, customSpacer)).toEqual([]);
+    expect(addBoldParagraphSpacing(doc.body.innerHTML, customSpacer)).toBe(doc.body.innerHTML);
+  });
+
+  it.each(Array.from('\t\n\r\f\v \u00A0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200B\u3000\uFEFF'))('amended block-space character %j is blank configuration and not a target', (space) => {
+    const customSpacer = `<p><strong>${space}</strong></p>`;
+    const doc = new DOMParser().parseFromString(customSpacer + paragraph, 'text/html');
+    expect(getBoldParagraphSpacingIssues(doc, customSpacer)).toEqual([]);
+    const alone = new DOMParser().parseFromString(paragraph, 'text/html');
+    expect(getBoldParagraphSpacingIssues(alone, customSpacer).map(issue => issue.element)).toEqual([alone.body.firstElementChild]);
+    expect(getBoldParagraphSpacingIssues(new DOMParser().parseFromString(customSpacer, 'text/html'))).toEqual([]);
+  });
+
+  it.each(['\u0085', '\u1680', '\u2028', '\u2029', '\u202F', '\u205F', '\u2060', 'X'])('amended blank boundary excludes non-contract character %j', (text) => {
+    const doc = new DOMParser().parseFromString(paragraph, 'text/html');
+    expect(getBoldParagraphSpacingIssues(doc, `<p>${text}</p>`)).toEqual([]);
+  });
+
+  it('amended generic decision reuses surviving decorated zero-width gaps without broadening older recognizers', () => {
+    const input = '<p class="gap"><strong>\u200B</strong></p>' + paragraph;
+    const doc = new DOMParser().parseFromString(input, 'text/html');
+    expect(getBoldParagraphSpacingIssues(doc)).toEqual([]);
+    expect(addBoldParagraphSpacing(input)).toBe(input);
+  });
+
+  it.each(['<p>&nbsp;</p>', '<p><em>&nbsp;</em></p>', '<p><br></p>', '<hr>', '<p><strong>Gap</strong></p>'])('reuses recognized %s across only whitespace/comments without changing the document', (gap) => {
+    const input = `${gap}\n <!--spacing--> \t${paragraph}`;
+    const doc = new DOMParser().parseFromString(input, 'text/html');
+    const before = doc.body.innerHTML;
+    expect(getBoldParagraphSpacingIssues(doc, gap)).toEqual([]);
+    expect(doc.body.innerHTML).toBe(before);
+    expect(addBoldParagraphSpacing(input, gap)).toBe(before);
+  });
+
+  it.each(['Actual body.', '<span></span>', '<br>'])('does not jump across %s to an earlier gap', (barrier) => {
+    const input = `<p>&nbsp;</p>${barrier}${paragraph}`;
+    const doc = new DOMParser().parseFromString(input, 'text/html');
+    expect(getBoldParagraphSpacingIssues(doc).map(issue => issue.element)).toEqual([doc.body.lastElementChild]);
+    expect(addBoldParagraphSpacing(input)).toBe(`<p>&nbsp;</p>${barrier}<p>&nbsp;</p>${paragraph}`);
+  });
+
+  it('counts a standalone BR only when configured as the spacer and never deletes existing gaps', () => {
+    expect(addBoldParagraphSpacing(`<br>${paragraph}`, '<br>')).toBe(`<br>${paragraph}`);
+    const input = `<p>&nbsp;</p><p>&nbsp;</p>${paragraph}`;
+    expect(addBoldParagraphSpacing(input)).toBe(input);
+  });
+
+  it.each(['', ' data-w2h-spacer="1"'])('excludes semantic custom spacer roots and nested descendants (%s)', (marker) => {
+    const customSpacer = '<blockquote><p><strong>Gap</strong></p></blockquote>';
+    const input = `<blockquote${marker}><p><strong>Gap</strong></p></blockquote>${paragraph}`;
+    const doc = new DOMParser().parseFromString(input, 'text/html');
+    expect(getBoldParagraphSpacingIssues(doc, customSpacer)).toEqual([]);
+    expect(addBoldParagraphSpacing(input, customSpacer)).toBe(input);
+    // An inserted spacer is recognized even without its original custom setting.
+    if (marker) expect(getBoldParagraphSpacingIssues(doc)).toEqual([]);
+  });
+
+  it('excludes a retained code ancestor, not an inline code descendant or outside bold ancestor', () => {
+    const doc = new DOMParser().parseFromString('<code></code><p><strong>Inline <code>sample()</code></strong></p><strong></strong>', 'text/html');
+    const inside = doc.createElement('p');
+    inside.innerHTML = '<strong>Code paragraph.</strong>';
+    doc.querySelector('code')!.append(inside);
+    const outside = doc.createElement('p');
+    outside.textContent = 'Inherited only.';
+    doc.body.lastElementChild!.append(outside);
+    const before = doc.body.innerHTML;
+    expect(getBoldParagraphSpacingIssues(doc).map(issue => issue.element)).toEqual([doc.body.children[1]]);
+    expect(doc.body.innerHTML).toBe(before);
+  });
+});
+
+describe('consecutive heading spacing', () => {
+  it.each(['', '\n \t', '<!--no body-->', '\n <!--no body--> \n'])('preserves adjacency across only whitespace/comments: %j', (gap) => {
+    const input = `<h2>Hello World</h2>${gap}<h3>The world is beautiful</h3>`;
+    const doc = new DOMParser().parseFromString(input, 'text/html');
+    expect(getHeadingSpacingIssues(doc)).toEqual([]);
+    expect(addSpacing(input)).toBe(input);
+  });
+
+  it.each(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])('does not generate a gap after an adjacent %s at any heading rank', (tag) => {
+    for (const next of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) {
+      const input = `<${tag}>First</${tag}><${next}>Next</${next}>`;
+      expect(addSpacing(input)).toBe(input);
+    }
+  });
+
+  it.each([
+    '<p>Actual body.</p>', '<ul><li>Actual body.</li></ul>', 'Actual body.',
+    '<br>', '<hr>', '<img src="photo.png" alt="Photo">', '<span></span>', '<div style="height:10px;"></div>',
+  ])('does not cross substantive text or an intervening element: %s', (body) => {
+    const input = `<h2>First</h2>${body}<h3>Next</h3>`;
+    const doc = new DOMParser().parseFromString(input, 'text/html');
+    expect(getHeadingSpacingIssues(doc).map(issue => [issue.element, issue.kind])).toEqual([[doc.querySelector('h3'), 'missing']]);
+    expect(addSpacing(input)).toBe(`<h2>First</h2>${body}<p>&nbsp;</p><h3>Next</h3>`);
+  });
+
+  it.each(['<p></p>', '<p>&nbsp;</p>', '<p><em>&nbsp;</em></p>', '<p><br></p>'])('retains existing ordinary spacing without duplication or deletion: %s', (gap) => {
+    const input = `<h2>First</h2>${gap}<h3>Next</h3>`;
+    expect(getHeadingSpacingIssues(new DOMParser().parseFromString(input, 'text/html'))).toEqual([]);
+    expect(addSpacing(input)).toBe(input);
+    expect(addSpacing(addSpacing(input))).toBe(input);
+  });
+
+  it('consumes the first FAQ question before exempting adjacency and resets for ordinary sections', () => {
+    const output = addSpacing('<h2>FAQ</h2><h3>First question?</h3><p>Answer.</p><h3>Second question?</h3><h2>Products</h2><h3>First product</h3><p>Product body.</p><h3>Next product</h3>');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    const headings = doc.querySelectorAll('h3');
+    expect(headings[0].previousElementSibling).toBe(doc.querySelector('h2'));
+    expect(headings[1].previousElementSibling?.innerHTML).toBe('&nbsp;');
+    expect(headings[2].previousElementSibling?.textContent).toBe('Products');
+    expect(headings[3].previousElementSibling?.innerHTML).toBe('&nbsp;');
+    expect(getHeadingSpacingIssues(doc)).toEqual([]);
+  });
+
+  it('keeps the Key Takeaways heading exception and spacing after its list', () => {
+    const output = addSpacing('<p>Intro.</p><h2>Key Takeaways</h2><ul><li>Point.</li></ul><h2>Details</h2><h3>Subheading</h3>');
+    const doc = new DOMParser().parseFromString(output, 'text/html');
+    expect(doc.querySelector('h2')?.previousElementSibling?.textContent).toBe('Intro.');
+    expect(doc.querySelector('ul')?.nextElementSibling?.innerHTML).toBe('&nbsp;');
+    expect(doc.querySelector('h3')?.previousElementSibling?.textContent).toBe('Details');
+    expect(validateMode(output, 'blogs', {}).results.find(r => r.ruleId === 'spacing-rules')?.passed).toBe(true);
   });
 });
 
@@ -123,6 +252,59 @@ describe("custom spacer", () => {
   // validates. The formatted output carries the configured markup only.
   const MARKED_SPACER = '<div style="height:10px;" data-w2h-spacer="1"></div>';
   const SOURCE_HTML = '<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>';
+
+  it.each(['<div><p><strong>Gap</strong></p></div>', '<p style="height:10px"><strong>Gap</strong></p>'])('amended ordinary cleaning preserves unsafe/forged/near-match input parity for %s', (customSpacer) => {
+    expect(getCustomSpacerWarnings(customSpacer)).toEqual([]);
+    const root = new DOMParser().parseFromString(customSpacer, 'text/html').body.firstElementChild!;
+    const variants = [
+      (element: Element) => element.setAttribute('onclick', 'window.__D3_XSS = 1'),
+      (element: Element) => element.querySelector('strong')!.setAttribute('onmouseover', 'window.__D3_XSS = 1'),
+      (element: Element) => element.setAttribute('style', 'background-image:url(javascript:alert(1))'),
+      (element: Element) => { element.setAttribute('data-w2h-spacer', '1'); element.setAttribute('style', 'font-weight:400'); },
+      (element: Element) => element.insertAdjacentHTML('beforeend', '<a href="javascript:alert(1)" style="background-image:url(javascript:alert(1))">Keep link text.</a>'),
+    ];
+    for (const mutate of variants) {
+      const element = root.cloneNode(true) as Element;
+      mutate(element);
+      const input = element.outerHTML;
+      for (const spacing of [false, true]) {
+        const actual = getUnformattedHtml(input, 'blogs', { spacing, customSpacer });
+        // With generic text-custom spacing withdrawn, this must be the same
+        // ordinary source cleanup even when Spacing Rules is enabled.
+        expect(actual).toBe(getUnformattedHtml(input, 'blogs', { spacing: false }));
+        const doc = new DOMParser().parseFromString(actual, 'text/html');
+        expect(doc.querySelector('[style], [onclick], [onmouseover], [href], [data-w2h-spacer]')).toBeNull();
+        expect(doc.body.textContent).toContain('Gap');
+      }
+    }
+  });
+
+  it.each([
+    '<div onclick="alert(1)"><p><strong>Gap</strong></p></div>',
+    '<p style="height:10px;background-image:url(javascript:alert(1))"><strong>Gap</strong></p>',
+    '<p style="height:10px;background-image: u\\72l(https://example.com/x)"><strong>Gap</strong></p>',
+    '<p><strong>Gap</strong><a href="javascript:alert(1)">Keep.</a></p>',
+    '<p><strong>Gap</strong><a href="ftp://example.com/file">Keep.</a></p>',
+    '<p><strong>Gap</strong><a href="/guide" target="_blank">Keep.</a></p>',
+    '<p><strong>Gap</strong><input value="Untrusted control"></p>',
+    '<p style="height:expression(alert(1))"><strong>Gap</strong></p>',
+    '<p style="background-image:url(https://example.invalid/x)"><strong>Gap</strong></p>',
+  ])('amended input safety uses ordinary cleaning ON/OFF, not template admission: %s', (customSpacer) => {
+    for (const spacing of [false, true]) {
+      expect(getUnformattedHtml(customSpacer, 'blogs', { spacing, customSpacer })).toBe(
+        getUnformattedHtml(customSpacer, 'blogs', { spacing: false }));
+    }
+  });
+
+  it.each(['<div><p><strong>Gap</strong></p></div>', '<p style="height:10px"><strong>Gap</strong></p>'])('amended text setting retains authored Gap without adding another: %s', (customSpacer) => {
+    const authored = '<p><strong>Gap</strong></p><p>After.</p>';
+    let input = authored;
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const output = convertWordToHtml(input, 'blogs', { customSpacer });
+      expect(output.replace(/>\s+</g, '><')).toBe(authored);
+      input = output;
+    }
+  });
 
   it("replaces the default spacer with the configured markup", () => {
     const output = convertWordToHtml(SOURCE_HTML, "blogs", { customSpacer: CUSTOM_SPACER });
