@@ -19,6 +19,7 @@ import { addBrBeforeReadMore, addBrBeforeSources } from './mode-br-spacing';
 import { wrapLinksStrongUnderline } from './mode-wrap-links-strong-underline';
 import { convertTablesToLists } from './mode-table-to-list';
 import { applyImageLibrary } from './image-library';
+import { stripAiTracking } from './mode-strip-ai-tracking';
 import { applyCustomSpacer } from './html-spacing';
 import type { OutputMode, FeatureFlags } from './converter';
 
@@ -144,6 +145,9 @@ function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags 
 
   // Blogs mode features
   if (mode === 'blogs') {
+    // AI-generator tracking parameters never belong in published links
+    processedHtml = stripAiTracking(processedHtml);
+
     // Heading strong tags (must be first to wrap headings before other processing)
     processedHtml = applyHeadingStrong(processedHtml, features);
 
@@ -224,6 +228,9 @@ function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags 
 
   // Shoppables mode features
   if (mode === 'shoppables') {
+    // AI-generator tracking parameters never belong in published links
+    processedHtml = stripAiTracking(processedHtml);
+
     // Table to list conversion (disabled by default, before Heading Strong so
     // the row headings and their lists get the same processing as the rest)
     if (features.tablesToLists === true) {

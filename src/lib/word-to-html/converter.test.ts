@@ -1267,6 +1267,16 @@ describe('URL preservation', () => {
   });
 
   it.each([
+    ['blogs', 'https://store.com/collections/weed-control'],
+    ['shoppables', 'https://store.com/collections/weed-control'],
+    ['regular', 'https://store.com/collections/weed-control?utm_source=chatgpt.com'],
+  ])('strips AI-generator tracking from links in %s mode', (mode: OutputMode, expected: string) => {
+    const input = '<p>Shop <a href="https://store.com/collections/weed-control?utm_source=chatgpt.com">weed control</a></p>';
+    const output = getUnformattedHtml(input, mode);
+    expect(new DOMParser().parseFromString(output, 'text/html').querySelector('a')?.getAttribute('href')).toBe(expected);
+  });
+
+  it.each([
     ['//cdn.example.com/guide?a=1#part', '/guide?a=1#part'],
     ['https://example.com/guide', '/guide'],
   ])('converts %s to the relative path the validator expects', (href, expected) => {
