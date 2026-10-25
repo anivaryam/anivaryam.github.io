@@ -27,6 +27,20 @@ describe('stripAiTrackingFromUrl', () => {
       .toBe('https://store.com/');
   });
 
+  it('strips the tag inside a Google Docs export redirect wrapper', () => {
+    // Real Google Docs export shape: target inside q, its "=" encoded as %3D
+    const href = 'https://www.google.com/url?q=https://helpmedicalsupplies.com/collections/home-oxygen-machine?utm_source%3Dchatgpt.com&sa=D&source=editors&ust=1792922872065708&usg=AOvVaw0VRsPU2fuN49m-LYHhncW5';
+    const stripped = stripAiTrackingFromUrl(href);
+    const target = new URL(stripped).searchParams.get('q');
+    expect(target).toBe('https://helpmedicalsupplies.com/collections/home-oxygen-machine');
+    expect(new URL(stripped).searchParams.get('usg')).toBe('AOvVaw0VRsPU2fuN49m-LYHhncW5');
+  });
+
+  it('leaves a redirect wrapper without AI tracking byte-for-byte', () => {
+    const href = 'https://www.google.com/url?q=https://helpmedicalsupplies.com/collections/portable-oxygen-concentrator&sa=D&source=editors&ust=1792922872074007&usg=AOvVaw26zG5wNNNAFECTHObW_V3I';
+    expect(stripAiTrackingFromUrl(href)).toBe(href);
+  });
+
   it.each([
     'https://store.com/collections/weed-control',
     'https://store.com/sale?utm_source=newsletter&utm_medium=email',
