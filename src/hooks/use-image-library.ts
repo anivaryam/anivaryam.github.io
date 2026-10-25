@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { findDraftImages, normalizeAltText, parseImageLibraryJson, type DraftFingerprints, type ImageLibraryEntry } from "@/lib/word-to-html/image-library";
 import { encodeFingerprint, loadFingerprint } from "@/lib/word-to-html/image-fingerprint";
+import { toast } from "@/hooks/use-toast";
 
 export const IMAGE_LIBRARY_KEY = "word-to-html:image-library";
 export const IMAGE_LIBRARY_ENABLED_KEY = "word-to-html:image-library-enabled";
@@ -15,19 +16,42 @@ function readStorage(key: string): string | null {
   }
 }
 
-function writeStorage(key: string, value: string): void {
+function writeStorage(key: string, value: string): "saved" | "quota" | "blocked" {
   try {
     localStorage.setItem(key, value);
-  } catch {
-    // Blocked or full storage
+    return "saved";
+  } catch (error) {
+    const name = error instanceof DOMException ? error.name : "";
+    return name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED" ? "quota" : "blocked";
   }
 }
 
 /** The saved images, kept in this browser's localStorage. */
 export function useImageLibrary() {
-  const [library, setLibrary] = useState<ImageLibraryEntry[]>(() => parseImageLibraryJson(readStorage(IMAGE_LIBRARY_KEY) || "[]"));
+  const persisted = useRef("");
+  const [library, setLibrary] = useState<ImageLibraryEntry[]>(() => {
+    const parsed = parseImageLibraryJson(readStorage(IMAGE_LIBRARY_KEY) || "[]");
+    persisted.current = JSON.stringify(parsed);
+    return parsed;
+  });
+  // A quota failure loses the change on reload, so it is reported, once per
+  // failing stretch; blocked storage stays silent as the session-only mode.
+  const quotaReported = useRef(false);
   useEffect(() => {
-    writeStorage(IMAGE_LIBRARY_KEY, JSON.stringify(library));
+    const json = JSON.stringify(library);
+    if (json === persisted.current) return;
+    const result = writeStorage(IMAGE_LIBRARY_KEY, json);
+    if (result === "saved") {
+      persisted.current = json;
+      quotaReported.current = false;
+    } else if (result === "quota" && !quotaReported.current) {
+      quotaReported.current = true;
+      toast({
+        title: "Image library not saved",
+        description: "Browser storage is full, so this change lasts only until reload. Remove some images, or export the library as a backup.",
+        variant: "destructive",
+      });
+    }
   }, [library]);
   return [library, setLibrary] as const;
 }

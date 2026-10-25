@@ -1290,6 +1290,49 @@ describe('WordToHtmlConverter', () => {
     expect(preview.querySelector('[data-warning]')).toBeNull();
   }, 20000);
 
+  it('imports several JSON files in one pick and merges them', async () => {
+    localStorage.clear();
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    const entry = (alt: string, src: string) => ({ host: 'lawnsynergy.com', alt, src });
+    const file = (name: string, entries: object[]) =>
+      new File([JSON.stringify(entries)], name, { type: 'application/json' });
+    const fileA = file('a.json', [entry('Shop Weed Killer', 'https://cdn.shopify.com/a.png')]);
+    const fileB = file('b.json', [
+      entry('Shop Weed Killer', 'https://cdn.shopify.com/a.png'),
+      entry('Shop Grass Seed', 'https://cdn.shopify.com/b.png'),
+    ]);
+    fireEvent.change(screen.getByLabelText('Import saved images'), { target: { files: [fileA, fileB] } });
+    await waitFor(() => expect(screen.getByText('Image Library (2)')).toBeTruthy());
+    expect(toast).toHaveBeenLastCalledWith({ title: '2 new images saved', description: '1 already saved.' });
+  });
+
+  it('reports a full browser storage once instead of losing the save silently', () => {
+    localStorage.clear();
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+    try {
+      const save = (src: string) => {
+        fireEvent.change(screen.getByRole('textbox', { name: 'Shopify HTML' }), {
+          target: { value: `<div><a href="https://lawnsynergy.com/collections/x"><img src="${src}" alt="Shop X"></a></div>` },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Save images' }));
+      };
+      save('https://cdn.shopify.com/x.png');
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Image library not saved', variant: 'destructive' }));
+      // The warning is not repeated while storage stays full
+      save('https://cdn.shopify.com/y.png');
+      expect(vi.mocked(toast).mock.calls.filter(([args]) => args.title === 'Image library not saved')).toHaveLength(1);
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
   it('runs the image library by default and remembers the checkbox turning it off', async () => {
     localStorage.clear();
     localStorage.setItem('word-to-html:image-library', JSON.stringify([
