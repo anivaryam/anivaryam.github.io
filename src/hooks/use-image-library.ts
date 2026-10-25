@@ -34,7 +34,7 @@ export function useImageLibrary() {
 
 /**
  * Whether the image library is turned on. It is opt-in: null until the
- * person answers the trial notice, then their choice for this browser.
+ * person answers the notice, then their choice for this browser.
  */
 export function useImageLibraryEnabled() {
   const [enabled, setEnabled] = useState<boolean | null>(() => {

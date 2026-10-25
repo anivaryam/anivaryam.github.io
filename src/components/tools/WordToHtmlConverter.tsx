@@ -410,7 +410,7 @@ export function WordToHtmlConverter() {
   // Pastes that held a table; each one asks about the Shoppables table conversion again.
   const [tablePasteCount, setTablePasteCount] = useState(0);
   // Uploaded Shopify images, saved in this browser; Blogs mode reuses them
-  // only after the person opts in through the trial notice or the checkbox.
+  // only after the person opts in through the notice or the checkbox.
   const [imageLibrary, setImageLibrary] = useImageLibrary();
   const [imageLibraryEnabled, setImageLibraryEnabled] = useImageLibraryEnabled();
   // Fingerprints let the pictures decide a match; matching waits for them,
@@ -1650,7 +1650,7 @@ export function WordToHtmlConverter() {
                             checked={imageLibraryEnabled === true}
                             onCheckedChange={(checked) => setImageLibraryEnabled(checked as boolean)}
                           />
-                          <span className="text-sm">Image Library (Shopify only, trial)</span>
+                          <span className="text-sm">Image Library (Shopify)</span>
                         </label>
                         {imageLibraryEnabled && (
                           <ImageLibraryPanel library={imageLibrary} onChange={setImageLibrary} />
@@ -2785,16 +2785,16 @@ export function WordToHtmlConverter() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Image library trial notice: shown in Blogs mode until answered once */}
+      {/* Image library notice: shown in Blogs mode until answered once */}
       <AlertDialog
         open={outputFormat === 'blogs' && imageLibraryEnabled === null}
         onOpenChange={(open) => { if (!open) setImageLibraryEnabled(previous => previous ?? false); }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Try the Image Library? (trial)</AlertDialogTitle>
+            <AlertDialogTitle>Use the Image Library?</AlertDialogTitle>
             <AlertDialogDescription>
-              Reuse images you already uploaded to Shopify. Save the Shopify editor HTML of an article that has the images, and in later drafts an &quot;Alt Image Text:&quot; paragraph followed by a &quot;Link to:&quot; paragraph becomes the saved image with the same alt text from the same store. It works with Shopify only: other CMSs are not supported yet, because this is a trial run. You can turn it on or off later in Blogs Features.
+              Reuse images already uploaded to Shopify. Save an article&apos;s Shopify HTML once; later drafts get each image inserted automatically, only on an exact picture match from the same store. Shopify only. Toggle anytime in Blogs Features.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

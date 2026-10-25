@@ -88,7 +88,7 @@ export function ImageLibraryPanel({ library, onChange }: ImageLibraryPanelProps)
         Save images
       </Button>
       <p className="text-xs text-muted-foreground mt-2">
-        Paste HTML from the Shopify editor with uploaded images. An "Alt Image Text:" paragraph with its link is replaced by the matching saved image from the same store, only when the pictures themselves match exactly; anything less certain is warned about instead. Saved in this browser only.
+        Paste Shopify editor HTML to save its images. A draft&apos;s &quot;Alt Image Text:&quot; + link is replaced only on an exact picture match from the same store; anything less is flagged, never inserted. Stored in this browser.
       </p>
       {sorted.length > 0 && (
         <ul data-lenisignore className="mt-2 max-h-48 overflow-y-auto space-y-1">

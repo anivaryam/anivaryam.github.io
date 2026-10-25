@@ -50,7 +50,7 @@ beforeEach(() => {
   } as unknown as Lenis));
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
-  // A returning visitor who declined the image library trial: the notice stays closed
+  // A returning visitor who declined the image library notice: it stays closed
   localStorage.setItem(IMAGE_LIBRARY_ENABLED_KEY, 'false');
 });
 
@@ -1290,7 +1290,7 @@ describe('WordToHtmlConverter', () => {
       .toBe('No saved image for "Shop Grass Seed" on lawnsynergy.com');
   }, 20000);
 
-  it('asks about the image library trial only in Blogs mode and keeps it off when declined', async () => {
+  it('asks about the image library only in Blogs mode and keeps it off when declined', async () => {
     localStorage.clear();
     localStorage.setItem('word-to-html:image-library', JSON.stringify([
       { host: 'lawnsynergy.com', alt: 'Shop Grass Seed', src: 'https://cdn.shopify.com/s/files/1/seed.png#fp40' },
@@ -1319,7 +1319,7 @@ describe('WordToHtmlConverter', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Image Library (Shopify only, trial)' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image Library (Shopify)' }));
     await waitFor(
       () => expect(document.querySelector('.output-preview img')?.getAttribute('src')).toBe('https://cdn.shopify.com/s/files/1/seed.png#fp40'),
       { timeout: 5000 }
