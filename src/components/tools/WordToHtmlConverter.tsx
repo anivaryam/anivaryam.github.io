@@ -21,7 +21,7 @@ import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph, isSpacerElement } from "@/lib/word-to-html/html-spacing";
 import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "@/lib/word-to-html/spacer";
-import { getImageCtaIssues, isShopifyImageBlock, isShopifyImageBlockStyled } from "@/lib/word-to-html/image-library";
+import { isShopifyImageBlock, isShopifyImageBlockStyled } from "@/lib/word-to-html/image-library";
 import { ImageLibraryPanel } from "./WordToHtmlImageLibrary";
 import { useDraftImageFingerprints, useImageLibrary, useImageLibraryEnabled, useImageLibraryFingerprintBackfill } from "@/hooks/use-image-library";
 import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
@@ -410,13 +410,13 @@ export function WordToHtmlConverter() {
   // Pastes that held a table; each one asks about the Shoppables table conversion again.
   const [tablePasteCount, setTablePasteCount] = useState(0);
   // Uploaded Shopify images, saved in this browser; Blogs mode reuses them
-  // only after the person opts in through the notice or the checkbox.
+  // unless the checkbox turns the library off.
   const [imageLibrary, setImageLibrary] = useImageLibrary();
   const [imageLibraryEnabled, setImageLibraryEnabled] = useImageLibraryEnabled();
   // Fingerprints let the pictures decide a match; matching waits for them,
   // so an image is never inserted on alt text that the pictures contradict.
-  const draftFingerprintState = useDraftImageFingerprints(inputHtml, imageLibraryEnabled === true);
-  useImageLibraryFingerprintBackfill(imageLibrary, setImageLibrary, imageLibraryEnabled === true);
+  const draftFingerprintState = useDraftImageFingerprints(inputHtml, imageLibraryEnabled);
+  useImageLibraryFingerprintBackfill(imageLibrary, setImageLibrary, imageLibraryEnabled);
 
   // Use the same defaults as the conversion and validation pipelines.
   // The custom spacer is a text setting, so it survives a mode switch.
@@ -1124,14 +1124,6 @@ export function WordToHtmlConverter() {
           });
         }
 
-        // Image library - flag image CTAs without a saved image or whose
-        // draft picture differs from the saved one
-        if (result.ruleId === 'image-library') {
-          getImageCtaIssues(doc, effectiveFeatures.imageLibrary ?? [], effectiveFeatures.draftImageFingerprints).forEach(issue => {
-            issue.element.setAttribute('data-warning', issue.message);
-          });
-        }
-
         // Link safety - flag individual links with unsafe protocols/rel or missing noopener
         if (result.ruleId === 'link-safety') {
           const details = result.details || [];
@@ -1647,7 +1639,7 @@ export function WordToHtmlConverter() {
                       <>
                         <label className="flex items-center space-x-2 cursor-pointer mt-2">
                           <Checkbox
-                            checked={imageLibraryEnabled === true}
+                            checked={imageLibraryEnabled}
                             onCheckedChange={(checked) => setImageLibraryEnabled(checked as boolean)}
                           />
                           <span className="text-sm">Image Library (Shopify)</span>
@@ -2780,29 +2772,6 @@ export function WordToHtmlConverter() {
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => setFeatures(previous => ({ ...previous, tablesToLists: true }))}>
               Yes, convert to lists
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Image library notice: shown in Blogs mode until answered once */}
-      <AlertDialog
-        open={outputFormat === 'blogs' && imageLibraryEnabled === null}
-        onOpenChange={(open) => { if (!open) setImageLibraryEnabled(previous => previous ?? false); }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Use the Image Library?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Reuse images already uploaded to Shopify. Save an article&apos;s Shopify HTML once; later drafts get each image inserted automatically, only on an exact picture match from the same store. Shopify only. Toggle anytime in Blogs Features.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setImageLibraryEnabled(false)}>
-              Not now
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={() => setImageLibraryEnabled(true)}>
-              Use Image Library
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

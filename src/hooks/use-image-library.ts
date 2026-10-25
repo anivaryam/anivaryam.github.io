@@ -32,17 +32,11 @@ export function useImageLibrary() {
   return [library, setLibrary] as const;
 }
 
-/**
- * Whether the image library is turned on. It is opt-in: null until the
- * person answers the notice, then their choice for this browser.
- */
+/** Whether the image library is on: the saved choice, on by default. */
 export function useImageLibraryEnabled() {
-  const [enabled, setEnabled] = useState<boolean | null>(() => {
-    const stored = readStorage(IMAGE_LIBRARY_ENABLED_KEY);
-    return stored === null ? null : stored === "true";
-  });
+  const [enabled, setEnabled] = useState<boolean>(() => readStorage(IMAGE_LIBRARY_ENABLED_KEY) !== "false");
   useEffect(() => {
-    if (enabled !== null) writeStorage(IMAGE_LIBRARY_ENABLED_KEY, String(enabled));
+    writeStorage(IMAGE_LIBRARY_ENABLED_KEY, String(enabled));
   }, [enabled]);
   return [enabled, setEnabled] as const;
 }

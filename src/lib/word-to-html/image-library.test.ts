@@ -47,12 +47,17 @@ describe('image library: saving Shopify images', () => {
     expect(parseShopifyImages(shopifySnippet)).toEqual({ entries: library, skipped: 0 });
   });
 
-  it('skips images without alt text or without an absolute link naming the store', () => {
+  it('skips images without alt text or a usable store, keeping a linkless one under the paste host', () => {
     const html = `<img src="${CDN}" alt="No link">`
       + `<a href="/collections/seed"><img src="${CDN}" alt="Relative link"></a>`
       + `<a href="https://lawnsynergy.com/a"><img src="${CDN}" alt=""></a>`
       + `<a href="https://lawnsynergy.com/a"><img src="javascript:alert(1)" alt="Script"></a>`;
-    expect(parseShopifyImages(html)).toEqual({ entries: [], skipped: 4 });
+    // Every link names one store, so the linkless image belongs to it; an
+    // image whose own link names no store stays out
+    expect(parseShopifyImages(html)).toEqual({
+      entries: [{ host: 'lawnsynergy.com', alt: 'No link', src: CDN }],
+      skipped: 3,
+    });
   });
 
   it('replaces the saved image for the same store and alt text', () => {
@@ -181,6 +186,46 @@ describe('image library: blogs conversion', () => {
     // The sentence is not consumed and no image is inserted from it
     expect(output).toContain('Read our guide at');
     expect(output).not.toContain('<div');
+  });
+
+  it('replaces a linkless alt text (the hero) on an exact picture match, without a link', () => {
+    const heroAlt = 'Healthy Green Lawn In The Bay Area';
+    const features = {
+      imageLibrary: [{ host: 'lawnsynergy.com', alt: 'Old hero wording', src: CDN, fp: fp(10) }],
+      draftImageFingerprints: { [normalizeAltText(heroAlt)]: fp(11) },
+    };
+    const draft = `<p>Body text.</p><p>Alt Image Text: ${heroAlt}</p><p>More body.</p>`;
+    const output = getUnformattedHtml(draft, 'blogs', features);
+    expect(output).toContain(`<div style="text-align: center;"><img src="${CDN}" alt="${heroAlt}" style="float: none;"></div>`);
+    expect(output).not.toMatch(/Alt Image Text|<a /);
+    expect(validateMode(output, 'blogs', features).summary.failed).toBe(0);
+  });
+
+  it('leaves a linkless alt text alone, in silence, when no picture matches exactly', () => {
+    const heroAlt = 'Healthy Green Lawn In The Bay Area';
+    const draft = `<p>Body text.</p><p>Alt Image Text: ${heroAlt}</p><p>More body.</p>`;
+    for (const draftFps of [
+      undefined,                                         // image unreadable or absent
+      { [normalizeAltText(heroAlt)]: fp(200) },          // matches nothing
+    ]) {
+      const features = { imageLibrary: library.map(entry => ({ ...entry, fp: fp(10) })), draftImageFingerprints: draftFps };
+      const output = getUnformattedHtml(draft, 'blogs', features);
+      expect(output).toContain(`<p>Alt Image Text: ${heroAlt}</p>`);
+      const result = validateMode(output, 'blogs', features).results.find(r => r.ruleId === 'image-library');
+      expect(result?.passed).toBe(true);
+    }
+  });
+
+  it('saves a linkless image under the store every link in the paste names', () => {
+    const hero = `<img src="${CDN}" alt="Healthy Green Lawn">`;
+    const oneStore = `${shopifySnippet}${hero}`;
+    expect(parseShopifyImages(oneStore).entries).toEqual([
+      library[0],
+      { host: 'lawnsynergy.com', alt: 'Healthy Green Lawn', src: CDN },
+    ]);
+    // Links naming two stores leave the linkless image out
+    const twoStores = `${oneStore}<a href="https://other-store.com/x">x</a>`;
+    expect(parseShopifyImages(twoStores)).toEqual({ entries: [library[0]], skipped: 1 });
   });
 
   it('keeps the CTA paragraphs and warns when no saved image matches', () => {

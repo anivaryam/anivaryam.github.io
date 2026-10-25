@@ -50,7 +50,7 @@ beforeEach(() => {
   } as unknown as Lenis));
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
-  // A returning visitor who declined the image library notice: it stays closed
+  // The image library is on by default; keep it off for unrelated tests
   localStorage.setItem(IMAGE_LIBRARY_ENABLED_KEY, 'false');
 });
 
@@ -1253,7 +1253,6 @@ describe('WordToHtmlConverter', () => {
     const draft = (alt: string, draftSrc: string) => `<p>Body text.</p><p><img src="${draftSrc}">Alt Image Text: ${alt}</p><p>Link to: <a href="${href}">${href}</a></p><h2>Final Thoughts</h2><p>Done.</p>`;
     const { unmount } = render(<WordToHtmlConverter />);
     fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
-    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Use Image Library' }));
     fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
     const shopifyHtml = `<div style="text-align: center;"><a href="${href}" target="_blank" rel="noopener"><img src="${src}" alt="Kill Weeds. Keep Your Lawn. Shop Weed Killer For Lawns." style="float: none;"></a></div>`;
     fireEvent.change(screen.getByRole('textbox', { name: 'Shopify HTML' }), { target: { value: shopifyHtml } });
@@ -1282,15 +1281,16 @@ describe('WordToHtmlConverter', () => {
     expect(preview.querySelector('[data-warning]')).toBeNull();
     expect(screen.queryByText(/^Failed:/)).toBeNull();
 
-    // An image CTA matching no saved picture or alt text stays as text
+    // An image CTA matching no saved picture or alt text stays as text,
+    // reported in the validation panel, not highlighted in the preview
     enterHtml(draft('Shop Grass Seed', 'https://lh7-rt.googleusercontent.com/docsz/d#fp200'));
-    await waitFor(() => expect(preview.querySelector('[data-warning]')).not.toBeNull(), { timeout: 5000 });
+    await waitFor(() => expect(screen.queryByText(/^Failed:/)).not.toBeNull(), { timeout: 5000 });
     expect(preview.querySelector('img')).toBeNull();
-    expect(preview.querySelector('[data-warning]')?.getAttribute('data-warning'))
-      .toBe('No saved image for "Shop Grass Seed" on lawnsynergy.com');
+    expect(preview.textContent).toContain('Alt Image Text: Shop Grass Seed');
+    expect(preview.querySelector('[data-warning]')).toBeNull();
   }, 20000);
 
-  it('asks about the image library only in Blogs mode and keeps it off when declined', async () => {
+  it('runs the image library by default and remembers the checkbox turning it off', async () => {
     localStorage.clear();
     localStorage.setItem('word-to-html:image-library', JSON.stringify([
       { host: 'lawnsynergy.com', alt: 'Shop Grass Seed', src: 'https://cdn.shopify.com/s/files/1/seed.png#fp40' },
@@ -1298,33 +1298,26 @@ describe('WordToHtmlConverter', () => {
     const draftHtml = '<p>Body text.</p><p><img src="https://lh7-rt.googleusercontent.com/docsz/d#fp40">Alt Image Text: Shop Grass Seed</p><p>Link to: <a href="https://lawnsynergy.com/collections/grass-seed">link</a></p>';
     const { unmount } = render(<WordToHtmlConverter />);
     enterHtml(draftHtml);
-    expect(screen.queryByRole('alertdialog')).toBeNull();
-    fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
-    expect(screen.queryByRole('alertdialog')).toBeNull();
-
     fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
-    const notice = screen.getByRole('alertdialog');
-    expect(notice.textContent).toMatch(/Shopify only/);
-    fireEvent.click(within(notice).getByRole('button', { name: 'Not now' }));
+    // No notice; the saved image applies out of the box on an exact match
     expect(screen.queryByRole('alertdialog')).toBeNull();
-    // Off: the saved image is not used and no panel is shown
-    expect(document.querySelector('.output-preview img')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
-    expect(screen.queryByRole('textbox', { name: 'Shopify HTML' })).toBeNull();
-    unmount();
-
-    // The answer is remembered; the checkbox turns the library on later
-    render(<WordToHtmlConverter />);
-    enterHtml(draftHtml);
-    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
-    expect(screen.queryByRole('alertdialog')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Image Library (Shopify)' }));
     await waitFor(
       () => expect(document.querySelector('.output-preview img')?.getAttribute('src')).toBe('https://cdn.shopify.com/s/files/1/seed.png#fp40'),
       { timeout: 5000 }
     );
-    expect(screen.getByRole('textbox', { name: 'Shopify HTML' })).toBeTruthy();
+
+    // The checkbox turns the library off, and the choice is remembered
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Image Library (Shopify)' }));
+    expect(document.querySelector('.output-preview img')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Shopify HTML' })).toBeNull();
+    unmount();
+
+    render(<WordToHtmlConverter />);
+    enterHtml(draftHtml);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    expect(document.querySelector('.output-preview img')).toBeNull();
+    expect(document.querySelector('.output-preview')?.textContent).toContain('Alt Image Text: Shop Grass Seed');
   }, 20000);
 
   it('lets the pictures decide a match and refuses a same-alt different picture', async () => {
@@ -1348,20 +1341,19 @@ describe('WordToHtmlConverter', () => {
     expect(preview.querySelector('img')?.getAttribute('alt')).toBe('Completely New Wording');
 
     // Same alt text, different picture (matching no saved image): nothing
-    // inserted, conflict warned
+    // inserted; the hold shows in the validation panel, not as a preview
+    // highlight (highlighting is for errors)
     enterHtml(draft('Shop Fungicide', 'https://lh7-rt.googleusercontent.com/docsz/img#fp200'));
-    await waitFor(() => expect(preview.querySelector('[data-warning]')).not.toBeNull(), { timeout: 5000 });
+    await waitFor(() => expect(screen.queryByText(/^Failed:/)).not.toBeNull(), { timeout: 5000 });
     expect(preview.querySelector('img')).toBeNull();
-    expect(preview.querySelector('[data-warning]')?.getAttribute('data-warning'))
-      .toBe('The draft picture differs from the saved image for "Shop Fungicide" on lawnsynergy.com');
+    expect(preview.textContent).toContain('Alt Image Text: Shop Fungicide');
+    expect(preview.querySelector('[data-warning]')).toBeNull();
 
-    // Unreadable draft picture: the alt-only match is never applied, and
-    // the hold says why
+    // Unreadable draft picture: the alt-only match is never applied
     enterHtml(draft('Shop Fungicide', 'https://lh7-rt.googleusercontent.com/docsz/unreadable'));
-    await waitFor(() => expect(preview.querySelector('[data-warning]')).not.toBeNull(), { timeout: 5000 });
+    await waitFor(() => expect(screen.queryByText(/^Failed:/)).not.toBeNull(), { timeout: 5000 });
     expect(preview.querySelector('img')).toBeNull();
-    expect(preview.querySelector('[data-warning]')?.getAttribute('data-warning'))
-      .toBe('Picture for "Shop Fungicide" on lawnsynergy.com not verified; image not applied');
+    expect(preview.querySelector('[data-warning]')).toBeNull();
   }, 20000);
 
   it('backfills missing fingerprints of saved entries and stores them', async () => {

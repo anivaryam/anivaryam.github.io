@@ -43,7 +43,8 @@ export interface ImageCta {
   /** The "Link to:" paragraph; null when the link is anchored on the alt text */
   linkParagraph: Element | null;
   alt: string;
-  href: string;
+  /** null for a linkless image (the hero): matched by picture only */
+  href: string | null;
 }
 
 // Same label variants the Blocks view groups as image blocks.
@@ -96,11 +97,19 @@ export function parseShopifyImages(html: string): { entries: ImageLibraryEntry[]
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const entries: ImageLibraryEntry[] = [];
   let skipped = 0;
+  // A linkless image (the hero) belongs to the paste's store, known only
+  // when every link in the paste names the same one.
+  const pasteHosts = new Set(
+    Array.from(doc.querySelectorAll('a[href]'))
+      .map(anchor => getStoreHost(anchor.getAttribute('href') || ''))
+      .filter((host): host is string => !!host)
+  );
+  const pasteHost = pasteHosts.size === 1 ? Array.from(pasteHosts)[0] : null;
   doc.querySelectorAll('img').forEach(image => {
     const alt = (image.getAttribute('alt') || '').trim();
     const src = (image.getAttribute('src') || '').trim();
     const href = image.closest('a[href]')?.getAttribute('href') || '';
-    const host = getStoreHost(href);
+    const host = getStoreHost(href) || (!href ? pasteHost : null);
     if (!alt || !normalizeAltText(alt) || !/^(https:)?\/\//i.test(src) || !host) {
       skipped++;
       return;
@@ -217,7 +226,8 @@ export function findImageCtas(doc: Document): ImageCta[] {
       }
     }
     const anchoredHref = altParagraph.querySelector('a[href]')?.getAttribute('href');
-    if (anchoredHref) ctas.push({ altParagraph, linkParagraph: null, alt, href: anchoredHref });
+    // Without any link (the hero image) the CTA is matched by picture only
+    ctas.push({ altParagraph, linkParagraph: null, alt, href: anchoredHref || null });
   });
   return ctas;
 }
@@ -248,10 +258,22 @@ export function resolveImageCta(
   library: ImageLibraryEntry[],
   draftFingerprints?: DraftFingerprints
 ): ImageCtaResolution {
-  const host = getStoreHost(cta.href);
+  const host = cta.href === null ? null : getStoreHost(cta.href);
+  const draftFp = decodeFingerprint(draftFingerprints?.[normalizeAltText(cta.alt)]);
+  if (cta.href === null) {
+    // Linkless (the hero): an exact picture match anywhere in the library,
+    // or silence. Alt text names no store, so it cannot decide alone.
+    if (!draftFp) return { status: 'unmatched' };
+    const byPicture = library
+      .map(entry => ({ entry, distance: fingerprintDistance(draftFp, decodeFingerprint(entry.fp)) }))
+      .sort((a, b) => a.distance - b.distance)[0];
+    const confidence = byPicture ? matchConfidence(byPicture.distance) : null;
+    return confidence === 'high'
+      ? { status: 'matched', entry: byPicture.entry, confidence }
+      : { status: 'unmatched' };
+  }
   if (!host) return { status: 'no-host' };
   const storeEntries = library.filter(entry => entry.host === host);
-  const draftFp = decodeFingerprint(draftFingerprints?.[normalizeAltText(cta.alt)]);
   if (draftFp) {
     const byPicture = storeEntries
       .map(entry => ({ entry, distance: fingerprintDistance(draftFp, decodeFingerprint(entry.fp)) }))
@@ -287,18 +309,23 @@ export function applyImageLibrary(html: string, library: ImageLibraryEntry[], li
     if (status !== 'matched' || !entry) return;
     const block = doc.createElement('div');
     block.setAttribute('style', BLOCK_STYLE);
-    const link = doc.createElement('a');
-    // The draft link wins over the link the image had in the earlier article
-    link.setAttribute('href', cta.href);
-    link.setAttribute('target', '_blank');
-    link.setAttribute('rel', 'noopener');
-    if (linkAttributes) setLinkAttributes(link);
     const image = doc.createElement('img');
     image.setAttribute('src', entry.src);
     image.setAttribute('alt', cta.alt);
     image.setAttribute('style', IMAGE_STYLE);
-    link.appendChild(image);
-    block.appendChild(link);
+    if (cta.href === null) {
+      // Linkless (the hero): the image stands alone in the block
+      block.appendChild(image);
+    } else {
+      const link = doc.createElement('a');
+      // The draft link wins over the link the image had in the earlier article
+      link.setAttribute('href', cta.href);
+      link.setAttribute('target', '_blank');
+      link.setAttribute('rel', 'noopener');
+      if (linkAttributes) setLinkAttributes(link);
+      link.appendChild(image);
+      block.appendChild(link);
+    }
     cta.altParagraph.replaceWith(block);
     cta.linkParagraph?.remove();
   });
@@ -309,6 +336,9 @@ export function applyImageLibrary(html: string, library: ImageLibraryEntry[], li
 export function getImageCtaIssues(doc: Document, library: ImageLibraryEntry[], draftFingerprints?: DraftFingerprints): { element: Element; message: string }[] {
   const issues: { element: Element; message: string }[] = [];
   findImageCtas(doc).forEach(cta => {
+    // A linkless alt text (the hero) is normal in every draft: it is
+    // replaced on an exact picture match and otherwise left in silence.
+    if (cta.href === null) return;
     const { status, confidence } = resolveImageCta(cta, library, draftFingerprints);
     if (status === 'matched') return;
     const host = getStoreHost(cta.href);
