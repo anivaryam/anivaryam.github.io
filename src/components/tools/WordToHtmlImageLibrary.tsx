@@ -50,11 +50,13 @@ export function ImageLibraryPanel({ library, onChange }: ImageLibraryPanelProps)
     URL.revokeObjectURL(url);
   };
 
+  // Team members swap exported files, so several can be imported in one pick
   const importLibrary = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (!file) return;
-    addImages(parseImageLibraryJson(await file.text()), 0);
+    if (files.length === 0) return;
+    const texts = await Promise.all(files.map(file => file.text()));
+    addImages(texts.flatMap(parseImageLibraryJson), 0);
   };
 
   return (
@@ -70,7 +72,7 @@ export function ImageLibraryPanel({ library, onChange }: ImageLibraryPanelProps)
           <Button variant="ghost" size="sm" onClick={() => importInputRef.current?.click()} className="h-6 w-6 p-0" title="Import saved images">
             <Upload className="h-3 w-3" />
           </Button>
-          <input ref={importInputRef} type="file" accept="application/json,.json" onChange={importLibrary} className="hidden" aria-label="Import saved images" />
+          <input ref={importInputRef} type="file" accept="application/json,.json" multiple onChange={importLibrary} className="hidden" aria-label="Import saved images" />
         </div>
       </div>
       <textarea
