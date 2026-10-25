@@ -21,9 +21,9 @@ import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph, isSpacerElement } from "@/lib/word-to-html/html-spacing";
 import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "@/lib/word-to-html/spacer";
-import { getUnmatchedImageCtas, isShopifyImageBlock, isShopifyImageBlockStyled } from "@/lib/word-to-html/image-library";
+import { getImageCtaIssues, isShopifyImageBlock, isShopifyImageBlockStyled } from "@/lib/word-to-html/image-library";
 import { ImageLibraryPanel } from "./WordToHtmlImageLibrary";
-import { useImageLibrary, useImageLibraryEnabled } from "@/hooks/use-image-library";
+import { useDraftImageFingerprints, useImageLibrary, useImageLibraryEnabled, useImageLibraryFingerprintBackfill } from "@/hooks/use-image-library";
 import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -413,6 +413,10 @@ export function WordToHtmlConverter() {
   // only after the person opts in through the trial notice or the checkbox.
   const [imageLibrary, setImageLibrary] = useImageLibrary();
   const [imageLibraryEnabled, setImageLibraryEnabled] = useImageLibraryEnabled();
+  // Fingerprints let the pictures decide a match; matching waits for them,
+  // so an image is never inserted on alt text that the pictures contradict.
+  const draftFingerprintState = useDraftImageFingerprints(inputHtml, imageLibraryEnabled === true);
+  useImageLibraryFingerprintBackfill(imageLibrary, setImageLibrary, imageLibraryEnabled === true);
 
   // Use the same defaults as the conversion and validation pipelines.
   // The custom spacer is a text setting, so it survives a mode switch.
@@ -428,8 +432,9 @@ export function WordToHtmlConverter() {
     customSpacer: sanitizeSpacer
       ? sanitizeCustomSpacerMarkup(features.customSpacer)
       : features.customSpacer,
-    imageLibrary: imageLibraryEnabled ? imageLibrary : [],
-  }), [features, sanitizeSpacer, imageLibrary, imageLibraryEnabled]);
+    imageLibrary: imageLibraryEnabled && !draftFingerprintState.pending ? imageLibrary : [],
+    draftImageFingerprints: draftFingerprintState.fingerprints,
+  }), [features, sanitizeSpacer, imageLibrary, imageLibraryEnabled, draftFingerprintState]);
 
   // The dangerous constructs in the markup that actually reaches the output.
   const spacerWarnings = useMemo(
@@ -1119,9 +1124,10 @@ export function WordToHtmlConverter() {
           });
         }
 
-        // Image library - flag image CTAs without a saved image
+        // Image library - flag image CTAs without a saved image or whose
+        // draft picture differs from the saved one
         if (result.ruleId === 'image-library') {
-          getUnmatchedImageCtas(doc, effectiveFeatures.imageLibrary ?? []).forEach(issue => {
+          getImageCtaIssues(doc, effectiveFeatures.imageLibrary ?? [], effectiveFeatures.draftImageFingerprints).forEach(issue => {
             issue.element.setAttribute('data-warning', issue.message);
           });
         }

@@ -2,15 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { convertToHtml, getUnformattedHtml } from './converter';
 import { cleanWordHtml } from './word-html-cleaner';
 import { validateMode } from './validator';
+import { FINGERPRINT_LENGTH, FINGERPRINT_THRESHOLD, encodeFingerprint } from './image-fingerprint';
 import {
+  findDraftImages,
   getStoreHost,
   isShopifyImageBlock,
   mergeImageLibrary,
   normalizeAltText,
   parseImageLibraryJson,
   parseShopifyImages,
+  resolveImageCta,
+  type ImageCta,
   type ImageLibraryEntry,
 } from './image-library';
+
+const fp = (value: number) => encodeFingerprint(new Uint8Array(FINGERPRINT_LENGTH).fill(value));
 
 const CDN = 'https://cdn.shopify.com/s/files/1/0609/1168/1674/files/Kill_Weeds.png?v=1792864065';
 
@@ -103,9 +109,16 @@ describe('image library: saving Shopify images', () => {
 describe('image library: blogs conversion', () => {
   const href = 'https://lawnsynergy.com/collections/weed-killer-for-lawns';
 
+  /**
+   * Only an exact picture match is applied, so the CTA-shape tests pair a
+   * fingerprinted library with identical draft fingerprints.
+   */
+  const fpLibrary = library.map(entry => ({ ...entry, fp: fp(10) }));
+  const draftFps = (alt: string) => ({ [normalizeAltText(alt)]: fp(10) });
+
   it('replaces the alt text and link paragraphs with the Shopify image markup', () => {
     const alt = 'Kill Weeds. Keep Your Lawn: Shop Weed Killer For Lawns';
-    const features = { imageLibrary: library };
+    const features = { imageLibrary: fpLibrary, draftImageFingerprints: draftFps(alt) };
     const output = convertToHtml(cleanWordHtml(draft(draftCta(alt, href))), 'blogs', features);
     for (const html of [output.formatted, output.unformatted]) {
       const block = new DOMParser().parseFromString(html, 'text/html').querySelector('div');
@@ -118,14 +131,56 @@ describe('image library: blogs conversion', () => {
   });
 
   it('keeps the Shopify editor link attributes when Link Attributes is off', () => {
-    const output = getUnformattedHtml(draft(draftCta(library[0].alt, href)), 'blogs', { imageLibrary: library, linkAttributes: false });
+    const output = getUnformattedHtml(draft(draftCta(library[0].alt, href)), 'blogs', { imageLibrary: fpLibrary, linkAttributes: false, draftImageFingerprints: draftFps(library[0].alt) });
     expect(output).toContain(imageBlock(href, library[0].alt).replace('noopener noreferrer', 'noopener'));
   });
 
   it('uses the draft link, not the link the image had in the earlier article', () => {
     const draftHref = 'https://lawnsynergy.com/collections/spring-weed-control';
-    const output = getUnformattedHtml(draft(draftCta(library[0].alt, draftHref)), 'blogs', { imageLibrary: library });
+    const output = getUnformattedHtml(draft(draftCta(library[0].alt, draftHref)), 'blogs', { imageLibrary: fpLibrary, draftImageFingerprints: draftFps(library[0].alt) });
     expect(output).toContain(imageBlock(draftHref, library[0].alt));
+  });
+
+  it('uses a link anchored on the alt text when no "Link to:" paragraph follows', () => {
+    const draft = `<p>Body text.</p><p>Alt Image Text: <a href="${href}">Kill Weeds. Keep Your Lawn: Shop Weed Killer For Lawns</a></p><h2>Next</h2>`;
+    const features = { imageLibrary: fpLibrary, draftImageFingerprints: draftFps('Kill Weeds. Keep Your Lawn: Shop Weed Killer For Lawns') };
+    const output = getUnformattedHtml(draft, 'blogs', features);
+    expect(output).toContain(imageBlock(href, 'Kill Weeds. Keep Your Lawn: Shop Weed Killer For Lawns'));
+    expect(output).not.toMatch(/Alt Image Text/i);
+    expect(validateMode(output, 'blogs', features).summary.failed).toBe(0);
+  });
+
+  it('prefers the explicit "Link to:" paragraph over a link anchored on the alt text', () => {
+    const linkToHref = 'https://lawnsynergy.com/collections/spring-weed-control';
+    const draft = `<p>Body text.</p><p>Alt Image Text: <a href="${href}">${library[0].alt}</a></p>`
+      + `<p>Link to: <a href="${linkToHref}">${linkToHref}</a></p><h2>Next</h2>`;
+    const output = getUnformattedHtml(draft, 'blogs', { imageLibrary: fpLibrary, draftImageFingerprints: draftFps(library[0].alt) });
+    expect(output).toContain(imageBlock(linkToHref, library[0].alt));
+    expect(output).not.toMatch(/Alt Image Text|Link to/i);
+  });
+
+  it('uses a paragraph holding nothing but the link below the alt text', () => {
+    const features = { imageLibrary: fpLibrary, draftImageFingerprints: draftFps(library[0].alt) };
+    for (const linkParagraph of [
+      `<p><a href="${href}">${href}</a></p>`,   // lone anchor
+      `<p>${href}</p>`,                          // bare URL text
+      `<p><a href="${href}">Shop now</a></p>`,   // lone anchor, worded
+    ]) {
+      const draft = `<p>Body text.</p><p>Alt Image Text: ${library[0].alt}</p>${linkParagraph}<h2>Next</h2>`;
+      const output = getUnformattedHtml(draft, 'blogs', features);
+      expect(output).toContain(imageBlock(href, library[0].alt));
+      expect(output).not.toMatch(/Alt Image Text|Shop now/i);
+      expect(validateMode(output, 'blogs', features).summary.failed).toBe(0);
+    }
+  });
+
+  it('does not treat a body sentence containing a link as the CTA link', () => {
+    const draft = `<p>Alt Image Text: ${library[0].alt}</p>`
+      + `<p>Read our guide at <a href="https://lawnsynergy.com/blogs/x">the blog</a> today.</p>`;
+    const output = getUnformattedHtml(draft, 'blogs', { imageLibrary: library });
+    // The sentence is not consumed and no image is inserted from it
+    expect(output).toContain('Read our guide at');
+    expect(output).not.toContain('<div');
   });
 
   it('keeps the CTA paragraphs and warns when no saved image matches', () => {
@@ -177,6 +232,132 @@ describe('image library: sanitized structure exception', () => {
       'Disallowed element <div> present',
       'Banned attribute "style" on <div>',
       'Banned attribute "data-x" on <img>',
+    ]);
+  });
+});
+
+describe('image library: picture fingerprints', () => {
+  const href = 'https://lawnsynergy.com/collections/weed-killer-for-lawns';
+  const entry = (alt: string, value?: number): ImageLibraryEntry =>
+    ({ host: 'lawnsynergy.com', alt, src: CDN, ...(value === undefined ? {} : { fp: fp(value) }) });
+  const cta = (alt: string): ImageCta => {
+    const doc = new DOMParser().parseFromString(`<p>Alt Image Text: ${alt}</p><p>Link to: <a href="${href}">x</a></p>`, 'text/html');
+    const [altParagraph, linkParagraph] = Array.from(doc.querySelectorAll('p'));
+    return { altParagraph, linkParagraph, alt, href };
+  };
+  const fps = (alt: string, value: number | null) => ({ [normalizeAltText(alt)]: value === null ? null : fp(value) });
+
+  it('matches by picture even when the alt text was reworded', () => {
+    const saved = entry('Old wording of this banner', 10);
+    expect(resolveImageCta(cta('Completely New Wording'), [saved], fps('Completely New Wording', 10)))
+      .toEqual({ status: 'matched', entry: saved, confidence: 'high' });
+  });
+
+  it('refuses an alt-text match when the pictures differ', () => {
+    const saved = entry('Shop Weed Killer', 10);
+    expect(resolveImageCta(cta('Shop Weed Killer'), [saved], fps('Shop Weed Killer', 10 + FINGERPRINT_THRESHOLD + 1)))
+      .toEqual({ status: 'conflict', entry: saved });
+  });
+
+  it('holds an alt-only match instead of applying it', () => {
+    const saved = entry('Shop Weed Killer', 10);
+    const held = { status: 'below-confidence', entry: saved, confidence: 'low' };
+    // Draft image unreadable
+    expect(resolveImageCta(cta('Shop Weed Killer'), [saved], fps('Shop Weed Killer', null))).toEqual(held);
+    // No draft fingerprint at all
+    expect(resolveImageCta(cta('Shop Weed Killer'), [saved], undefined)).toEqual(held);
+    // Saved entry has no fingerprint yet
+    const legacy = entry('Shop Weed Killer');
+    expect(resolveImageCta(cta('Shop Weed Killer'), [legacy], fps('Shop Weed Killer', 10)))
+      .toEqual({ status: 'below-confidence', entry: legacy, confidence: 'low' });
+  });
+
+  it('holds a picture match outside the calibrated same-image range', () => {
+    // One cell differs by 40: within the threshold but not an exact match
+    const cells = new Uint8Array(FINGERPRINT_LENGTH).fill(10);
+    cells[0] = 50;
+    const saved = { ...entry('Shop Weed Killer'), fp: encodeFingerprint(cells) };
+    expect(resolveImageCta(cta('Shop Weed Killer'), [saved], fps('Shop Weed Killer', 10)))
+      .toEqual({ status: 'below-confidence', entry: saved, confidence: 'medium' });
+  });
+
+  it('warns when a match is held, naming why', () => {
+    const saved = entry('Shop Grass Seed');
+    const draft = '<p>Body text.</p><p>Alt Image Text: Shop Grass Seed</p>'
+      + `<p>Link to: <a href="${href}">${href}</a></p><p>Done.</p>`;
+    const features = { imageLibrary: [saved] };
+    const output = getUnformattedHtml(draft, 'blogs', features);
+    expect(output).not.toContain('<img');
+    const result = validateMode(output, 'blogs', features).results.find(r => r.ruleId === 'image-library');
+    expect(result?.details).toEqual([
+      'Picture for "Shop Grass Seed" on lawnsynergy.com not verified; image not applied',
+    ]);
+    // A near-but-not-exact picture match is named differently
+    const cells = new Uint8Array(FINGERPRINT_LENGTH).fill(10);
+    cells[0] = 50;
+    const near = { imageLibrary: [{ ...saved, fp: encodeFingerprint(cells) }], draftImageFingerprints: { [normalizeAltText('Shop Grass Seed')]: fp(10) } };
+    const nearResult = validateMode(getUnformattedHtml(draft, 'blogs', near), 'blogs', near).results.find(r => r.ruleId === 'image-library');
+    expect(nearResult?.details).toEqual([
+      'Picture match for "Shop Grass Seed" on lawnsynergy.com is not exact; image not applied',
+    ]);
+  });
+
+  it('keeps pictures scoped to the store of the draft link', () => {
+    const otherStore = { ...entry('Other wording', 10), host: 'other-store.com' };
+    expect(resolveImageCta(cta('Shop Weed Killer'), [otherStore], fps('Shop Weed Killer', 10)))
+      .toEqual({ status: 'unmatched' });
+  });
+
+  it('converts with a conflict kept as text and warned about', () => {
+    const saved = entry('Shop Grass Seed', 10);
+    const draft = '<p>Body text.</p><p>Alt Image Text: Shop Grass Seed</p>'
+      + `<p>Link to: <a href="${href}">${href}</a></p><p>Done.</p>`;
+    const features = { imageLibrary: [saved], draftImageFingerprints: fps('Shop Grass Seed', 200) };
+    const output = getUnformattedHtml(draft, 'blogs', features);
+    expect(output).toContain('Alt Image Text: Shop Grass Seed');
+    expect(output).not.toContain('<img');
+    const result = validateMode(output, 'blogs', features).results.find(r => r.ruleId === 'image-library');
+    expect(result).toMatchObject({
+      passed: false,
+      severity: 'warning',
+      details: ['The draft picture differs from the saved image for "Shop Grass Seed" on lawnsynergy.com'],
+    });
+  });
+
+  it('converts with a cross-alt picture match inserted under the draft alt text', () => {
+    const saved = entry('Old banner wording', 10);
+    const draft = '<p>Body text.</p><p>Alt Image Text: New Banner Wording</p>'
+      + `<p>Link to: <a href="${href}">${href}</a></p><p>Done.</p>`;
+    const features = { imageLibrary: [saved], draftImageFingerprints: fps('New Banner Wording', 12) };
+    const output = getUnformattedHtml(draft, 'blogs', features);
+    expect(output).toContain(`<img src="${CDN}" alt="New Banner Wording" style="float: none;">`);
+    expect(validateMode(output, 'blogs', features).summary.failed).toBe(0);
+  });
+
+  it('keeps a saved fingerprint when the same image is saved again without one', () => {
+    const saved = entry('Shop Weed Killer', 10);
+    const merged = mergeImageLibrary([saved], [entry('Shop Weed Killer')]);
+    expect(merged).toEqual({ library: [saved], added: 0, updated: 0 });
+    // A new upload (different src) drops the stale fingerprint
+    const reuploaded = { ...entry('Shop Weed Killer'), src: `${CDN}&new` };
+    expect(mergeImageLibrary([saved], [reuploaded]).library).toEqual([reuploaded]);
+  });
+
+  it('keeps a valid fingerprint through JSON and drops a malformed one', () => {
+    const saved = entry('Shop Weed Killer', 10);
+    expect(parseImageLibraryJson(JSON.stringify([saved]))).toEqual([saved]);
+    expect(parseImageLibraryJson(JSON.stringify([{ ...saved, fp: 'bad!' }])))
+      .toEqual([entry('Shop Weed Killer')]);
+  });
+
+  it('finds the draft images with the alt text of their CTA', () => {
+    const html = '<p><img src="data:image/png;base64,AAA">Alt Image Text: Same Paragraph</p>'
+      + '<p><img src="https://lh7-rt.googleusercontent.com/docsz/x=s800"></p><p>Alt Image Text: Next Paragraph</p>'
+      + '<p><img src="https://host.com/hero.png"></p><p>No label here</p>'
+      + '<p><img src="/relative.png">Alt Image Text: Relative Skipped</p>';
+    expect(findDraftImages(html)).toEqual([
+      { alt: 'Same Paragraph', src: 'data:image/png;base64,AAA' },
+      { alt: 'Next Paragraph', src: 'https://lh7-rt.googleusercontent.com/docsz/x=s800' },
     ]);
   });
 });

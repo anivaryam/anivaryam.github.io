@@ -17,13 +17,14 @@ import { isHeaderList } from './mode-ol-header-conversion';
 import { findListLabel } from './mode-list-normalize';
 import { isFootnoteLink, LINK_CONTINUES_TEXT_RE } from './mode-link-spacing';
 import { isDisclaimerParagraph, isDisclaimerSectionStart } from './mode-disclaimer-normalize';
-import { getUnmatchedImageCtas, isShopifyImageBlock, isShopifyImageBlockStyled } from './image-library';
+import { getImageCtaIssues, isShopifyImageBlock, isShopifyImageBlockStyled } from './image-library';
 
 /**
  * Feature flags that toggle behavior. The custom spacer is a text setting
- * and the image library is data, so they are not part of this set.
+ * and the image library and its fingerprints are data, so they are not part
+ * of this set.
  */
-type BooleanFeatureKey = Exclude<keyof FeatureFlags, 'customSpacer' | 'imageLibrary'>;
+type BooleanFeatureKey = Exclude<keyof FeatureFlags, 'customSpacer' | 'imageLibrary' | 'draftImageFingerprints'>;
 
 /**
  * Centralized feature flag check with explicit defaults
@@ -1767,7 +1768,7 @@ function validateImageLibrary(doc: Document, mode: OutputMode, features?: Featur
     };
   }
 
-  const issues = getUnmatchedImageCtas(doc, library).map(issue => issue.message);
+  const issues = getImageCtaIssues(doc, library, features?.draftImageFingerprints).map(issue => issue.message);
 
   return {
     ruleId: 'image-library',
@@ -1778,7 +1779,7 @@ function validateImageLibrary(doc: Document, mode: OutputMode, features?: Featur
       ? 'Every image CTA uses a saved image'
       : `${issues.length} image CTA(s) without a saved image`,
     severity: issues.length === 0 ? 'info' : 'warning',
-    expected: 'Every "Alt Image Text:" + "Link to:" pair matches a saved image for the store of its link',
+    expected: 'Every "Alt Image Text:" + "Link to:" pair matches a saved image for the store of its link, by picture or by alt text',
     actual: issues.length === 0
       ? 'All image CTAs replaced'
       : `${issues.length} image CTA(s) left as text`,

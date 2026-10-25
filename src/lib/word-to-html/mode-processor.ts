@@ -43,6 +43,7 @@ export function resolveFeatures(mode: OutputMode, features: FeatureFlags = {}): 
     tablesToLists: features.tablesToLists ?? false,
     customSpacer: features.customSpacer ?? '',
     imageLibrary: features.imageLibrary ?? [],
+    draftImageFingerprints: features.draftImageFingerprints ?? {},
   };
 }
 
@@ -174,7 +175,7 @@ function runModePipeline(html: string, mode: OutputMode, features: FeatureFlags 
     // the spacer its "Alt Image Text:" paragraph got, and before paragraph
     // spacing, which would split the alt text and link paragraphs. Relative
     // paths still run afterwards.
-    processedHtml = applyImageLibrary(processedHtml, features.imageLibrary ?? [], features.linkAttributes !== false);
+    processedHtml = applyImageLibrary(processedHtml, features.imageLibrary ?? [], features.linkAttributes !== false, features.draftImageFingerprints);
 
     // Paragraph spacing between consecutive paragraphs (disabled by default)
     if (features.paragraphSpacing === true) {

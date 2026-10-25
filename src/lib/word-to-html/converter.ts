@@ -20,7 +20,7 @@ import { formatCompact } from './html-formatter';
 import { processMode, resolveFeatures } from './mode-processor';
 import { addBoldParagraphSpacing } from './mode-spacing';
 import { cleanWordHtml } from './word-html-cleaner';
-import type { ImageLibraryEntry } from './image-library';
+import type { DraftFingerprints, ImageLibraryEntry } from './image-library';
 
 export type OutputMode = 'regular' | 'blogs' | 'shoppables';
 
@@ -46,6 +46,8 @@ export interface FeatureFlags {
   customSpacer?: string;
   /** Blogs only: uploaded Shopify images that replace matching image CTAs. */
   imageLibrary?: ImageLibraryEntry[];
+  /** Fingerprints of the draft's own images, keyed by normalized alt text. */
+  draftImageFingerprints?: DraftFingerprints;
 }
 
 /**

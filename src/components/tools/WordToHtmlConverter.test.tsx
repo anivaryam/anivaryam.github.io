@@ -11,6 +11,18 @@ vi.mock('lenis', () => ({
   default: vi.fn(),
 }));
 vi.mock('@/hooks/use-toast', () => ({ toast: vi.fn() }));
+/* Image loading needs a real browser; tests encode the fingerprint in the
+ * src as #fp<n>, and a src without one is unreadable. */
+vi.mock('@/lib/word-to-html/image-fingerprint', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/word-to-html/image-fingerprint')>();
+  return {
+    ...actual,
+    loadFingerprint: async (src: string) => {
+      const match = src.match(/#fp(\d+)/);
+      return match ? new Uint8Array(actual.FINGERPRINT_LENGTH).fill(Number(match[1])) : null;
+    },
+  };
+});
 
 /** Output a test stands in for the converter's; null runs the real converter. */
 const converterOutput = vi.hoisted(() => ({ html: null as string | null }));
@@ -1234,11 +1246,11 @@ describe('WordToHtmlConverter', () => {
     expect(screen.queryByText(/so the default spacer is used/)).toBeNull();
   });
 
-  it('saves Shopify images in this browser and reuses them for matching Blogs image CTAs', () => {
+  it('saves Shopify images in this browser and reuses them for matching Blogs image CTAs', async () => {
     localStorage.clear();
-    const src = 'https://cdn.shopify.com/s/files/1/0609/1168/1674/files/Kill_Weeds.png?v=1';
+    const src = 'https://cdn.shopify.com/s/files/1/0609/1168/1674/files/Kill_Weeds.png?v=1#fp30';
     const href = 'https://lawnsynergy.com/collections/weed-killer-for-lawns';
-    const draft = (alt: string) => `<p>Body text.</p><p>Alt Image Text: ${alt}</p><p>Link to: <a href="${href}">${href}</a></p><h2>Final Thoughts</h2><p>Done.</p>`;
+    const draft = (alt: string, draftSrc: string) => `<p>Body text.</p><p><img src="${draftSrc}">Alt Image Text: ${alt}</p><p>Link to: <a href="${href}">${href}</a></p><h2>Final Thoughts</h2><p>Done.</p>`;
     const { unmount } = render(<WordToHtmlConverter />);
     fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Use Image Library' }));
@@ -1256,30 +1268,36 @@ describe('WordToHtmlConverter', () => {
     unmount();
 
     // The saved image survives a reload and matches a punctuation variant
+    // with the same picture (exact picture match required)
     render(<WordToHtmlConverter />);
     fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
-    enterHtml(draft('Kill Weeds. Keep Your Lawn: Shop Weed Killer For Lawns'));
+    enterHtml(draft('Kill Weeds. Keep Your Lawn: Shop Weed Killer For Lawns', 'https://lh7-rt.googleusercontent.com/docsz/d#fp30'));
     const preview = document.querySelector('.output-preview')!;
+    await waitFor(() => expect(preview.querySelector('img')).not.toBeNull(), { timeout: 5000 });
     const image = preview.querySelector(`div[style="text-align: center;"] > a[href="${href}"] > img[style="float: none;"]`);
     expect(image?.getAttribute('src')).toBe(src);
+    // The alt text always comes from the current draft, not the saved entry
+    expect(image?.getAttribute('alt')).toBe('Kill Weeds. Keep Your Lawn: Shop Weed Killer For Lawns');
     expect(preview.textContent).not.toMatch(/Alt Image Text|Link to/);
     expect(preview.querySelector('[data-warning]')).toBeNull();
     expect(screen.queryByText(/^Failed:/)).toBeNull();
 
-    // An image CTA without a saved image stays as text and is highlighted
-    enterHtml(draft('Shop Grass Seed'));
+    // An image CTA matching no saved picture or alt text stays as text
+    enterHtml(draft('Shop Grass Seed', 'https://lh7-rt.googleusercontent.com/docsz/d#fp200'));
+    await waitFor(() => expect(preview.querySelector('[data-warning]')).not.toBeNull(), { timeout: 5000 });
     expect(preview.querySelector('img')).toBeNull();
     expect(preview.querySelector('[data-warning]')?.getAttribute('data-warning'))
       .toBe('No saved image for "Shop Grass Seed" on lawnsynergy.com');
-  });
+  }, 20000);
 
-  it('asks about the image library trial only in Blogs mode and keeps it off when declined', () => {
+  it('asks about the image library trial only in Blogs mode and keeps it off when declined', async () => {
     localStorage.clear();
     localStorage.setItem('word-to-html:image-library', JSON.stringify([
-      { host: 'lawnsynergy.com', alt: 'Shop Grass Seed', src: 'https://cdn.shopify.com/s/files/1/seed.png' },
+      { host: 'lawnsynergy.com', alt: 'Shop Grass Seed', src: 'https://cdn.shopify.com/s/files/1/seed.png#fp40' },
     ]));
+    const draftHtml = '<p>Body text.</p><p><img src="https://lh7-rt.googleusercontent.com/docsz/d#fp40">Alt Image Text: Shop Grass Seed</p><p>Link to: <a href="https://lawnsynergy.com/collections/grass-seed">link</a></p>';
     const { unmount } = render(<WordToHtmlConverter />);
-    enterHtml('<p>Body text.</p><p>Alt Image Text: Shop Grass Seed</p><p>Link to: <a href="https://lawnsynergy.com/collections/grass-seed">link</a></p>');
+    enterHtml(draftHtml);
     expect(screen.queryByRole('alertdialog')).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -1297,12 +1315,65 @@ describe('WordToHtmlConverter', () => {
 
     // The answer is remembered; the checkbox turns the library on later
     render(<WordToHtmlConverter />);
-    enterHtml('<p>Body text.</p><p>Alt Image Text: Shop Grass Seed</p><p>Link to: <a href="https://lawnsynergy.com/collections/grass-seed">link</a></p>');
+    enterHtml(draftHtml);
     fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Image Library (Shopify only, trial)' }));
-    expect(document.querySelector('.output-preview img')?.getAttribute('src')).toBe('https://cdn.shopify.com/s/files/1/seed.png');
+    await waitFor(
+      () => expect(document.querySelector('.output-preview img')?.getAttribute('src')).toBe('https://cdn.shopify.com/s/files/1/seed.png#fp40'),
+      { timeout: 5000 }
+    );
     expect(screen.getByRole('textbox', { name: 'Shopify HTML' })).toBeTruthy();
-  });
+  }, 20000);
+
+  it('lets the pictures decide a match and refuses a same-alt different picture', async () => {
+    localStorage.clear();
+    localStorage.setItem(IMAGE_LIBRARY_ENABLED_KEY, 'true');
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([
+      { host: 'lawnsynergy.com', alt: 'Old Banner Wording', src: 'https://cdn.shopify.com/s/files/1/a.png#fp10' },
+      { host: 'lawnsynergy.com', alt: 'Shop Fungicide', src: 'https://cdn.shopify.com/s/files/1/b.png#fp120' },
+    ]));
+    const href = 'https://lawnsynergy.com/collections/x';
+    const draft = (alt: string, draftSrc: string) =>
+      `<p>Body text.</p><p><img src="${draftSrc}">Alt Image Text: ${alt}</p><p>Link to: <a href="${href}">${href}</a></p><p>Done.</p>`;
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    const preview = document.querySelector('.output-preview')!;
+
+    // Picture matches a saved image under a reworded alt text
+    enterHtml(draft('Completely New Wording', 'https://lh7-rt.googleusercontent.com/docsz/img#fp12'));
+    await waitFor(() => expect(preview.querySelector('img')).not.toBeNull(), { timeout: 5000 });
+    expect(preview.querySelector('img')?.getAttribute('src')).toBe('https://cdn.shopify.com/s/files/1/a.png#fp10');
+    expect(preview.querySelector('img')?.getAttribute('alt')).toBe('Completely New Wording');
+
+    // Same alt text, different picture (matching no saved image): nothing
+    // inserted, conflict warned
+    enterHtml(draft('Shop Fungicide', 'https://lh7-rt.googleusercontent.com/docsz/img#fp200'));
+    await waitFor(() => expect(preview.querySelector('[data-warning]')).not.toBeNull(), { timeout: 5000 });
+    expect(preview.querySelector('img')).toBeNull();
+    expect(preview.querySelector('[data-warning]')?.getAttribute('data-warning'))
+      .toBe('The draft picture differs from the saved image for "Shop Fungicide" on lawnsynergy.com');
+
+    // Unreadable draft picture: the alt-only match is never applied, and
+    // the hold says why
+    enterHtml(draft('Shop Fungicide', 'https://lh7-rt.googleusercontent.com/docsz/unreadable'));
+    await waitFor(() => expect(preview.querySelector('[data-warning]')).not.toBeNull(), { timeout: 5000 });
+    expect(preview.querySelector('img')).toBeNull();
+    expect(preview.querySelector('[data-warning]')?.getAttribute('data-warning'))
+      .toBe('Picture for "Shop Fungicide" on lawnsynergy.com not verified; image not applied');
+  }, 20000);
+
+  it('backfills missing fingerprints of saved entries and stores them', async () => {
+    localStorage.clear();
+    localStorage.setItem(IMAGE_LIBRARY_ENABLED_KEY, 'true');
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([
+      { host: 'lawnsynergy.com', alt: 'Shop Grass Seed', src: 'https://cdn.shopify.com/s/files/1/c.png#fp30' },
+    ]));
+    render(<WordToHtmlConverter />);
+    await waitFor(() => {
+      const [entry] = JSON.parse(localStorage.getItem('word-to-html:image-library') || '[]');
+      expect(typeof entry.fp).toBe('string');
+    }, { timeout: 5000 });
+  }, 20000);
 });
