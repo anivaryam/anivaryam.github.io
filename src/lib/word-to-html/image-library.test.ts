@@ -6,11 +6,13 @@ import { FINGERPRINT_LENGTH, FINGERPRINT_THRESHOLD, encodeFingerprint } from './
 import {
   findDraftImages,
   getStoreHost,
+  isAltLabelParagraph,
   isShopifyImageBlock,
   mergeImageLibrary,
   normalizeAltText,
   parseImageLibraryJson,
   parseShopifyImages,
+  readAltLabel,
   resolveImageCta,
   type ImageCta,
   type ImageLibraryEntry,
@@ -29,8 +31,8 @@ const library: ImageLibraryEntry[] = [
 
 // Google Docs clipboard markup: the draft image shares a paragraph with the
 // alt text label, and the link label sits in the next paragraph.
-const draftCta = (alt: string, href: string) =>
-  `<p dir="ltr"><span><img src="https://lh7-rt.googleusercontent.com/docsz/draft.png" width="602" height="200"></span><span>Alt Image Text: ${alt}</span></p>`
+const draftCta = (alt: string, href: string, label = 'Alt Image Text:') =>
+  `<p dir="ltr"><span><img src="https://lh7-rt.googleusercontent.com/docsz/draft.png" width="602" height="200"></span><span>${label} ${alt}</span></p>`
   + `<p dir="ltr"><span>Link to: </span><a href="${href}"><span style="text-decoration:underline;">${href}</span></a></p>`;
 
 const draft = (cta: string) =>
@@ -257,6 +259,80 @@ describe('image library: blogs conversion', () => {
       expect(output).not.toContain('<div');
       expect(validateMode(output, mode, { imageLibrary: library }).results.find(r => r.ruleId === 'image-library')?.passed).toBe(true);
     }
+  });
+});
+
+describe('image library: alt text label wordings', () => {
+  const href = 'https://lawnsynergy.com/collections/weed-killer-for-lawns';
+  const alt = library[0].alt;
+  const fpLibrary = library.map(entry => ({ ...entry, fp: fp(10) }));
+  const draftFps = { [normalizeAltText(alt)]: fp(10) };
+
+  // Drafts reorder, shorten, and decorate the label; each one is read
+  it.each([
+    'Alt Image Text:', 'Alt Text Image:', 'Image Alt Text:', 'Text Alt Image:', 'Image Text Alt:',
+    'Alt Text:', 'Alt Image:', 'Image Alt:', 'Alt:', 'ALT IMAGE TEXT:', 'alt text image:',
+    'Alt Text :', 'Alt-Text:', 'Alt_Text:', 'AltText:', 'Alt Tag:', 'Image Alt Tag:', 'Alt Attribute:',
+    'Alt Text for Image:', 'Alt Text for the Image:', 'Alt Text (Image 1):', 'Image #2 Alt Text:', 'Image 3 Alt Text:',
+    'Suggested Alt Text:', 'Featured Image Alt Text:', 'CTA Image Alt Text:', 'Alternative Text:', 'Image/Alt Text:',
+    'Alt Image Text -', 'Alt Image Text \u2013', 'Alt Image Text\u2014', 'Alt Image Text\uff1a', 'Alt Image Text-',
+    '**Alt Image Text:**', '**Alt Image Text**:', '*Alt Text Image:*', 'Alt\u00a0Image\u00a0Text:', '\u200bAlt Image Text:',
+  ])('reads the alt text after "%s"', label => {
+    expect(readAltLabel(`${label} ${alt}`)).toBe(alt);
+    expect(readAltLabel(`  ${label}  ${alt}  `)).toBe(alt);
+  });
+
+  it.each([
+    'Alt text helps search engines read images.',     // no separator
+    'Alt Image Text Shop Grass Seed',                  // no separator
+    'Why Alt Text Matters: search engines read it',    // words a label never has
+    'Read the alt image text: it names the picture',   // label mid-sentence
+    'Alternatively: mow weekly.',
+    'Alternative: try clover.',                        // "alternative" names alt text only with "text"
+    'Image Text: Shop Now',                            // text on the picture, not alt text
+    'Image: Shop Now',
+    'Altitude: 2,000 feet',
+    'Ctrl Alt - Delete restarts it',
+    'Link to: https://lawnsynergy.com',
+    '',
+  ])('does not read "%s" as an alt text label', text => {
+    expect(readAltLabel(text)).toBeNull();
+  });
+
+  it('reads a label alone as empty alt text, and only at the start of a paragraph', () => {
+    expect(readAltLabel('Alt Text Image:')).toBe('');
+    const doc = new DOMParser().parseFromString(
+      `<p><strong>Alt Text Image:</strong> ${alt}</p><h3>Alt Text: Basics</h3><p>See the alt text: here.</p>`,
+      'text/html',
+    );
+    expect(Array.from(doc.body.children).map(isAltLabelParagraph)).toEqual([true, false, false]);
+  });
+
+  it.each(['Alt Text Image:', 'Image Alt Text -', '**Alt Text:**', 'ALT-TEXT:'])('replaces a "%s" CTA with the saved Shopify image', label => {
+    const features = { imageLibrary: fpLibrary, draftImageFingerprints: draftFps };
+    const raw = draft(draftCta(alt, href, label));
+    expect(findDraftImages(raw).map(image => image.alt)).toEqual([alt]);
+    const output = convertToHtml(cleanWordHtml(raw), 'blogs', features);
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const block = doc.querySelector('div');
+      expect(block?.outerHTML).toBe(imageBlock(href, alt));
+      expect(block?.previousElementSibling?.outerHTML).toBe('<p>&nbsp;</p>');
+      expect(doc.body.textContent).not.toMatch(/\balt\b|link to/i);
+      expect(validateMode(html, 'blogs', features).summary.failed).toBe(0);
+    }
+  });
+
+  it.each(['Alt Text Image:', 'Image Alt Text -', '**Alt Text:**'])('spaces a "%s" paragraph and leaves its link unwrapped, as validation expects', label => {
+    const features = { wrapLinksStrongUnderline: true };
+    const raw = `<p>Body with <a href="https://lawnsynergy.com/a">a link</a>.</p><p>${label} <a href="${href}">${alt}</a></p><h2>Next</h2>`;
+    const html = getUnformattedHtml(raw, 'blogs', features);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const altParagraph = Array.from(doc.querySelectorAll('p')).find(isAltLabelParagraph);
+    expect(altParagraph?.previousElementSibling?.outerHTML).toBe('<p>&nbsp;</p>');
+    expect(altParagraph?.querySelector('strong')).toBeNull();
+    expect(doc.querySelector('a[href="https://lawnsynergy.com/a"] > strong > u')).not.toBeNull();
+    expect(validateMode(html, 'blogs', features).summary.failed).toBe(0);
   });
 });
 

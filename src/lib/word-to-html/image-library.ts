@@ -47,8 +47,21 @@ export interface ImageCta {
   href: string | null;
 }
 
-// Same label variants the Blocks view groups as image blocks.
-const ALT_LABEL = /^alt(?: image)? text:\s*/i;
+/*
+ * Drafts word the alt text label many ways: "Alt Image Text:", "Alt Text
+ * Image:", "Image Alt Text -", "ALT-TEXT:", "**Alt Tag:**". A label is a
+ * short run of known words that names alt text, then a colon or a dash.
+ * Known words only, so a body sentence such as "Why Alt Text Matters:" or
+ * "Alternatively: ..." is never read as a label.
+ */
+const ALT_LABEL = /^[\s*_]*([\p{L}\p{N}][\p{L}\p{N}\s_/()#-]{0,80}?)[\s*_]*(?:[:\uff1a\u2013\u2014]|-(?=\s|$))[\s*_]*/u;
+const ALT_LABEL_WORDS = new Set([
+  'alt', 'alttext', 'alttag', 'alternative', 'alternate',
+  'image', 'images', 'img', 'picture', 'photo', 'graphic', 'banner', 'hero', 'featured', 'cta',
+  'product', 'main', 'header', 'blog', 'text', 'tag', 'attribute', 'description',
+  'suggested', 'recommended', 'seo', 'for', 'the',
+]);
+const ALT_LABEL_MAX_WORDS = 8;
 const LINK_LABEL = /^link(?: to)?:\s*/i;
 
 const BLOCK_STYLE = 'text-align: center;';
@@ -56,6 +69,29 @@ const IMAGE_STYLE = 'float: none;';
 
 function paragraphText(element: Element): string {
   return (element.textContent || '').replace(/\u00a0/g, ' ').trim();
+}
+
+/**
+ * The alt text after an alt text label at the start of `text`, or null when
+ * `text` does not start with one; a label alone gives ''. The one label
+ * check for spacing, link wrapping, the image library, validation, and the
+ * Blocks view, so they always agree on which paragraphs are alt text.
+ */
+export function readAltLabel(text: string): string | null {
+  const clean = text.replace(/[\u200b-\u200d\u2060]/g, '');
+  const match = ALT_LABEL.exec(clean);
+  if (!match) return null;
+  const words = match[1].toLowerCase().split(/[\s_/()#-]+/).filter(Boolean);
+  const namesAlt = words.some(word => /^alt(?:text|tag)?$/.test(word))
+    || (words.includes('text') && words.some(word => word === 'alternative' || word === 'alternate'));
+  const known = words.every(word => ALT_LABEL_WORDS.has(word) || /^\d+$/.test(word));
+  if (!namesAlt || !known || words.length > ALT_LABEL_MAX_WORDS) return null;
+  return clean.slice(match[0].length).replace(/[\s*_]+$/, '');
+}
+
+/** A paragraph that starts with an alt text label (see readAltLabel). */
+export function isAltLabelParagraph(element: Element | null): boolean {
+  return element?.tagName.toLowerCase() === 'p' && readAltLabel(element.textContent || '') !== null;
 }
 
 /** Alt text compared without case, punctuation, or extra whitespace. */
@@ -132,11 +168,9 @@ export function findDraftImages(html: string): { alt: string; src: string }[] {
     if (!/^(data:image\/|(https:)?\/\/)/i.test(src)) return;
     const paragraph = image.closest('p');
     if (!paragraph) return;
-    const label = [paragraph, paragraph.nextElementSibling]
-      .map(el => el ? paragraphText(el) : '')
-      .find(text => ALT_LABEL.test(text));
-    if (!label) return;
-    const alt = label.replace(ALT_LABEL, '').trim();
+    const alt = [paragraph, paragraph.nextElementSibling]
+      .map(el => el ? readAltLabel(paragraphText(el)) : null)
+      .find(body => body !== null);
     if (alt) images.push({ alt, src });
   });
   return images;
@@ -207,9 +241,7 @@ function pureLinkHref(paragraph: Element): string | null {
 export function findImageCtas(doc: Document): ImageCta[] {
   const ctas: ImageCta[] = [];
   doc.body.querySelectorAll('p').forEach(altParagraph => {
-    const altText = paragraphText(altParagraph);
-    if (!ALT_LABEL.test(altText)) return;
-    const alt = altText.replace(ALT_LABEL, '').trim();
+    const alt = readAltLabel(paragraphText(altParagraph));
     if (!alt) return;
     const next = altParagraph.nextElementSibling;
     if (next && next.tagName.toLowerCase() === 'p') {

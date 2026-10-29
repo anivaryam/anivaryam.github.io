@@ -21,7 +21,7 @@ import { findSourcesSections } from "@/lib/word-to-html/mode-sources-section";
 import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph, isSpacerElement } from "@/lib/word-to-html/html-spacing";
 import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "@/lib/word-to-html/spacer";
-import { isShopifyImageBlock, isShopifyImageBlockStyled } from "@/lib/word-to-html/image-library";
+import { isAltLabelParagraph, isShopifyImageBlock, isShopifyImageBlockStyled, readAltLabel } from "@/lib/word-to-html/image-library";
 import { ImageLibraryPanel } from "./WordToHtmlImageLibrary";
 import { useDraftImageFingerprints, useImageLibrary, useImageLibraryEnabled, useImageLibraryFingerprintBackfill } from "@/hooks/use-image-library";
 import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
@@ -301,7 +301,7 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
         id: `block-${blockId++}`,
       });
     }
-    else if (tagName === 'p' && (element.textContent?.toLowerCase().includes('alt image text:') || element.textContent?.toLowerCase().includes('alt text:') || element.textContent?.toLowerCase().startsWith('link:') || element.textContent?.toLowerCase().startsWith('link to:'))) {
+    else if (tagName === 'p' && (isAltLabelParagraph(element) || element.textContent?.toLowerCase().includes('alt image text:') || element.textContent?.toLowerCase().includes('alt text:') || element.textContent?.toLowerCase().startsWith('link:') || element.textContent?.toLowerCase().startsWith('link to:'))) {
       if (currentContentHtml.trim()) {
         blocks.push({
           type: 'content',
@@ -312,6 +312,7 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
         currentContentHtml = '';
       }
       let imageBlockHtml = element.outerHTML;
+      const imageBlockParagraphs: Element[] = [element];
       let nextIndex = index + 1;
       while (nextIndex < children.length) {
         const nextNode = children[nextIndex];
@@ -328,8 +329,9 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
         const nextTagName = nextElement.tagName?.toLowerCase();
         if (nextTagName === 'p') {
           const text = nextElement.textContent?.trim().toLowerCase() || '';
-          if (text === '' || text.includes('alt image text:') || text.includes('alt text:') || text.startsWith('link:') || text.startsWith('link to:')) {
+          if (text === '' || isAltLabelParagraph(nextElement) || text.includes('alt image text:') || text.includes('alt text:') || text.startsWith('link:') || text.startsWith('link to:')) {
             imageBlockHtml += nextElement.outerHTML;
+            imageBlockParagraphs.push(nextElement);
             skipIndices.add(nextIndex);
             nextIndex++;
           } else {
@@ -339,8 +341,7 @@ const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[
           break;
         }
       }
-      const altMatch = imageBlockHtml.match(/Alt (?:image )?text:\s*(.+?)(?:<\/|$)/i);
-      const altText = altMatch ? altMatch[1].replace(/<[^>]*>/g, '').trim() : 'No alt text';
+      const altText = imageBlockParagraphs.map(p => readAltLabel(p.textContent || '')).find(Boolean) || 'No alt text';
       const linkMatch = imageBlockHtml.match(/href=["']([^"']+)["']/);
       const linkHref = linkMatch ? linkMatch[1] : '';
       blocks.push({
@@ -1146,16 +1147,13 @@ export function WordToHtmlConverter() {
         // Wrap links strong & underline - flag <a> missing direct <strong><u> wrap
         if (result.ruleId === 'wrap-links-strong-underline' && !result.passed) {
           doc.querySelectorAll('a[href]').forEach((a) => {
-            // Skip alt-context links (image link or inside Alt image text: paragraph)
+            // Skip alt-context links (image link or inside an alt text label paragraph)
             if (a.querySelector('img')) return;
             let parent = a.parentElement;
             let inAlt = false;
             while (parent) {
               if (parent.tagName.toLowerCase() === 'p') {
-                const text = (parent.textContent || '').trim().toLowerCase();
-                if (text.startsWith('alt image text:')) {
-                  inAlt = true;
-                }
+                inAlt = isAltLabelParagraph(parent);
                 break;
               }
               parent = parent.parentElement;

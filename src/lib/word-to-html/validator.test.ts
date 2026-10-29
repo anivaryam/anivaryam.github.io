@@ -878,6 +878,11 @@ describe('validateSpacing (D9 / D11)', () => {
     expectFail(results, 'spacing-rules');
   });
 
+  it.each(['Alt Text Image:', 'Image Alt Text -', 'ALT-TEXT:'])('D11: a "%s" label triggers the alt-image-text spacing check', (label) => {
+    const r = getResult(validateMode(`<p>Body</p><p>${label} description</p>`, 'blogs', defaultFeatures), 'spacing-rules');
+    expect(r.details).toEqual(['Missing spacing before "Alt Image Text:" paragraph']);
+  });
+
   it('D11: alt image text mid-sentence does NOT trigger the alt-image-text-specific message', () => {
     /* Strict startsWith matching means a paragraph that *contains* but does
      * not *start with* "alt image text:" is not treated as the label. */
@@ -1190,6 +1195,12 @@ describe('validateWrapLinksStrongUnderline', () => {
 
   it('enabled: skips links in "Alt image text:" paragraph', () => {
     const html = '<p>alt image text: see <a href="https://x.com">x</a></p>';
+    const results = validateMode(html, 'blogs', { wrapLinksStrongUnderline: true });
+    expectPass(results, 'wrap-links-strong-underline');
+  });
+
+  it.each(['Alt Text Image:', 'Image Alt Text -', 'ALT-TEXT:'])('enabled: skips links in a "%s" paragraph', (label) => {
+    const html = `<p>${label} see <a href="https://x.com">x</a></p>`;
     const results = validateMode(html, 'blogs', { wrapLinksStrongUnderline: true });
     expectPass(results, 'wrap-links-strong-underline');
   });

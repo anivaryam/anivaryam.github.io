@@ -11,6 +11,7 @@ import { findKeyTakeawaysSection } from './mode-key-takeaways';
 import { findSourcesSections, isSourcesLabel } from './mode-sources-section';
 import { isReadMoreParagraph } from './mode-br-spacing';
 import { isDisclaimerSectionStart } from './mode-disclaimer-normalize';
+import { isAltLabelParagraph } from './image-library';
 
 function addSpacingAfterKeyTakeaways(doc: Document): void {
   const section = findKeyTakeawaysSection(doc);
@@ -216,7 +217,8 @@ function addSpacingBeforeAltImageText(doc: Document): void {
 
   paragraphs.forEach(p => {
     const text = p.textContent?.trim().toLowerCase() || '';
-    if (text.includes('alt image text:')) {
+    // Every label wording, and every paragraph that always got the spacer
+    if (isAltLabelParagraph(p) || text.includes('alt image text:')) {
 
       const prevSibling = p.previousElementSibling;
       const hasExistingSpacing = prevSibling && isSpacingElement(prevSibling);

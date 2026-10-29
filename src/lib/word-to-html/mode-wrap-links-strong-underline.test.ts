@@ -3,8 +3,8 @@
  *
  * Wraps the text content of every non-alt-text <a> in <strong><u>...</u></strong>.
  * Skips anchors that wrap an <img> and anchors inside paragraphs that start
- * with "Alt image text:" (mirrors the validator's reliable detection at
- * validator.ts:1395).
+ * with an alt text label in any wording (readAltLabel in image-library.ts,
+ * shared with the validator).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -53,6 +53,11 @@ describe('wrapLinksStrongUnderline', () => {
     const out = wrapLinksStrongUnderline(html);
     expect(out).not.toContain('<strong><u>');
     expect(out).toContain('href="https://x.com"');
+  });
+
+  it.each(['Alt Text Image:', 'Image Alt Text -', 'ALT-TEXT:', '**Alt Tag:**'])('skips links inside a "%s" paragraph', (label) => {
+    const out = wrapLinksStrongUnderline(`<p>${label} <a href="https://x.com">source</a></p>`);
+    expect(out).not.toContain('<strong><u>');
   });
 
   it('does NOT skip when "alt image text:" appears mid-sentence (strict prefix)', () => {

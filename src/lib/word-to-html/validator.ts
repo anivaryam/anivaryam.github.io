@@ -17,7 +17,7 @@ import { isHeaderList } from './mode-ol-header-conversion';
 import { findListLabel } from './mode-list-normalize';
 import { isFootnoteLink, LINK_CONTINUES_TEXT_RE } from './mode-link-spacing';
 import { isDisclaimerParagraph, isDisclaimerSectionStart } from './mode-disclaimer-normalize';
-import { getImageCtaIssues, isShopifyImageBlock, isShopifyImageBlockStyled } from './image-library';
+import { getImageCtaIssues, isAltLabelParagraph, isShopifyImageBlock, isShopifyImageBlockStyled } from './image-library';
 
 /**
  * Feature flags that toggle behavior. The custom spacer is a text setting
@@ -1170,7 +1170,7 @@ function validateSpecialParagraphSpacing(doc: Document, issues: { element: Eleme
       }
     }
 
-    if (text.startsWith('alt image text:')) {
+    if (isAltLabelParagraph(p)) {
       const prevSibling = p.previousElementSibling;
       if (!isSpacerElement(prevSibling, spacer)) {
         issues.push({ element: p, message: 'Missing spacing before "Alt Image Text:" paragraph' });
@@ -1692,8 +1692,7 @@ function isAltContextLink(anchor: Element): boolean {
   let parent = anchor.parentElement;
   while (parent) {
     if (parent.tagName.toLowerCase() === 'p') {
-      const text = (parent.textContent || '').trim().toLowerCase();
-      return text.startsWith('alt image text:');
+      return isAltLabelParagraph(parent);
     }
     parent = parent.parentElement;
   }
