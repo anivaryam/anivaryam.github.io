@@ -5,10 +5,12 @@
  *
  * Skipped anchors:
  *  - Anchors that wrap an <img> element (image links).
- *  - Anchors inside a <p> whose trimmed lowercased text starts with
- *    "alt image text:" — mirrors the existing reliable detection used by
- *    validator.ts (validateSpecialParagraphSpacing).
+ *  - Anchors inside a <p> that starts with an alt text label in any of
+ *    its wordings ("Alt Image Text:", "Alt Text Image:", ...); see
+ *    readAltLabel in image-library.ts, which validator.ts shares.
  */
+
+import { isAltLabelParagraph } from './image-library';
 
 export function wrapLinksStrongUnderline(html: string): string {
   if (!html || typeof html !== 'string') {
@@ -39,16 +41,14 @@ function isImageLink(anchor: Element): boolean {
 }
 
 /**
- * Mirrors the prefix check used by validator.ts's
- * validateSpecialParagraphSpacing (the same reliable detection pinned by the
- * D11 test cases — exact prefix only, not substring).
+ * The same label check as validator.ts's validateSpecialParagraphSpacing:
+ * the paragraph starts with the label, a mention mid-sentence does not count.
  */
 function isInsideAltImageTextParagraph(anchor: Element): boolean {
   let parent = anchor.parentElement;
   while (parent) {
     if (parent.tagName.toLowerCase() === 'p') {
-      const text = (parent.textContent || '').trim().toLowerCase();
-      return text.startsWith('alt image text:');
+      return isAltLabelParagraph(parent);
     }
     parent = parent.parentElement;
   }

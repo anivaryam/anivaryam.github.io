@@ -499,6 +499,27 @@ describe('WordToHtmlConverter', () => {
     }
   });
 
+  it.each(['Alt Text Image:', 'Image Alt Text -'])('groups a "%s" paragraph and its link into one image block', async (label) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      render(<WordToHtmlConverter />);
+      enterHtml(`<p>Body.</p><p>${label} Shop Grass Seed</p><p>Link to: <a href="https://lawnsynergy.com/collections/grass-seed">grass seed</a></p><h2>Next</h2>`);
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+      expect(document.querySelector('.output-preview [data-warning]')).toBeNull();
+      expect(screen.queryByText(/^Failed:/)).toBeNull();
+      const payloads = copyAllBlocks(writeText);
+      await waitFor(() => expect(writeText).toHaveBeenCalled());
+      const imageBlock = payloads.find(html => html.includes('Shop Grass Seed'));
+      expect(imageBlock).toContain('Link to:');
+      expect(imageBlock).not.toContain('Body.');
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
   it('converts typed plain text into a valid paragraph in Regular mode', () => {
     render(<WordToHtmlConverter />);
     enterHtml('Just a typed line');
