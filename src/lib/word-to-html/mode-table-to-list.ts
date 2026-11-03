@@ -48,7 +48,10 @@ function buildGrid(table: HTMLTableElement): Grid {
       // Skip the slots that a rowspan from an earlier row already fills
       while (grid[r][column]) column++;
       const colSpan = Math.max(1, cell.colSpan || 1);
-      const rowSpan = Math.max(1, cell.rowSpan || 1);
+      // Zero spans the remaining rows of this section, not subsequent row groups.
+      const rowSpan = cell.rowSpan === 0
+        ? (row.parentElement as HTMLTableSectionElement).rows.length - row.sectionRowIndex
+        : Math.max(1, cell.rowSpan || 1);
       for (let dr = 0; dr < rowSpan && r + dr < rows.length; dr++) {
         for (let dc = 0; dc < colSpan; dc++) grid[r + dr][column + dc] = cell;
       }

@@ -72,13 +72,25 @@ describe('convertTablesToLists', () => {
     expect(convertTablesToLists(html)).toBe('<h3>Item</h3><ul><li><strong>Price:</strong> $5</li></ul>');
   });
 
-  it('lines merged cells up with their labels', () => {
+  it.each(['2', '0'])('lines merged cells up with their labels (rowspan="%s")', rowspan => {
     const html = '<table><tr><th>Name</th><th>Type</th><th>Size</th><th>Price</th></tr>'
-      + '<tr><td>A</td><td rowspan="2">Candy</td><td colspan="2">Ask</td></tr>'
+      + `<tr><td>A</td><td rowspan="${rowspan}">Candy</td><td colspan="2">Ask</td></tr>`
       + '<tr><td>B</td><td>1 lb</td><td>$5</td></tr></table>';
     expect(convertTablesToLists(html)).toBe(
       '<h3>A</h3><ul><li><strong>Type:</strong> Candy</li><li><strong>Size:</strong> Ask</li></ul>'
       + '<h3>B</h3><ul><li><strong>Type:</strong> Candy</li><li><strong>Size:</strong> 1 lb</li><li><strong>Price:</strong> $5</li></ul>'
+    );
+  });
+
+  it('applies rowspan="0" from its current row only to the end of its row group', () => {
+    const html = '<table><thead><tr><th>Name</th><th>Colour</th></tr></thead>'
+      + '<tbody><tr><td>Start</td><td>White</td></tr><tr><td rowspan="0">Feed</td><td>Red</td></tr><tr><td>Blue</td></tr></tbody>'
+      + '<tbody><tr><td>Finish</td><td>Green</td></tr></tbody></table>';
+    expect(convertTablesToLists(html)).toBe(
+      '<h3>Start</h3><ul><li><strong>Colour:</strong> White</li></ul>'
+      + '<h3>Feed</h3><ul><li><strong>Colour:</strong> Red</li></ul>'
+      + '<h3>Feed</h3><ul><li><strong>Colour:</strong> Blue</li></ul>'
+      + '<h3>Finish</h3><ul><li><strong>Colour:</strong> Green</li></ul>'
     );
   });
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { WordToHtmlConverter } from './WordToHtmlConverter';
 import { toast } from '@/hooks/use-toast';
 import { getUnformattedHtml } from '@/lib/word-to-html/converter';
@@ -1330,6 +1331,97 @@ describe('WordToHtmlConverter', () => {
     expect(toast).toHaveBeenLastCalledWith({ title: '2 new images saved', description: '1 already saved.' });
   });
 
+  it.each(['save', 'remove'] as const)('preserves a %s made while a library import is being read', async action => {
+    localStorage.clear();
+    const entry = (alt: string) => ({
+      host: 'lawnsynergy.com', alt, src: `https://cdn.shopify.com/${alt}.png#fp30`,
+      fp: imageFingerprint.encodeFingerprint(new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(30)),
+    });
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([entry('A')]));
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    let finishRead!: (text: string) => void;
+    const pending = new Promise<string>(resolve => { finishRead = resolve; });
+    const file = new File([''], 'library.json', { type: 'application/json' });
+    vi.spyOn(file, 'text').mockReturnValue(pending);
+    fireEvent.change(screen.getByLabelText('Import saved images'), { target: { files: [file] } });
+
+    if (action === 'save') {
+      fireEvent.change(screen.getByRole('textbox', { name: 'Shopify HTML' }), {
+        target: { value: `<a href="https://lawnsynergy.com/x"><img src="${entry('B').src}" alt="B"></a>` },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save images' }));
+    } else {
+      fireEvent.click(screen.getByTitle('Remove "A"'));
+    }
+    const saved = () => JSON.parse(localStorage.getItem('word-to-html:image-library') || '[]');
+    expect(saved().map((image: { alt: string }) => image.alt)).toEqual(action === 'save' ? ['A', 'B'] : []);
+
+    await act(async () => { finishRead(JSON.stringify([entry('C')])); });
+    expect(saved().map((image: { alt: string }) => image.alt)).toEqual(action === 'save' ? ['A', 'B', 'C'] : ['C']);
+    expect(toast).toHaveBeenLastCalledWith({ title: '1 new image saved', description: undefined });
+  });
+
+  it.each([false, true])('merges overlapping library imports without duplicate notifications in Strict Mode (reverse: %s)', async reverse => {
+    localStorage.clear();
+    const entry = (alt: string) => ({
+      host: 'lawnsynergy.com', alt, src: `https://cdn.shopify.com/${alt}.png`,
+      fp: imageFingerprint.encodeFingerprint(new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(30)),
+    });
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([entry('A')]));
+    render(<StrictMode><WordToHtmlConverter /></StrictMode>);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    const finishReads: ((text: string) => void)[] = [];
+    const files = ['first.json', 'second.json'].map(name => {
+      const pending = new Promise<string>(resolve => { finishReads.push(resolve); });
+      const file = new File([''], name, { type: 'application/json' });
+      vi.spyOn(file, 'text').mockReturnValue(pending);
+      return file;
+    });
+    files.forEach(file => fireEvent.change(screen.getByLabelText('Import saved images'), { target: { files: [file] } }));
+
+    await act(async () => {
+      for (const index of reverse ? [1, 0] : [0, 1]) {
+        finishReads[index](JSON.stringify(index === 0 ? [entry('B')] : [entry('B'), entry('C')]));
+      }
+    });
+    const saved = JSON.parse(localStorage.getItem('word-to-html:image-library') || '[]');
+    expect(saved).toEqual([entry('A'), entry('B'), entry('C')]);
+    expect(toast).toHaveBeenCalledTimes(2);
+    expect(toast).toHaveBeenLastCalledWith({
+      title: reverse ? '0 new images saved' : '1 new image saved',
+      description: '1 already saved.',
+    });
+  });
+
+  it('keeps a removal during import when a fingerprint update is already queued', async () => {
+    localStorage.clear();
+    const entry = { host: 'lawnsynergy.com', alt: 'A', src: 'https://cdn.shopify.com/A.png' };
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([entry]));
+    let finishLoad!: (pixels: Uint8Array) => void;
+    vi.spyOn(imageFingerprint, 'loadFingerprint').mockReturnValue(new Promise(resolve => { finishLoad = resolve; }));
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    let finishRead!: (text: string) => void;
+    const file = new File([''], 'library.json', { type: 'application/json' });
+    vi.spyOn(file, 'text').mockReturnValue(new Promise(resolve => { finishRead = resolve; }));
+    fireEvent.change(screen.getByLabelText('Import saved images'), { target: { files: [file] } });
+    const pixels = new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(30);
+    const incoming = { ...entry, alt: 'C', src: 'https://cdn.shopify.com/C.png', fp: imageFingerprint.encodeFingerprint(pixels) };
+    await act(async () => {
+      finishLoad(pixels);
+      await Promise.resolve();
+      await Promise.resolve();
+      fireEvent.click(screen.getByTitle('Remove "A"'));
+      finishRead(JSON.stringify([incoming]));
+    });
+    const saved = JSON.parse(localStorage.getItem('word-to-html:image-library') || '[]');
+    expect(saved.map((image: { alt: string }) => image.alt)).toEqual(['C']);
+  });
+
   it('reports a full browser storage once instead of losing the save silently', () => {
     localStorage.clear();
     render(<WordToHtmlConverter />);
@@ -1459,6 +1551,45 @@ describe('WordToHtmlConverter', () => {
     await waitFor(() => expect(sources()).toEqual([srcA, srcB]));
     expect(load).toHaveBeenCalledTimes(2);
     expect(screen.queryByText(/^Failed:/)).toBeNull();
+  });
+
+  it('keeps matched table-cell image links in preview, Code and Blocks copies', async () => {
+    localStorage.clear();
+    const href = 'https://lawnsynergy.com/collections/seed';
+    const src = 'https://cdn.shopify.com/seed.png';
+    const entry = {
+      host: 'lawnsynergy.com', alt: 'Saved description', src,
+      fp: imageFingerprint.encodeFingerprint(new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(30)),
+    };
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([entry]));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      render(<WordToHtmlConverter />);
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+      const input = '<table><tr><td>Before<img src="https://draft.test/seed#fp30"><p>Alt Text: Draft description</p>'
+        + `<p>Link to: <a href="${href}">Shop now</a></p><p>After.</p></td><td>Other cell</td></tr></table>`;
+      enterHtml(input);
+      const inputHtml = screen.getByRole('textbox', { name: 'Word document content' }).innerHTML;
+      const preview = document.querySelector('.output-preview')!;
+      await waitFor(() => expect(preview.querySelector('td > a > img')?.getAttribute('src')).toBe(src));
+      expect(preview.querySelector('td > a')?.getAttribute('href')).toBe(href);
+      expect(preview.textContent).not.toMatch(/Alt Text|Link to|Shop now/);
+      expect(screen.queryByText(/^Failed:/)).toBeNull();
+      fireEvent.click(screen.getByTitle('Copy HTML'));
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      const code = new DOMParser().parseFromString(writeText.mock.calls[0][0], 'text/html');
+      expect(code.querySelector('td > a > img')?.getAttribute('src')).toBe(src);
+      expect(code.querySelector('td > a')?.getAttribute('href')).toBe(href);
+      writeText.mockClear();
+      const blocks = new DOMParser().parseFromString(copyAllBlocks(writeText).join(''), 'text/html');
+      expect(blocks.body.innerHTML).toBe(code.body.innerHTML.replace(/>\s+</g, '><'));
+      expect(screen.getByRole('textbox', { name: 'Word document content' }).innerHTML).toBe(inputHtml);
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
   });
 
   it('loads legacy descriptions of one source once while preserving distinct same-alt pictures', () => {

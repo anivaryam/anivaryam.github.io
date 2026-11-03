@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction } from "react";
 import { Download, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -11,18 +11,23 @@ import {
 
 interface ImageLibraryPanelProps {
   library: ImageLibraryEntry[];
-  onChange: (library: ImageLibraryEntry[]) => void;
+  onChange: Dispatch<SetStateAction<ImageLibraryEntry[]>>;
 }
 
 export function ImageLibraryPanel({ library, onChange }: ImageLibraryPanelProps) {
   const [shopifyHtml, setShopifyHtml] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
+  const latestLibraryRef = useRef(library);
+  useEffect(() => { latestLibraryRef.current = library; }, [library]);
   const sorted = [...library].sort((a, b) => a.host.localeCompare(b.host) || a.alt.localeCompare(b.alt));
 
   // Saved images are never duplicated: the toast says which ones were new
   const addImages = (entries: ImageLibraryEntry[], skipped: number) => {
-    const merged = mergeImageLibrary(library, entries);
-    onChange(merged.library);
+    // Count against the latest edits, including imports completing in one batch.
+    // Keep notifications outside the pure updater, which React may run twice.
+    const merged = mergeImageLibrary(latestLibraryRef.current, entries);
+    latestLibraryRef.current = merged.library;
+    onChange(previous => mergeImageLibrary(previous, entries).library);
     const unchanged = entries.length - merged.added - merged.updated;
     const details = [
       merged.updated > 0 && `${merged.updated} descriptions updated`,
@@ -104,7 +109,10 @@ export function ImageLibraryPanel({ library, onChange }: ImageLibraryPanelProps)
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => onChange(library.filter(saved => saved !== entry))}
+                onClick={() => {
+                  latestLibraryRef.current = latestLibraryRef.current.filter(saved => saved !== entry);
+                  onChange(previous => previous.filter(saved => saved !== entry));
+                }}
                 className="h-6 w-6 p-0 flex-shrink-0"
                 title={`Remove "${entry.alt || 'Untitled image'}"`}
               >
