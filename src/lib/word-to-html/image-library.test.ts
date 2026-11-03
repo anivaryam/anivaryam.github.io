@@ -180,6 +180,41 @@ describe('image library: blogs conversion', () => {
     }
   });
 
+  it.each([true, false])('keeps a table-cell image link supplied by metadata (Link Attributes: %s)', linkAttributes => {
+    const input = `<table><tr><td>Before<img src="${DRAFT_SRC}"><p>Alt Text: Draft description</p>`
+      + `<p>Link to: <a href="${href}">Shop now</a></p><p>After.</p></td><td>Other cell</td></tr></table>`;
+    const features = { imageLibrary: fpLibrary, draftImageFingerprints: draftFps(), linkAttributes };
+    const output = convertToHtml(cleanWordHtml(input, true), 'blogs', features);
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const image = doc.querySelector('td > a > img');
+      expect(image?.getAttribute('src')).toBe(CDN);
+      expect(image?.getAttribute('alt')).toBe('Draft description');
+      expect(image?.hasAttribute('style')).toBe(false);
+      expect(image?.parentElement?.getAttribute('href')).toBe(href);
+      expect(image?.parentElement?.getAttribute('target')).toBe('_blank');
+      expect(image?.parentElement?.getAttribute('rel')).toBe(linkAttributes ? 'noopener noreferrer' : 'noopener');
+      expect(doc.querySelector('td div, a a')).toBeNull();
+      expect(doc.body.textContent).toContain('Before');
+      expect(doc.body.textContent).toContain('After.');
+      expect(doc.body.textContent).toContain('Other cell');
+      expect(doc.body.textContent).not.toMatch(/Alt Text|Link to|Shop now/);
+      expect(validateMode(html, 'blogs', features).summary.failed).toBe(0);
+    }
+  });
+
+  it('keeps existing inline image link attributes when replacing its picture', () => {
+    const input = `<table><tr><td>Before <a href="${href}" target="_self" rel="nofollow"><img src="${DRAFT_SRC}" alt="Draft description"></a> after</td></tr></table>`;
+    const features = { imageLibrary: fpLibrary, draftImageFingerprints: draftFps(), linkAttributes: false };
+    const output = convertToHtml(cleanWordHtml(input, true), 'blogs', features);
+    for (const html of [output.formatted, output.unformatted]) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      expect(doc.querySelector('a')?.outerHTML).toBe(`<a href="${href}" target="_self" rel="nofollow"><img src="${CDN}" alt="Draft description"></a>`);
+      expect(doc.querySelectorAll('a')).toHaveLength(1);
+      expect(doc.querySelector('td')?.textContent).toBe('Before  after');
+    }
+  });
+
   it('does not treat a body sentence containing a link as the CTA link', () => {
     const draft = `<p>Alt Image Text: ${library[0].alt}</p>`
       + `<p>Read our guide at <a href="https://lawnsynergy.com/blogs/x">the blog</a> today.</p>`;

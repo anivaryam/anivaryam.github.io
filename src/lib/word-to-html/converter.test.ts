@@ -1613,6 +1613,7 @@ describe('Word-to-HTML pipeline regressions', () => {
   it.each([
     ['<ul start="2" reversed><li>x</li></ul>', '<ul><li>x</li></ul>'],
     ['<ol><li start="2" reversed>x</li></ol>', '<ol><li>x</li></ol>'],
+    ['<ol start="4"><li>Four</li><li value="9">Nine</li><li>Ten</li></ol>', '<ol start="4"><li>Four</li><li>Nine</li><li>Ten</li></ol>'],
     ['<p start="2" reversed>x</p>', '<p>x</p>'],
     ['<ul type="a"><li type="a">x</li></ul>', '<ul><li>x</li></ul>'],
   ])('removes list numbering attributes outside <ol>: %s', (input, expected) => {
@@ -2113,6 +2114,31 @@ describe('Shoppables table to list conversion', () => {
       const doc = new DOMParser().parseFromString(getUnformattedHtml(googleDocsTable, mode, features), 'text/html');
       expect(doc.querySelectorAll('table tr')).toHaveLength(3);
       expect(doc.querySelector('h3')).toBeNull();
+    }
+  });
+
+  it('preserves rowspan="0" in tables and converts its remaining rows only when enabled', () => {
+    const input = '<table><thead><tr><th>Product</th><th>Colour</th></tr></thead>'
+      + '<tbody><tr><td rowspan="0">Feed</td><td>Red</td></tr><tr><td>Blue</td></tr></tbody></table>';
+    const runs: [OutputMode, { tablesToLists?: boolean }][] = [
+      ['regular', { tablesToLists: true }], ['blogs', { tablesToLists: true }],
+      ['shoppables', {}], ['shoppables', { tablesToLists: true }],
+    ];
+    for (const [mode, features] of runs) {
+      const output = convertToHtml(cleanWordHtml(input), mode, features);
+      for (const html of [output.formatted, output.unformatted]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        if (mode === 'shoppables' && features.tablesToLists) {
+          expect(doc.querySelector('table')).toBeNull();
+          expect(Array.from(doc.querySelectorAll('h3'), heading => heading.textContent)).toEqual(['Feed', 'Feed']);
+          expect(Array.from(doc.querySelectorAll('li'), item => item.textContent)).toEqual(['Colour: Red', 'Colour: Blue']);
+        } else {
+          expect(doc.querySelector('td[rowspan="0"]')?.textContent).toBe('Feed');
+          expect(doc.querySelectorAll('table tr')).toHaveLength(3);
+          expect(doc.querySelector('h3')).toBeNull();
+        }
+        expect(validateMode(html, mode, features).summary.failed).toBe(0);
+      }
     }
   });
 });

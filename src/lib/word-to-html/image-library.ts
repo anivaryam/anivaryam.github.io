@@ -333,7 +333,9 @@ export function applyImageLibrary(html: string, library: ImageLibraryEntry[], li
     } else {
       // Inline, list and table images stay in their original content position.
       image.removeAttribute('style');
-      cta.image.replaceWith(image);
+      // Keep existing anchors; otherwise retain the generated link without its block wrapper.
+      cta.image.replaceWith(cta.image.closest('a[href]') ? image : block.firstElementChild!);
+      cta.altParagraph?.remove();
     }
     cta.linkParagraph?.remove();
   });
