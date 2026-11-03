@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { WordToHtmlConverter } from './WordToHtmlConverter';
 import { toast } from '@/hooks/use-toast';
 import { getUnformattedHtml } from '@/lib/word-to-html/converter';
 import { stripSpacerMarkers } from '@/lib/word-to-html/spacer';
 import Lenis, { type LenisOptions } from 'lenis';
-import { IMAGE_LIBRARY_ENABLED_KEY } from '@/hooks/use-image-library';
+import { IMAGE_LIBRARY_ENABLED_KEY, useDraftImageFingerprints, useImageLibrary, useImageLibraryFingerprintBackfill } from '@/hooks/use-image-library';
+import * as imageFingerprint from '@/lib/word-to-html/image-fingerprint';
 
 vi.mock('lenis', () => ({
   default: vi.fn(),
@@ -1302,7 +1303,7 @@ describe('WordToHtmlConverter', () => {
     expect(preview.querySelector('[data-warning]')).toBeNull();
     expect(screen.queryByText(/^Failed:/)).toBeNull();
 
-    // An image CTA matching no saved picture or alt text stays as text,
+    // An image CTA matching no saved picture stays as text,
     // reported in the validation panel, not highlighted in the preview
     enterHtml(draft('Shop Grass Seed', 'https://lh7-rt.googleusercontent.com/docsz/d#fp200'));
     await waitFor(() => expect(screen.queryByText(/^Failed:/)).not.toBeNull(), { timeout: 5000 });
@@ -1432,4 +1433,161 @@ describe('WordToHtmlConverter', () => {
       expect(typeof entry.fp).toBe('string');
     }, { timeout: 5000 });
   }, 20000);
+
+  it('matches unlabelled pictures independently of repeated or edited alt text', async () => {
+    localStorage.clear();
+    const fp = (value: number) => imageFingerprint.encodeFingerprint(new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(value));
+    const srcA = 'https://cdn.shopify.com/a.png';
+    const srcB = 'https://cdn.shopify.com/b.png';
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([
+      { host: 'lawnsynergy.com', alt: 'Same', src: srcA, fp: fp(10) },
+      { host: 'lawnsynergy.com', alt: 'Same', src: srcB, fp: fp(200) },
+    ]));
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint');
+    const draft = (alt: string) => `<p>Body text.</p><p><img src="https://draft.test/a#fp10" ${alt}></p>`
+      + `<p><img src="https://draft.test/b#fp200" ${alt}></p>`;
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    enterHtml(draft('alt="Same"'));
+    const preview = document.querySelector('.output-preview')!;
+    const sources = () => Array.from(preview.querySelectorAll('img'), image => image.getAttribute('src'));
+    await waitFor(() => expect(sources()).toEqual([srcA, srcB]));
+    expect(load).toHaveBeenCalledTimes(2);
+    enterHtml(draft('alt="Different description"'));
+    await waitFor(() => expect(sources()).toEqual([srcA, srcB]));
+    enterHtml(draft(''));
+    await waitFor(() => expect(sources()).toEqual([srcA, srcB]));
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/^Failed:/)).toBeNull();
+  });
+
+  it('loads legacy descriptions of one source once while preserving distinct same-alt pictures', () => {
+    const fp = imageFingerprint.encodeFingerprint(new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(10));
+    const first = { host: 'store.com', src: 'https://cdn.shopify.com/a.png', alt: 'Old description', fp };
+    const renamed = { ...first, alt: 'Same', fp: undefined };
+    const other = { ...first, src: 'https://cdn.shopify.com/b.png', alt: 'Same' };
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([first, renamed, other]));
+    const { result } = renderHook(() => useImageLibrary());
+    const expected = [{ ...renamed, fp }, other];
+    expect(result.current[0]).toEqual(expected);
+    expect(JSON.parse(localStorage.getItem('word-to-html:image-library')!)).toEqual(expected);
+  });
+
+  it('recomputes picture identity when only the middle of a long source changes', async () => {
+    const source = (value: number) => `https://draft.test/${'a'.repeat(80)}#fp${value}${'z'.repeat(80)}`;
+    const html = (value: number) => `<p><img src="${source(value)}"></p>`;
+    const { result, rerender } = renderHook(({ input }) => useDraftImageFingerprints(input, true), {
+      initialProps: { input: html(100) },
+    });
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    rerender({ input: html(200) });
+    expect(result.current.pending).toBe(true);
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    expect(result.current.fingerprints).toEqual([{
+      src: source(200), href: null,
+      fp: imageFingerprint.encodeFingerprint(new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(200)),
+    }]);
+  });
+
+  it('reports unreadable unlabelled pictures even with no output text', async () => {
+    localStorage.clear();
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([
+      { host: 'lawnsynergy.com', alt: '', src: 'https://cdn.shopify.com/a.png#fp10' },
+    ]));
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    enterHtml('<p><img src="https://draft.test/unreadable"></p>');
+    await waitFor(() => expect(screen.queryByText(/^Failed:/)).not.toBeNull());
+    expect(document.querySelector('.output-preview img')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText('1 draft image(s) without a verified saved picture match')).toBeTruthy();
+  });
+});
+
+describe('saved image fingerprint queue', () => {
+  const entry = (index: number) => ({ host: 'store.com', alt: `Image ${index}`, src: `https://cdn.shopify.com/${index}.png` });
+  const pixels = (value: number) => new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(value);
+  const useBackfill = (enabled: boolean) => {
+    const [library, setLibrary] = useImageLibrary();
+    useImageLibraryFingerprintBackfill(library, setLibrary, enabled);
+    return { library, setLibrary };
+  };
+
+  it('retries interrupted loads on re-enable and ignores their late results', async () => {
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([entry(0)]));
+    let finishOld!: (value: Uint8Array) => void;
+    const oldLoad = new Promise<Uint8Array>(resolve => { finishOld = resolve; });
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockResolvedValue(pixels(20))
+      .mockImplementationOnce(() => oldLoad);
+    const { result, rerender } = renderHook(({ enabled }) => useBackfill(enabled), { initialProps: { enabled: true } });
+    expect(load).toHaveBeenCalledTimes(1);
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+    const expected = imageFingerprint.encodeFingerprint(pixels(20));
+    await waitFor(() => expect(result.current.library[0].fp).toBe(expected));
+    expect(load).toHaveBeenCalledTimes(2);
+    await act(async () => { finishOld(pixels(10)); });
+    expect(result.current.library[0].fp).toBe(expected);
+    expect(JSON.parse(localStorage.getItem('word-to-html:image-library')!)[0].fp).toBe(expected);
+  });
+
+  it('retries interrupted loads after library edits without losing the edits', async () => {
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([entry(0)]));
+    let finishOld!: (value: Uint8Array) => void;
+    const oldLoad = new Promise<Uint8Array>(resolve => { finishOld = resolve; });
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockResolvedValue(pixels(20))
+      .mockImplementationOnce(() => oldLoad);
+    const { result } = renderHook(() => useBackfill(true));
+    act(() => result.current.setLibrary(previous => [{ ...previous[0], alt: 'Edited description' }, entry(1)]));
+    const expected = imageFingerprint.encodeFingerprint(pixels(20));
+    await waitFor(() => expect(result.current.library.map(image => image.fp)).toEqual([expected, expected]));
+    expect(load).toHaveBeenCalledTimes(3);
+    await act(async () => { finishOld(pixels(10)); });
+    expect(result.current.library).toEqual([{ ...entry(0), alt: 'Edited description', fp: expected }, { ...entry(1), fp: expected }]);
+  });
+
+  it('advances through failed batches and does not retry completed failures', async () => {
+    const entries = Array.from({ length: 21 }, (_, index) => entry(index));
+    localStorage.setItem('word-to-html:image-library', JSON.stringify(entries));
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockImplementation(async src =>
+      src === entry(20).src ? pixels(20) : null);
+    const { result, rerender } = renderHook(({ enabled }) => useBackfill(enabled), { initialProps: { enabled: true } });
+    const expected = imageFingerprint.encodeFingerprint(pixels(20));
+    await waitFor(() => expect(result.current.library[20].fp).toBe(expected));
+    expect(result.current.library.slice(0, 20).every(image => !image.fp)).toBe(true);
+    expect(load).toHaveBeenCalledTimes(21);
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+    await act(async () => {});
+    expect(load).toHaveBeenCalledTimes(21);
+  });
+
+  it('loads at most ten distinct sources per batch and shares results across stores', async () => {
+    const entries = [entry(0), { ...entry(0), host: 'other-store.com' }, ...Array.from({ length: 10 }, (_, index) => entry(index + 1))];
+    localStorage.setItem('word-to-html:image-library', JSON.stringify(entries));
+    let finishFirst!: (value: Uint8Array) => void;
+    const firstLoad = new Promise<Uint8Array>(resolve => { finishFirst = resolve; });
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockResolvedValue(pixels(20))
+      .mockImplementationOnce(() => firstLoad);
+    const { result } = renderHook(() => useBackfill(true));
+    expect(load.mock.calls.map(([src]) => src)).toEqual(Array.from({ length: 10 }, (_, index) => entry(index).src));
+    await act(async () => { finishFirst(pixels(20)); });
+    await waitFor(() => expect(result.current.library.every(image => !!image.fp)).toBe(true));
+    expect(load).toHaveBeenCalledTimes(11);
+    expect(result.current.library[0].fp).toBe(result.current.library[1].fp);
+  });
+
+  it('does not save results or start another batch after unmount', async () => {
+    const entries = Array.from({ length: 11 }, (_, index) => entry(index));
+    const initial = JSON.stringify(entries);
+    localStorage.setItem('word-to-html:image-library', initial);
+    let finish!: (value: Uint8Array) => void;
+    const pending = new Promise<Uint8Array>(resolve => { finish = resolve; });
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockReturnValue(pending);
+    const { unmount } = renderHook(() => useBackfill(true));
+    unmount();
+    await act(async () => { finish(pixels(20)); });
+    expect(localStorage.getItem('word-to-html:image-library')).toBe(initial);
+    expect(load).toHaveBeenCalledTimes(10);
+  });
 });

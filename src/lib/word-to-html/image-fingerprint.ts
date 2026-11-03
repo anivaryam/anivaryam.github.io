@@ -40,13 +40,12 @@ export const FINGERPRINT_HIGH_DISTANCE = 25;
 
 /**
  * How certain a match is. Only a high-confidence match is ever applied:
- * medium (a picture match outside the calibrated same-image range) and low
- * (alt text only, pictures not compared) are reported and left as text.
+ * medium (a picture match outside the calibrated same-image range) is held.
  */
-export type MatchConfidence = 'high' | 'medium' | 'low';
+export type MatchConfidence = 'high' | 'medium';
 
 /** The confidence of a picture match at this distance; null when no match. */
-export function matchConfidence(distance: number): Exclude<MatchConfidence, 'low'> | null {
+export function matchConfidence(distance: number): MatchConfidence | null {
   if (distance <= FINGERPRINT_HIGH_DISTANCE) return 'high';
   if (distance <= FINGERPRINT_THRESHOLD) return 'medium';
   return null;
@@ -123,7 +122,7 @@ export function decodeFingerprint(encoded: unknown): Uint8Array | null {
 /**
  * Loads an image and computes its fingerprint in the browser. Returns null
  * when the image cannot be loaded or its pixels cannot be read (no CORS
- * header, broken URL, or no canvas); callers fall back to alt-text matching.
+ * header, broken URL, or no canvas); unreadable pictures are never matched.
  */
 export async function loadFingerprint(src: string): Promise<Uint8Array | null> {
   try {

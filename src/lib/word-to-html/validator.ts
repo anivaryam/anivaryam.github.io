@@ -1633,20 +1633,11 @@ function validateOlHeaderConversion(doc: Document, mode: OutputMode, features?: 
 
 export function validateMode(html: string, mode: OutputMode, features: FeatureFlags): ValidationResults {
   if (!html || !html.trim()) {
-    return {
-      results: [],
-      summary: {
-        total: 0,
-        passed: 0,
-        failed: 0,
-        byMode: {
-          regular: { total: 0, passed: 0, failed: 0 },
-          blogs: { total: 0, passed: 0, failed: 0 },
-          shoppables: { total: 0, passed: 0, failed: 0 },
-        },
-        byFeature: {},
-      },
-    };
+    const results = new ValidationResultsImpl();
+    if (mode === 'blogs' && features.imageLibrary?.length && features.draftImageFingerprints?.length) {
+      results.addResult(validateImageLibrary(mode, features));
+    }
+    return results;
   }
 
   const parser = new DOMParser();
@@ -1678,7 +1669,7 @@ export function validateMode(html: string, mode: OutputMode, features: FeatureFl
   results.addResult(validateBrBeforeReadMore(doc, mode, features));
   results.addResult(validateBrBeforeSources(doc, mode, features));
   results.addResult(validateWrapLinksStrongUnderline(doc, mode, features));
-  results.addResult(validateImageLibrary(doc, mode, features));
+  results.addResult(validateImageLibrary(mode, features));
 
   return results;
 }
@@ -1752,7 +1743,7 @@ function validateWrapLinksStrongUnderline(doc: Document, mode: OutputMode, featu
   };
 }
 
-function validateImageLibrary(doc: Document, mode: OutputMode, features?: FeatureFlags): TestResult {
+function validateImageLibrary(mode: OutputMode, features?: FeatureFlags): TestResult {
   const library = features?.imageLibrary ?? [];
   if (mode !== 'blogs' || library.length === 0) {
     return {
@@ -1767,7 +1758,7 @@ function validateImageLibrary(doc: Document, mode: OutputMode, features?: Featur
     };
   }
 
-  const issues = getImageCtaIssues(doc, library, features?.draftImageFingerprints).map(issue => issue.message);
+  const issues = getImageCtaIssues(library, features?.draftImageFingerprints);
 
   return {
     ruleId: 'image-library',
@@ -1775,13 +1766,13 @@ function validateImageLibrary(doc: Document, mode: OutputMode, features?: Featur
     mode,
     passed: issues.length === 0,
     message: issues.length === 0
-      ? 'Every image CTA uses a saved image'
-      : `${issues.length} image CTA(s) without a saved image`,
+      ? 'Every draft image has a verified saved picture match'
+      : `${issues.length} draft image(s) without a verified saved picture match`,
     severity: issues.length === 0 ? 'info' : 'warning',
-    expected: 'Every "Alt Image Text:" + "Link to:" pair matches a saved image for the store of its link, by picture or by alt text',
+    expected: 'Every actual draft image matches a saved picture; linked images use the same store. Alt text is never used for matching.',
     actual: issues.length === 0
-      ? 'All image CTAs replaced'
-      : `${issues.length} image CTA(s) left as text`,
+      ? 'All draft pictures verified'
+      : `${issues.length} draft image(s) not applied`,
     details: issues.length > 0 ? issues : null,
   };
 }

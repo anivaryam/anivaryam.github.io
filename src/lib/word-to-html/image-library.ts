@@ -1,25 +1,16 @@
 /**
  * Mode Utility: Image Library (Blogs)
  *
- * Drafts mark a linked image (a visual call to action) with two paragraphs:
- *   <p>Alt Image Text: Start With The Right Seed: Shop Grass Seed</p>
- *   <p>Link to: <a href="https://store.com/collections/grass-seed">...</a></p>
- * The cleaner removes the draft image itself. When an image with the same
- * alt text was already uploaded to the same Shopify store, both paragraphs
- * are replaced with the markup the Shopify editor produces for that image.
- *
- * An entry is matched within the store domain of the draft link; the domain
- * keeps one store's images out of another store's articles. Inside a store,
- * the picture decides: a fingerprint of the draft image is compared to the
- * saved images (see image-fingerprint.ts), so the same banner matches under
- * a reworded alt text, and a different banner under the same alt text is
- * refused. Alt text is the fallback when a picture cannot be read; drafts
- * vary its punctuation ("... Lawn: Shop ..." and "... Lawn. Shop ..."), so
- * it is compared without case, punctuation, or extra whitespace.
+ * Each actual draft image is matched by its picture fingerprint. A link
+ * scopes candidates to its store; linkless images match by picture alone.
+ * Alt text is output metadata only: it never identifies or selects a picture.
+ * Optional adjacent "Alt Image Text:" and "Link to:" paragraphs supply
+ * output metadata and are consumed only when their image is replaced.
  */
 
 import { setLinkAttributes } from './mode-link-attributes';
-import { decodeFingerprint, fingerprintDistance, fingerprintsMatch, matchConfidence, type MatchConfidence } from './image-fingerprint';
+import { decodeFingerprint, fingerprintDistance, matchConfidence, type MatchConfidence } from './image-fingerprint';
+import { nextNonSpacingElement } from './html-spacing';
 
 export interface ImageLibraryEntry {
   /** Store domain, lowercased and without "www." */
@@ -33,13 +24,15 @@ export interface ImageLibraryEntry {
 }
 
 /**
- * Fingerprints of the draft's own images, keyed by normalized alt text.
- * null records an image whose pixels could not be read.
+ * One record per actual draft image. Source URLs identify the pixels to load;
+ * null records an image whose pixels could not be read. Labels are not keys.
  */
-export type DraftFingerprints = Record<string, string | null>;
+export type DraftFingerprints = { src: string; href: string | null; fp: string | null }[];
 
 export interface ImageCta {
-  altParagraph: Element;
+  image: Element;
+  src: string;
+  altParagraph: Element | null;
   /** The "Link to:" paragraph; null when the link is anchored on the alt text */
   linkParagraph: Element | null;
   alt: string;
@@ -94,11 +87,6 @@ export function isAltLabelParagraph(element: Element | null): boolean {
   return element?.tagName.toLowerCase() === 'p' && readAltLabel(element.textContent || '') !== null;
 }
 
-/** Alt text compared without case, punctuation, or extra whitespace. */
-export function normalizeAltText(alt: string): string {
-  return alt.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-}
-
 /**
  * The store domain a link points to, or null for a relative or invalid URL.
  * Google Docs exports wrap links as google.com/url?q=<target>; the target
@@ -120,14 +108,13 @@ export function getStoreHost(href: string): string | null {
   return host || null;
 }
 
-function entryKey(host: string, alt: string): string {
-  return `${host} ${normalizeAltText(alt)}`;
+function entryKey(host: string, src: string): string {
+  return JSON.stringify([host, src]);
 }
 
 /**
  * Reads the uploaded images from Shopify editor HTML. An image is kept when
- * it has alt text and sits in a link with an absolute URL, which names the
- * store; `skipped` counts the images without one of those.
+ * its URL and store are usable. Alt text is optional descriptive metadata.
  */
 export function parseShopifyImages(html: string): { entries: ImageLibraryEntry[]; skipped: number } {
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -146,7 +133,7 @@ export function parseShopifyImages(html: string): { entries: ImageLibraryEntry[]
     const src = (image.getAttribute('src') || '').trim();
     const href = image.closest('a[href]')?.getAttribute('href') || '';
     const host = getStoreHost(href) || (!href ? pasteHost : null);
-    if (!alt || !normalizeAltText(alt) || !/^(https:)?\/\//i.test(src) || !host) {
+    if (!/^(https:)?\/\//i.test(src) || !host) {
       skipped++;
       return;
     }
@@ -156,37 +143,24 @@ export function parseShopifyImages(html: string): { entries: ImageLibraryEntry[]
 }
 
 /**
- * The draft's own images with the alt text of their CTA, read from the raw
- * input before the cleaner strips them. The label is in the image's own
- * paragraph or the next one; an image without a label (the hero) is skipped.
+ * All actual draft images, including images without labels or alt attributes.
+ * Optional labels describe output only; discovery never requires them.
  */
-export function findDraftImages(html: string): { alt: string; src: string }[] {
+export function findDraftImages(html: string): { src: string; href: string | null }[] {
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  const images: { alt: string; src: string }[] = [];
-  doc.querySelectorAll('img[src]').forEach(image => {
-    const src = image.getAttribute('src') || '';
-    if (!/^(data:image\/|(https:)?\/\/)/i.test(src)) return;
-    const paragraph = image.closest('p');
-    if (!paragraph) return;
-    const alt = [paragraph, paragraph.nextElementSibling]
-      .map(el => el ? readAltLabel(paragraphText(el)) : null)
-      .find(body => body !== null);
-    if (alt) images.push({ alt, src });
-  });
-  return images;
+  return findImageCtas(doc).map(({ src, href }) => ({ src, href }));
 }
 
 /**
- * Adds entries without duplicates: an entry for the same store and alt text
- * replaces the saved one. `added` counts new entries and `updated` the saved
- * ones that changed (a newer upload); the rest were already saved.
+ * Deduplicates by store and source URL. Different pictures with identical
+ * alt text coexist; re-saving a source updates only its descriptive metadata.
  */
 export function mergeImageLibrary(saved: ImageLibraryEntry[], incoming: ImageLibraryEntry[]): { library: ImageLibraryEntry[]; added: number; updated: number } {
-  const byKey = new Map(saved.map(entry => [entryKey(entry.host, entry.alt), entry]));
+  const byKey = new Map(saved.map(entry => [entryKey(entry.host, entry.src), entry]));
   let added = 0;
   let updated = 0;
   incoming.forEach(entry => {
-    const key = entryKey(entry.host, entry.alt);
+    const key = entryKey(entry.host, entry.src);
     const existing = byKey.get(key);
     if (!existing) added++;
     else if (existing.src !== entry.src || existing.alt !== entry.alt) updated++;
@@ -211,9 +185,9 @@ export function parseImageLibraryJson(json: string): ImageLibraryEntry[] {
   return data.filter((entry): entry is ImageLibraryEntry =>
     !!entry && typeof entry === 'object'
       && typeof entry.host === 'string' && !!entry.host
-      && typeof entry.alt === 'string' && !!normalizeAltText(entry.alt)
+      && (entry.alt === undefined || typeof entry.alt === 'string')
       && typeof entry.src === 'string' && /^(https:)?\/\//i.test(entry.src)
-  ).map(({ host, alt, src, fp }) => decodeFingerprint(fp) ? { host, alt, src, fp } : { host, alt, src });
+  ).map(({ host, alt = '', src, fp }) => decodeFingerprint(fp) ? { host, alt, src, fp } : { host, alt, src });
 }
 
 /**
@@ -232,48 +206,52 @@ function pureLinkHref(paragraph: Element): string | null {
 }
 
 /**
- * Alt text paragraphs with their CTA link. Drafts write the link three
- * ways: a "Link to:" paragraph directly after the alt text, a paragraph
- * holding nothing but the link, or the link anchored on the alt text
- * itself; the first found in that order wins. Alt text without any of them
- * (the hero image) is not a CTA.
+ * Image occurrences and optional output metadata. A label may describe an
+ * isolated image in its paragraph or the next paragraph, but never creates
+ * an image occurrence by itself. Mixed body text and neighbouring images
+ * are not consumed as metadata.
  */
 export function findImageCtas(doc: Document): ImageCta[] {
   const ctas: ImageCta[] = [];
-  doc.body.querySelectorAll('p').forEach(altParagraph => {
-    const alt = readAltLabel(paragraphText(altParagraph));
-    if (!alt) return;
-    const next = altParagraph.nextElementSibling;
-    if (next && next.tagName.toLowerCase() === 'p') {
+  doc.body.querySelectorAll('img').forEach(image => {
+    const paragraph = image.closest('p');
+    const isolated = !paragraph || (paragraph.querySelectorAll('img').length === 1 &&
+      (!paragraphText(paragraph) || isAltLabelParagraph(paragraph)));
+    const following = isolated ? nextNonSpacingElement(paragraph || image) : null;
+    const altParagraph = isolated && isAltLabelParagraph(paragraph) ? paragraph
+      : isAltLabelParagraph(following) && !following?.querySelector('img') ? following : null;
+    const alt = (altParagraph ? readAltLabel(paragraphText(altParagraph)) : null)
+      || image.getAttribute('alt') || '';
+    let href = image.closest('a[href]')?.getAttribute('href') || null;
+    let linkParagraph: Element | null = null;
+    const next = altParagraph ? nextNonSpacingElement(altParagraph) : following;
+    if (next?.tagName.toLowerCase() === 'p' && !next.querySelector('img')) {
       if (LINK_LABEL.test(paragraphText(next))) {
-        const href = next.querySelector('a[href]')?.getAttribute('href')
-          || paragraphText(next).replace(LINK_LABEL, '').trim();
-        if (href) ctas.push({ altParagraph, linkParagraph: next, alt, href });
-        return;
-      }
-      const bareHref = pureLinkHref(next);
-      if (bareHref) {
-        ctas.push({ altParagraph, linkParagraph: next, alt, href: bareHref });
-        return;
+        href = next.querySelector('a[href]')?.getAttribute('href')
+          || paragraphText(next).replace(LINK_LABEL, '').trim() || href;
+        if (href) linkParagraph = next;
+      } else {
+        const bareHref = pureLinkHref(next);
+        if (bareHref) {
+          href = bareHref;
+          linkParagraph = next;
+        }
       }
     }
-    const anchoredHref = altParagraph.querySelector('a[href]')?.getAttribute('href');
-    // Without any link (the hero image) the CTA is matched by picture only
-    ctas.push({ altParagraph, linkParagraph: null, alt, href: anchoredHref || null });
+    href ||= altParagraph?.querySelector('a[href]')?.getAttribute('href') || null;
+    ctas.push({ image, src: (image.getAttribute('src') || '').trim(), altParagraph, linkParagraph, alt, href });
   });
   return ctas;
 }
 
 export interface ImageCtaResolution {
   /**
-   * matched: insert the entry's image. conflict: the alt text matches but
-   * the pictures differ, so nothing is inserted. below-confidence: a match
-   * exists but under the required confidence, so nothing is inserted.
-   * unmatched / no-host: no saved image to use.
+   * Only a high-confidence picture match is inserted. Missing pixels and
+   * near matches are held without consulting any alt text.
    */
-  status: 'matched' | 'conflict' | 'below-confidence' | 'unmatched' | 'no-host';
+  status: 'matched' | 'unverified' | 'below-confidence' | 'unmatched' | 'no-host';
   entry?: ImageLibraryEntry;
-  /** high/medium: picture match at that distance; low: alt text only. */
+  /** Confidence in the picture comparison. */
   confidence?: MatchConfidence;
 }
 
@@ -281,51 +259,27 @@ export interface ImageCtaResolution {
  * Decides which saved image a CTA uses. Within the store of the draft link,
  * the picture decides: the closest fingerprint match is taken whatever its
  * alt text says, and only a high-confidence match (inside the calibrated
- * same-image range) is applied. A medium match (up to the threshold) and an
- * alt-text-only match are held and reported, never applied; alt text whose
- * pictures are readable but differ is a conflict.
+ * same-image range) is applied. Missing or different pixels never fall back
+ * to descriptive text.
  */
 export function resolveImageCta(
-  cta: ImageCta,
+  cta: Pick<ImageCta, 'src' | 'href'>,
   library: ImageLibraryEntry[],
   draftFingerprints?: DraftFingerprints
 ): ImageCtaResolution {
   const host = cta.href === null ? null : getStoreHost(cta.href);
-  const draftFp = decodeFingerprint(draftFingerprints?.[normalizeAltText(cta.alt)]);
-  if (cta.href === null) {
-    // Linkless (the hero): an exact picture match anywhere in the library,
-    // or silence. Alt text names no store, so it cannot decide alone.
-    if (!draftFp) return { status: 'unmatched' };
-    const byPicture = library
-      .map(entry => ({ entry, distance: fingerprintDistance(draftFp, decodeFingerprint(entry.fp)) }))
-      .sort((a, b) => a.distance - b.distance)[0];
-    const confidence = byPicture ? matchConfidence(byPicture.distance) : null;
-    return confidence === 'high'
-      ? { status: 'matched', entry: byPicture.entry, confidence }
-      : { status: 'unmatched' };
-  }
-  if (!host) return { status: 'no-host' };
-  const storeEntries = library.filter(entry => entry.host === host);
-  if (draftFp) {
-    const byPicture = storeEntries
-      .map(entry => ({ entry, distance: fingerprintDistance(draftFp, decodeFingerprint(entry.fp)) }))
-      .filter(candidate => fingerprintsMatch(draftFp, decodeFingerprint(candidate.entry.fp)))
-      .sort((a, b) => a.distance - b.distance)[0];
-    if (byPicture) {
-      const confidence = matchConfidence(byPicture.distance) as MatchConfidence;
-      return confidence === 'high'
-        ? { status: 'matched', entry: byPicture.entry, confidence }
-        : { status: 'below-confidence', entry: byPicture.entry, confidence };
-    }
-  }
-  const key = entryKey(host, cta.alt);
-  const byAlt = storeEntries.find(entry => entryKey(entry.host, entry.alt) === key);
-  if (!byAlt) return { status: 'unmatched' };
-  if (draftFp && decodeFingerprint(byAlt.fp)) {
-    // Both pictures were readable and did not match above
-    return { status: 'conflict', entry: byAlt };
-  }
-  return { status: 'below-confidence', entry: byAlt, confidence: 'low' };
+  if (cta.href !== null && !host) return { status: 'no-host' };
+  const storeEntries = host ? library.filter(entry => entry.host === host) : library;
+  if (!storeEntries.length) return { status: 'unmatched' };
+  const draftFp = decodeFingerprint(draftFingerprints?.find(image => image.src === cta.src)?.fp);
+  if (!draftFp) return { status: 'unverified' };
+  const byPicture = storeEntries
+    .map(entry => ({ entry, distance: fingerprintDistance(draftFp, decodeFingerprint(entry.fp)) }))
+    .sort((a, b) => a.distance - b.distance)[0];
+  if (!Number.isFinite(byPicture.distance)) return { status: 'unverified' };
+  const confidence = matchConfidence(byPicture.distance);
+  if (!confidence) return { status: 'unmatched' };
+  return { status: confidence === 'high' ? 'matched' : 'below-confidence', entry: byPicture.entry, confidence };
 }
 
 /**
@@ -338,12 +292,17 @@ export function applyImageLibrary(html: string, library: ImageLibraryEntry[], li
   const doc = new DOMParser().parseFromString(html, 'text/html');
   findImageCtas(doc).forEach(cta => {
     const { status, entry } = resolveImageCta(cta, library, draftFingerprints);
-    if (status !== 'matched' || !entry) return;
+    const paragraph = cta.image.closest('p');
+    if (status !== 'matched' || !entry) {
+      cta.image.remove();
+      if (paragraph && !paragraphText(paragraph) && !paragraph.querySelector('img, hr')) paragraph.remove();
+      return;
+    }
     const block = doc.createElement('div');
     block.setAttribute('style', BLOCK_STYLE);
     const image = doc.createElement('img');
     image.setAttribute('src', entry.src);
-    image.setAttribute('alt', cta.alt);
+    image.setAttribute('alt', cta.alt || entry.alt);
     image.setAttribute('style', IMAGE_STYLE);
     if (cta.href === null) {
       // Linkless (the hero): the image stands alone in the block
@@ -358,34 +317,41 @@ export function applyImageLibrary(html: string, library: ImageLibraryEntry[], li
       link.appendChild(image);
       block.appendChild(link);
     }
-    cta.altParagraph.replaceWith(block);
+    const isolated = paragraph && paragraph.querySelectorAll('img').length === 1 &&
+      (!paragraphText(paragraph) || paragraph === cta.altParagraph);
+    if (isolated) {
+      // Keep the existing label's spacer when it follows an image-only paragraph.
+      if (cta.altParagraph && cta.altParagraph !== paragraph) {
+        cta.altParagraph.replaceWith(block);
+        paragraph.remove();
+      } else {
+        paragraph.replaceWith(block);
+      }
+    } else if (cta.image.parentElement === doc.body) {
+      cta.image.replaceWith(block);
+      cta.altParagraph?.remove();
+    } else {
+      // Inline, list and table images stay in their original content position.
+      image.removeAttribute('style');
+      cta.image.replaceWith(image);
+    }
     cta.linkParagraph?.remove();
   });
   return doc.body.innerHTML;
 }
 
-/** Image CTAs left in the output, with why no saved image was inserted. */
-export function getImageCtaIssues(doc: Document, library: ImageLibraryEntry[], draftFingerprints?: DraftFingerprints): { element: Element; message: string }[] {
-  const issues: { element: Element; message: string }[] = [];
-  findImageCtas(doc).forEach(cta => {
-    // A linkless alt text (the hero) is normal in every draft: it is
-    // replaced on an exact picture match and otherwise left in silence.
-    if (cta.href === null) return;
-    const { status, confidence } = resolveImageCta(cta, library, draftFingerprints);
+/** Explain holds from actual draft images, including images without labels. */
+export function getImageCtaIssues(library: ImageLibraryEntry[], draftFingerprints: DraftFingerprints = []): string[] {
+  const issues: string[] = [];
+  draftFingerprints.forEach((image, index) => {
+    const { status } = resolveImageCta(image, library, draftFingerprints);
     if (status === 'matched') return;
-    const host = getStoreHost(cta.href);
-    issues.push({
-      element: cta.altParagraph,
-      message: status === 'conflict'
-        ? `The draft picture differs from the saved image for "${cta.alt}" on ${host}`
-        : status === 'below-confidence'
-          ? confidence === 'medium'
-            ? `Picture match for "${cta.alt}" on ${host} is not exact; image not applied`
-            : `Picture for "${cta.alt}" on ${host} not verified; image not applied`
-          : status === 'no-host'
-            ? `Link for "${cta.alt}" has no store domain`
-            : `No saved image for "${cta.alt}" on ${host}`,
-    });
+    const host = image.href === null ? null : getStoreHost(image.href);
+    const name = `Image ${index + 1}${host ? ` on ${host}` : ''}`;
+    issues.push(status === 'unverified' ? `${name}: picture could not be verified; image not applied`
+      : status === 'below-confidence' ? `${name}: picture match is not exact; image not applied`
+      : status === 'no-host' ? `${name}: link has no store domain; image not applied`
+      : `${name}: no saved picture matches; image not applied`);
   });
   return issues;
 }

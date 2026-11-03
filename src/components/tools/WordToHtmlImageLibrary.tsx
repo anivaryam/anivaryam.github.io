@@ -25,9 +25,9 @@ export function ImageLibraryPanel({ library, onChange }: ImageLibraryPanelProps)
     onChange(merged.library);
     const unchanged = entries.length - merged.added - merged.updated;
     const details = [
-      merged.updated > 0 && `${merged.updated} replaced with a newer upload`,
+      merged.updated > 0 && `${merged.updated} descriptions updated`,
       unchanged > 0 && `${unchanged} already saved`,
-      skipped > 0 && `${skipped} skipped: an image needs alt text and a link with the store domain`,
+      skipped > 0 && `${skipped} skipped: an image needs a usable URL and store domain`,
     ].filter(Boolean);
     toast({
       title: `${merged.added} new image${merged.added === 1 ? "" : "s"} saved`,
@@ -45,7 +45,7 @@ export function ImageLibraryPanel({ library, onChange }: ImageLibraryPanelProps)
     const url = URL.createObjectURL(new Blob([JSON.stringify(library, null, 2)], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "word-to-html-image-library.json";
+    link.download = `word-to-html-image-library-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -90,15 +90,15 @@ export function ImageLibraryPanel({ library, onChange }: ImageLibraryPanelProps)
         Save images
       </Button>
       <p className="text-xs text-muted-foreground mt-2">
-        Paste Shopify editor HTML to save its images. A draft&apos;s &quot;Alt Image Text:&quot; + link is replaced only on an exact picture match from the same store; anything less is flagged, never inserted. Stored in this browser.
+        Paste Shopify editor HTML to save its images. Draft images are matched by picture only; alt text and labels are optional. Linked images match within their store. Unverified pictures are flagged, never inserted. Stored in this browser.
       </p>
       {sorted.length > 0 && (
         <ul data-lenisignore className="mt-2 max-h-48 overflow-y-auto space-y-1">
           {sorted.map(entry => (
-            <li key={`${entry.host} ${entry.alt}`} className="flex items-center gap-2 text-xs">
+            <li key={JSON.stringify([entry.host, entry.src])} className="flex items-center gap-2 text-xs">
               <img src={entry.src} alt="" loading="lazy" className="h-8 w-8 object-cover rounded flex-shrink-0 bg-muted" />
               <div className="min-w-0 flex-1">
-                <p className="truncate" title={entry.alt}>{entry.alt}</p>
+                <p className="truncate" title={entry.alt}>{entry.alt || 'Untitled image'}</p>
                 <p className="truncate text-muted-foreground">{entry.host}</p>
               </div>
               <Button
@@ -106,7 +106,7 @@ export function ImageLibraryPanel({ library, onChange }: ImageLibraryPanelProps)
                 size="sm"
                 onClick={() => onChange(library.filter(saved => saved !== entry))}
                 className="h-6 w-6 p-0 flex-shrink-0"
-                title={`Remove "${entry.alt}"`}
+                title={`Remove "${entry.alt || 'Untitled image'}"`}
               >
                 <X className="h-3 w-3" />
               </Button>
