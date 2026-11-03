@@ -372,7 +372,7 @@ export function splitEmphasisOverrides(root: Element): void {
   }
 }
 
-export function sanitizeHtml(html: string): string {
+export function sanitizeHtml(html: string, preserveDataImages = false): string {
   if (!html || typeof html !== 'string') {
     return '';
   }
@@ -426,7 +426,7 @@ export function sanitizeHtml(html: string): string {
     if (type) list.setAttribute('type', type);
   });
 
-  sanitizeElement(tempDiv);
+  sanitizeElement(tempDiv, preserveDataImages);
 
   // Source appearance has already determined link boundaries in Word cleanup.
   // Links use their own CSS underline; the explicit strong/underline feature
@@ -461,7 +461,7 @@ export function sanitizeHtml(html: string): string {
 }
 
 
-function sanitizeElement(element: Element): void {
+function sanitizeElement(element: Element, preserveDataImages = false): void {
   const nodesToProcess = Array.from(element.childNodes).filter(
     node => node.nodeType === Node.ELEMENT_NODE
   );
@@ -472,7 +472,7 @@ function sanitizeElement(element: Element): void {
 
     // Normalize i/b tags to em/strong (these are not in ALLOWED_ELEMENTS)
     if (tagName === 'i' || tagName === 'b') {
-      sanitizeElement(node);
+      sanitizeElement(node, preserveDataImages);
       const semantic = document.createElement(tagName === 'b' ? 'strong' : 'em');
       while (node.firstChild) {
         semantic.appendChild(node.firstChild);
@@ -502,11 +502,11 @@ function sanitizeElement(element: Element): void {
             child.setAttribute('style', `${node.getAttribute('style')};${child.getAttribute('style') || ''}`);
           }
         }
-        sanitizeElement(node);
+        sanitizeElement(node, preserveDataImages);
         unwrapElement(node);
         continue;
       }
-      sanitizeElement(node);
+      sanitizeElement(node, preserveDataImages);
       
       const semanticReplacement = convertFormattingToSemanticTags(node);
       
@@ -515,7 +515,7 @@ function sanitizeElement(element: Element): void {
         if (node.parentNode) {
           node.parentNode.replaceChild(semanticReplacement, node);
           // Sanitize the replacement to handle any nested formatting
-          sanitizeElement(semanticReplacement);
+          sanitizeElement(semanticReplacement, preserveDataImages);
         }
       } else {
         // No formatting found, just unwrap
@@ -540,7 +540,7 @@ function sanitizeElement(element: Element): void {
       const isListItem = tagName === 'li';
       
       if (isListItem) {
-        sanitizeElement(node);
+        sanitizeElement(node, preserveDataImages);
 
         const itemFormatting = extractListItemFormatting(style);
         if (itemFormatting) {
@@ -553,22 +553,22 @@ function sanitizeElement(element: Element): void {
           formatInlineRuns(node, itemFormatting, isNestedList);
         }
 
-        sanitizeAttributes(node, tagName);
+        sanitizeAttributes(node, tagName, preserveDataImages);
         
         continue;
       }
       
       // Always clean descendants, including beneath styled semantic elements.
-      sanitizeElement(node);
+      sanitizeElement(node, preserveDataImages);
       if (formatting && !STRUCTURAL_CHILDREN.has(tagName)) formatInlineRuns(node, formatting);
 
       // Extract formatting before removing style/class/unsafe attributes.
-      sanitizeAttributes(node, tagName);
+      sanitizeAttributes(node, tagName, preserveDataImages);
     }
   }
 }
 
-function sanitizeAttributes(element: Element, tagName: string): void {
+function sanitizeAttributes(element: Element, tagName: string, preserveDataImages: boolean): void {
   const allowedAttrs = ALLOWED_ATTRIBUTES[tagName] || ALLOWED_ATTRIBUTES['*'] || [];
   const attrsToRemove: string[] = [];
 
@@ -601,7 +601,10 @@ function sanitizeAttributes(element: Element, tagName: string): void {
         element.setAttribute(attr.name, cleanedUrl);
       }
       
-      if (!isSafeUrl(cleanedUrl)) {
+      // Only the image-library pipeline retains embedded image pixels until
+      // matching. The matching pass removes every unmatched draft image.
+      const draftImage = preserveDataImages && tagName === 'img' && attrName === 'src' && /^data:image\//i.test(cleanedUrl);
+      if (!isSafeUrl(cleanedUrl) && !draftImage) {
         attrsToRemove.push(attr.name);
       }
     }

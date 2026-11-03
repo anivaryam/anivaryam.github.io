@@ -94,25 +94,26 @@ function cleanStyleAttribute(styleString: string): string {
     .join('; ');
 }
 
-function removeImages(element: Element): void {
+function removeImages(element: Element, preserveImages: boolean): void {
   const images = element.querySelectorAll('img');
-  images.forEach(img => img.remove());
+  if (!preserveImages) images.forEach(img => img.remove());
   
   // Empty image wrappers are removed, but empty rows and cells stay: removing
   // them shifts the remaining cells into the wrong columns.
   const imageClassElements = element.querySelectorAll('[class*="image"], [class*="Image"]');
   imageClassElements.forEach(el => {
-    if (!el.textContent?.trim() && !el.matches('tr, th, td')) el.remove();
+    if (!el.textContent?.trim() && !el.matches('img, tr, th, td') && !el.querySelector('img')) el.remove();
   });
   
   const bgImageElements = element.querySelectorAll('[style*="background-image"]');
   bgImageElements.forEach(el => {
-    if (!el.textContent?.trim() && !el.matches('tr, th, td')) el.remove();
+    if (!el.textContent?.trim() && !el.matches('img, tr, th, td') && !el.querySelector('img')) el.remove();
   });
   
   const allElements = element.querySelectorAll('*');
   allElements.forEach(el => {
     const tagName = el.tagName.toLowerCase();
+    if (preserveImages && el.querySelector('img')) return;
     if (tagName.includes('imagedata') || 
         tagName.includes('shape') || 
         tagName === 'pict' ||
@@ -690,13 +691,13 @@ function normalizeWordHeadingNumbers(root: HTMLElement): void {
   }
 }
 
-export function cleanWordHtml(html: string): string {
+export function cleanWordHtml(html: string, preserveImages = false): string {
   if (!html || typeof html !== 'string') return '';
 
   const tempDiv = createInertContainer();
   tempDiv.innerHTML = html;
 
-  removeImages(tempDiv);
+  removeImages(tempDiv, preserveImages);
   // Before cleanup drops the classes, and before title detection looks for a
   // Key Takeaways list.
   convertWordListParagraphs(tempDiv);

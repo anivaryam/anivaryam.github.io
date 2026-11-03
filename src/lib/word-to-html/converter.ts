@@ -46,7 +46,7 @@ export interface FeatureFlags {
   customSpacer?: string;
   /** Blogs only: uploaded Shopify images that replace matching image CTAs. */
   imageLibrary?: ImageLibraryEntry[];
-  /** Fingerprints of the draft's own images, keyed by normalized alt text. */
+  /** Actual draft image sources, links, and picture fingerprints; no alt-text keys. */
   draftImageFingerprints?: DraftFingerprints;
 }
 
@@ -65,7 +65,7 @@ export function convertToHtml(
 
   try {
     // Step 1: Sanitize HTML (removes styling and unsafe attributes)
-    const sanitized = sanitizeHtml(cleanedHtml);
+    const sanitized = sanitizeHtml(cleanedHtml, mode === 'blogs' && !!features.imageLibrary?.length);
     if (!sanitized) {
       return { formatted: '', unformatted: '' };
     }
@@ -119,7 +119,7 @@ export function convertWordToHtml(
   if (!input || !input.trim()) return '';
 
   // Step 1: Clean Word HTML (removes Word-specific markup, images, etc.)
-  const cleaned = cleanWordHtml(input);
+  const cleaned = cleanWordHtml(input, mode === 'blogs' && !!features.imageLibrary?.length);
 
   // Step 2-4: Convert using the main conversion function
   const result = convertToHtml(cleaned, mode, features);
@@ -138,7 +138,7 @@ export function getUnformattedHtml(
   if (!input || !input.trim()) return '';
 
   // Step 1: Clean Word HTML
-  const cleaned = cleanWordHtml(input);
+  const cleaned = cleanWordHtml(input, mode === 'blogs' && !!features.imageLibrary?.length);
 
   // Step 2-4: Convert using the main conversion function
   const result = convertToHtml(cleaned, mode, features);

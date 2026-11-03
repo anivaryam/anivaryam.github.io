@@ -44,7 +44,7 @@ export function resolveFeatures(mode: OutputMode, features: FeatureFlags = {}): 
     tablesToLists: features.tablesToLists ?? false,
     customSpacer: features.customSpacer ?? '',
     imageLibrary: features.imageLibrary ?? [],
-    draftImageFingerprints: features.draftImageFingerprints ?? {},
+    draftImageFingerprints: features.draftImageFingerprints ?? [],
   };
 }
 

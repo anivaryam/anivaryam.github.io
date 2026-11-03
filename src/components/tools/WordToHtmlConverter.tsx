@@ -767,7 +767,7 @@ export function WordToHtmlConverter() {
       return { formatted: '', unformatted: '' };
     }
     try {
-      const cleanedHtml = cleanWordHtml(inputHtml);
+      const cleanedHtml = cleanWordHtml(inputHtml, outputFormat === 'blogs' && !!effectiveFeatures.imageLibrary?.length);
       return convertToHtml(cleanedHtml, outputFormat, effectiveFeatures);
     } catch (error) {
       console.error('Conversion error:', error);
@@ -948,7 +948,8 @@ export function WordToHtmlConverter() {
 
   // Run validation when output changes
   const validationResults = useMemo<ValidationResults | null>(() => {
-    if (!previewHtml || !previewHtml.trim()) {
+    if ((!previewHtml || !previewHtml.trim()) &&
+      !(outputFormat === 'blogs' && effectiveFeatures.imageLibrary?.length && effectiveFeatures.draftImageFingerprints?.length)) {
       return null;
     }
     try {
