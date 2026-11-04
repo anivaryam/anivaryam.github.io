@@ -255,6 +255,21 @@ export interface ImageCtaResolution {
   confidence?: MatchConfidence;
 }
 
+type FingerprintedImage = ImageLibraryEntry | DraftFingerprints[number];
+// Share the expensive picture work between conversion and validation. Weak
+// keys release removed images; checking fp also handles in-place backfills.
+const decodedImages = new WeakMap<FingerprintedImage, { encoded: string | null | undefined; pixels: Uint8Array | null }>();
+const pictureDistances = new WeakMap<Uint8Array, WeakMap<Uint8Array, number>>();
+
+function decodedImage(image: FingerprintedImage | undefined): Uint8Array | null {
+  if (!image) return null;
+  const cached = decodedImages.get(image);
+  if (cached && cached.encoded === image.fp) return cached.pixels;
+  const pixels = decodeFingerprint(image.fp);
+  decodedImages.set(image, { encoded: image.fp, pixels });
+  return pixels;
+}
+
 /**
  * Decides which saved image a CTA uses. Within the store of the draft link,
  * the picture decides: the closest fingerprint match is taken whatever its
@@ -271,10 +286,24 @@ export function resolveImageCta(
   if (cta.href !== null && !host) return { status: 'no-host' };
   const storeEntries = host ? library.filter(entry => entry.host === host) : library;
   if (!storeEntries.length) return { status: 'unmatched' };
-  const draftFp = decodeFingerprint(draftFingerprints?.find(image => image.src === cta.src)?.fp);
+  const draftFp = decodedImage(draftFingerprints?.find(image => image.src === cta.src));
   if (!draftFp) return { status: 'unverified' };
+  let distances = pictureDistances.get(draftFp);
+  if (!distances) {
+    distances = new WeakMap();
+    pictureDistances.set(draftFp, distances);
+  }
   const byPicture = storeEntries
-    .map(entry => ({ entry, distance: fingerprintDistance(draftFp, decodeFingerprint(entry.fp)) }))
+    .map(entry => {
+      const pixels = decodedImage(entry);
+      if (!pixels) return { entry, distance: Infinity };
+      let distance = distances.get(pixels);
+      if (distance === undefined) {
+        distance = fingerprintDistance(draftFp, pixels);
+        distances.set(pixels, distance);
+      }
+      return { entry, distance };
+    })
     .sort((a, b) => a.distance - b.distance)[0];
   if (!Number.isFinite(byPicture.distance)) return { status: 'unverified' };
   const confidence = matchConfidence(byPicture.distance);

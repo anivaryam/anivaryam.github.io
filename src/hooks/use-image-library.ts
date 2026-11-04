@@ -92,7 +92,8 @@ export function useDraftImageFingerprints(inputHtml: string, enabled: boolean) {
     });
     return () => { cancelled = true; };
   }, [key, state.key, draftImages]);
-  return { fingerprints: state.fingerprints, pending: key !== state.key };
+  const pending = key !== state.key;
+  return useMemo(() => ({ fingerprints: state.fingerprints, pending }), [state.fingerprints, pending]);
 }
 
 /**

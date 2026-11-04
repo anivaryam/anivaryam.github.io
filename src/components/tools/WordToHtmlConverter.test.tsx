@@ -4,6 +4,7 @@ import { StrictMode } from 'react';
 import { WordToHtmlConverter } from './WordToHtmlConverter';
 import { toast } from '@/hooks/use-toast';
 import { getUnformattedHtml } from '@/lib/word-to-html/converter';
+import * as converter from '@/lib/word-to-html/converter';
 import { stripSpacerMarkers } from '@/lib/word-to-html/spacer';
 import Lenis, { type LenisOptions } from 'lenis';
 import { IMAGE_LIBRARY_ENABLED_KEY, useDraftImageFingerprints, useImageLibrary, useImageLibraryFingerprintBackfill } from '@/hooks/use-image-library';
@@ -1631,11 +1632,51 @@ describe('WordToHtmlConverter', () => {
       { host: 'lawnsynergy.com', alt: 'Shop Grass Seed', src: 'https://cdn.shopify.com/s/files/1/c.png#fp30' },
     ]));
     render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
     await waitFor(() => {
       const [entry] = JSON.parse(localStorage.getItem('word-to-html:image-library') || '[]');
       expect(typeof entry.fp).toBe('string');
     }, { timeout: 5000 });
   }, 20000);
+
+  it('starts image fingerprint work only in enabled Blogs with saved images', async () => {
+    localStorage.clear();
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint');
+    const { unmount } = render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    enterHtml('<p><img src="https://draft.test/a#fp10"></p>');
+    await act(async () => {});
+    expect(load).not.toHaveBeenCalled();
+    unmount();
+
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([
+      { host: 'lawnsynergy.com', alt: 'Saved', src: 'https://cdn.shopify.com/a.png#fp10' },
+    ]));
+    render(<WordToHtmlConverter />);
+    enterHtml('<p><img src="https://draft.test/a#fp10"></p>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
+    await act(async () => {});
+    expect(load).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    await waitFor(() => expect(document.querySelector('.output-preview img')).not.toBeNull());
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps image matching and conversion cached across view-only changes', async () => {
+    localStorage.clear();
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([{
+      host: 'lawnsynergy.com', alt: 'Saved', src: 'https://cdn.shopify.com/a.png',
+      fp: imageFingerprint.encodeFingerprint(new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(10)),
+    }]));
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    enterHtml('<p>Body</p><p><img src="https://draft.test/a#fp10"></p>');
+    await waitFor(() => expect(document.querySelector('.output-preview img')).not.toBeNull());
+    const convert = vi.spyOn(converter, 'convertToHtml');
+    fireEvent.click(screen.getByTitle('Preview'));
+    fireEvent.click(screen.getByTitle('Copy blocks'));
+    expect(convert).not.toHaveBeenCalled();
+  });
 
   it('matches unlabelled pictures independently of repeated or edited alt text', async () => {
     localStorage.clear();

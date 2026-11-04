@@ -414,10 +414,11 @@ export function WordToHtmlConverter() {
   // unless the checkbox turns the library off.
   const [imageLibrary, setImageLibrary] = useImageLibrary();
   const [imageLibraryEnabled, setImageLibraryEnabled] = useImageLibraryEnabled();
+  const imageLibraryActive = imageLibraryEnabled && outputFormat === 'blogs';
   // Fingerprints let the pictures decide a match; matching waits for them,
   // so an image is never inserted on alt text that the pictures contradict.
-  const draftFingerprintState = useDraftImageFingerprints(inputHtml, imageLibraryEnabled);
-  useImageLibraryFingerprintBackfill(imageLibrary, setImageLibrary, imageLibraryEnabled);
+  const draftFingerprintState = useDraftImageFingerprints(inputHtml, imageLibraryActive && imageLibrary.length > 0);
+  useImageLibraryFingerprintBackfill(imageLibrary, setImageLibrary, imageLibraryActive);
 
   // Use the same defaults as the conversion and validation pipelines.
   // The custom spacer is a text setting, so it survives a mode switch.
@@ -433,9 +434,9 @@ export function WordToHtmlConverter() {
     customSpacer: sanitizeSpacer
       ? sanitizeCustomSpacerMarkup(features.customSpacer)
       : features.customSpacer,
-    imageLibrary: imageLibraryEnabled && !draftFingerprintState.pending ? imageLibrary : [],
+    imageLibrary: imageLibraryActive && !draftFingerprintState.pending ? imageLibrary : [],
     draftImageFingerprints: draftFingerprintState.fingerprints,
-  }), [features, sanitizeSpacer, imageLibrary, imageLibraryEnabled, draftFingerprintState]);
+  }), [features, sanitizeSpacer, imageLibrary, imageLibraryActive, draftFingerprintState]);
 
   // The dangerous constructs in the markup that actually reaches the output.
   const spacerWarnings = useMemo(
