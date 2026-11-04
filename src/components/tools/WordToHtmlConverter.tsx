@@ -694,7 +694,13 @@ export function WordToHtmlConverter() {
         if (prepareWordSource(source, true)) {
           // Resolve links and article titles from the original clipboard before
           // native paste can discard their source formatting.
-          const html = DOMPurify.sanitize(source.innerHTML, { FORBID_TAGS: ['style'], ADD_ATTR: ['target'] });
+          source.innerHTML = DOMPurify.sanitize(source.innerHTML, { FORBID_TAGS: ['style'], ADD_ATTR: ['target'] });
+          // Removed document metadata can leave leading text-only whitespace
+          // that pre-wrap renders as blank lines. Keep actual spacing elements.
+          while (source.firstChild?.nodeType === Node.TEXT_NODE && !source.firstChild.textContent?.trim()) {
+            source.firstChild.remove();
+          }
+          const html = source.innerHTML;
           e.preventDefault();
           // insertHTML preserves the browser's editing/undo history. Range is
           // the fallback for environments without this editing command. Some
@@ -1234,10 +1240,16 @@ export function WordToHtmlConverter() {
   const handlePreviewCopy = (event: ReactClipboardEvent<HTMLDivElement>) => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    let plainText = selection.toString();
     const container = document.createElement('div');
     for (let i = 0; i < selection.rangeCount; i++) {
       const originalRange = selection.getRangeAt(i);
       let range = originalRange.cloneRange();
+      // A final-paragraph multi-click can extend past the preview into hidden
+      // output views. Bound the HTML clone; native selection text omits those views.
+      if (event.currentTarget.contains(range.startContainer) && !event.currentTarget.contains(range.endContainer)) {
+        range.setEnd(event.currentTarget, event.currentTarget.childNodes.length);
+      }
       const end = range.endContainer;
       // cloneContents includes a following ancestor's empty shell at an inside-zero
       // endpoint. Lift only first-child boundaries; even nontext siblings are selected.
@@ -1254,6 +1266,17 @@ export function WordToHtmlConverter() {
         }
       }
       let copied: Node = range.cloneContents();
+      // Boundary selections include rendered block separators in plain text.
+      // Remove those only when the bounded fragment ends in text, preserving
+      // authored newlines, trailing breaks/empty blocks and interior whitespace.
+      if (selection.rangeCount === 1 && event.currentTarget.contains(range.startContainer) &&
+          range.compareBoundaryPoints(Range.END_TO_END, originalRange) !== 0) {
+        let tail = copied;
+        while (tail.lastChild) tail = tail.lastChild;
+        if (tail.nodeType === Node.TEXT_NODE && tail.textContent && !/[\r\n]$/.test(tail.textContent)) {
+          plainText = plainText.replace(/[\r\n]+$/, '');
+        }
+      }
       for (let node: Node | null = range.commonAncestorContainer; node && node !== event.currentTarget && event.currentTarget.contains(node); node = node.parentNode) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
         const wrapper = node.cloneNode(false);
@@ -1264,7 +1287,7 @@ export function WordToHtmlConverter() {
     }
     container.querySelectorAll('[data-warning]').forEach(element => element.removeAttribute('data-warning'));
     event.clipboardData.setData('text/html', stripSpacerMarkers(container.innerHTML));
-    event.clipboardData.setData('text/plain', selection.toString());
+    event.clipboardData.setData('text/plain', plainText);
     event.preventDefault();
   };
 

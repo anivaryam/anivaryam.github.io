@@ -127,7 +127,46 @@ export function prepareWordSource(root: HTMLElement, inlineSourceStyles = false)
 
     for (const { anchor, runs } of replacements) {
       const fragment = doc.createDocumentFragment();
-      for (const run of runs) {
+      for (let index = 0; index < runs.length; index++) {
+        const run = runs[index];
+        const next = runs[index + 1];
+        if (run.linked && next && !next.linked) {
+          const text = run.nodes.map(node => node.textContent || '').join('').trimStart();
+          const closingQuote = text.startsWith('"') && (text.split('"').length - 1) % 2 === 1 ? '"'
+            : text.startsWith('“') && text.split('“').length > text.split('”').length ? '”' : '';
+          // Only an adjacent closing quote already inside this source anchor
+          // belongs to the quoted link. Following plain words stay unlinked.
+          let first: Node | null = next.nodes[0] || null;
+          const wrappers: Element[] = [];
+          while (first?.nodeType === Node.ELEMENT_NODE) {
+            wrappers.push(first as Element);
+            first = first.firstChild;
+          }
+          if (closingQuote && first?.nodeType === Node.TEXT_NODE && first.textContent?.startsWith(closingQuote)) {
+            let quote: Node = doc.createTextNode(closingQuote);
+            // Copy just the quote's formatting, not its unlinked siblings.
+            for (let i = wrappers.length - 1; i >= 0; i--) {
+              const wrapper = wrappers[i].cloneNode(false);
+              wrapper.appendChild(quote);
+              quote = wrapper;
+            }
+            run.nodes.push(quote);
+            const quoteText = first as Text;
+            quoteText.deleteData(0, closingQuote.length);
+            // Remove only wrappers emptied by transferring this quote.
+            if (!quoteText.data) {
+              let parent = quoteText.parentElement;
+              if (parent) quoteText.remove();
+              else next.nodes.shift();
+              while (parent && !parent.hasChildNodes()) {
+                const nextParent = parent.parentElement;
+                parent.remove();
+                if (!nextParent) next.nodes.shift();
+                parent = nextParent;
+              }
+            }
+          }
+        }
         if (run.linked && run.nodes.some(node => node.textContent?.trim())) {
           const link = anchor.cloneNode(false);
           run.nodes.forEach(node => link.appendChild(node));
