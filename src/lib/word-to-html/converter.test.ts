@@ -1292,6 +1292,7 @@ describe('URL preservation', () => {
 describe('source-visible link boundaries', () => {
   const href = 'https://example.com/closet-details';
   const title = 'Closet Measurements: Rod Heights, Shelf Depth & Valet Rods';
+  const quotedTitle = "What's the Best Protein for Dogs?";
   const cases = [
     {
       name: 'adjacent anchors with class-based source styles',
@@ -1337,6 +1338,57 @@ describe('source-visible link boundaries', () => {
       text: 'Products',
       links: [],
     },
+    ...[
+      ['straight', '"', '"'], ['smart', '“', '”'],
+    ].flatMap(([name, opening, closing]) => {
+      const prefix = `<p style="color:black">See <a href="${href}" style="color:inherit;text-decoration-line:none">our article `;
+      const visible = `<span style="color:#1155cc;text-decoration-line:underline">${opening}${quotedTitle}</span>`;
+      const quoted = `${opening}${quotedTitle}${closing}`;
+      return [
+        {
+          name: `keeps a matching ${name} closing quote that was inside the source anchor`,
+          html: `${prefix}${visible}<span style="color:black;text-decoration-line:none">${closing}</span></a> today.</p>`,
+          text: `See our article ${quoted} today.`,
+          links: [quoted],
+        },
+        {
+          name: `keeps only the ${name} closing quote linked when its plain text run continues`,
+          html: `${prefix}${visible}<span style="color:black;text-decoration-line:none">${closing} for details.</span></a></p>`,
+          text: `See our article ${quoted} for details.`,
+          links: [quoted],
+        },
+        {
+          name: `keeps nested emphasis on the ${name} closing quote without linking following words`,
+          html: `${prefix}${visible}<span style="color:black;text-decoration-line:none"><em>${closing}</em> for details.</span></a></p>`,
+          text: `See our article ${quoted} for details.`,
+          links: [quoted],
+        },
+        {
+          name: `does not absorb a ${name} closing quote outside the source anchor`,
+          html: `${prefix}${visible}</a><span style="color:black;text-decoration-line:none">${closing}</span> today.</p>`,
+          text: `See our article ${quoted} today.`,
+          links: [`${opening}${quotedTitle}`],
+        },
+        {
+          name: `does not absorb an extra ${name} quote after an already balanced title`,
+          html: `${prefix}<span style="color:#1155cc;text-decoration-line:underline">${quoted}</span><span style="color:black;text-decoration-line:none">${closing}</span></a> today.</p>`,
+          text: `See our article ${quoted}${closing} today.`,
+          links: [quoted],
+        },
+        {
+          name: `does not absorb an unmatched ${name} closing quote`,
+          html: `${prefix}<span style="color:#1155cc;text-decoration-line:underline">${quotedTitle}</span><span style="color:black;text-decoration-line:none">${closing}</span></a> today.</p>`,
+          text: `See our article ${quotedTitle}${closing} today.`,
+          links: [quotedTitle],
+        },
+        {
+          name: `does not absorb a mismatched closing quote after a ${name} opening quote`,
+          html: `${prefix}${visible}<span style="color:black;text-decoration-line:none">${closing === '"' ? '”' : '"'}</span></a> today.</p>`,
+          text: `See our article ${opening}${quotedTitle}${closing === '"' ? '”' : '"'} today.`,
+          links: [`${opening}${quotedTitle}`],
+        },
+      ];
+    }),
   ];
 
   it.each(cases)('$name', ({ html, text, links }) => {
@@ -1356,6 +1408,14 @@ describe('source-visible link boundaries', () => {
   it('preserves nested emphasis while splitting an anchor', () => {
     const doc = new DOMParser().parseFromString(getUnformattedHtml(cases[1].html), 'text/html');
     expect(doc.querySelector('a strong')?.textContent).toBe('Products');
+  });
+
+  it('preserves the closing quote emphasis and does not relink the following plain text', () => {
+    const input = `<p style="color:black">See <a href="${href}" style="color:inherit;text-decoration-line:none"><span style="color:#1155cc;text-decoration-line:underline">&quot;${quotedTitle}</span><span style="color:black;text-decoration-line:none"><em>&quot;</em> for details.</span></a></p>`;
+    const doc = new DOMParser().parseFromString(getUnformattedHtml(input), 'text/html');
+    expect(doc.querySelector('a em')?.textContent).toBe('"');
+    expect(doc.querySelector('a')?.textContent).toBe(`"${quotedTitle}"`);
+    expect(doc.querySelector('p')?.textContent).toBe(`See "${quotedTitle}" for details.`);
   });
 
   it('does not use the application theme to classify source links', () => {

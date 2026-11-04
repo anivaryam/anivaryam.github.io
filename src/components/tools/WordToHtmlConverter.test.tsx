@@ -83,7 +83,7 @@ function hasText(html: string): boolean {
   return !!new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim();
 }
 
-function copySelection(preview: Element, select: (range: Range) => void, reverse = false): Record<string, string> {
+function copySelection(preview: Element, select: (range: Range) => void, reverse = false, expectedPlain?: string): Record<string, string> {
   const range = document.createRange();
   select(range);
   const selection = window.getSelection()!;
@@ -100,7 +100,7 @@ function copySelection(preview: Element, select: (range: Range) => void, reverse
   const setData = vi.fn();
   expect(fireEvent.copy(preview, { clipboardData: { setData } })).toBe(false);
   const payload = Object.fromEntries(setData.mock.calls) as Record<string, string>;
-  expect(payload['text/plain']).toBe(plain);
+  expect(payload['text/plain']).toBe(expectedPlain ?? plain);
   expect(selection.getRangeAt(0)).toBe(liveRange);
   expect([liveRange.startContainer, liveRange.startOffset, liveRange.endContainer, liveRange.endOffset]).toEqual(endpoints);
   expect([selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset]).toEqual(direction);
@@ -317,6 +317,24 @@ describe('WordToHtmlConverter', () => {
     expect(input.querySelector('a, [data-word-paste-boundary]')).toBeNull();
   });
 
+  it.each([['', 'H1'], ['<p><br></p>', 'P'], ['<br>', 'BR']])('removes document-header whitespace from a prepared paste while keeping leading markup: %s', (leading, firstTag) => {
+    render(<WordToHtmlConverter />);
+    const input = screen.getByRole('textbox', { name: 'Word document content' });
+    const html = '<html>\n<head>\n<meta charset="utf-8">\n<style>h1{font-size:20pt}</style>\n</head>\n<body>\n'
+      + `${leading}<h1>Green Hexagon Tile</h1><p>  Looking for a tile? <a href="/concealed" style="color:black;text-decoration:none">Plain source text</a></p>`
+      + '\n\n<pre>  Indented\nText\n</pre>\n</body>\n</html>';
+    fireEvent.paste(input, { clipboardData: { getData: (type: string) => type === 'text/html' ? html : '' } });
+    expect(input.firstChild).toBe(input.firstElementChild);
+    expect(input.firstElementChild?.tagName).toBe(firstTag);
+    if (leading === '<p><br></p>') expect(input.firstElementChild?.innerHTML).toContain('<br');
+    expect(input.querySelector('h1')?.textContent).toBe('Green Hexagon Tile');
+    expect(input.querySelector('h1')?.style.fontSize).not.toBe('');
+    expect(input.querySelector('h1 + p')?.textContent).toBe('  Looking for a tile? Plain source text');
+    expect(input.querySelector('pre')?.previousSibling?.textContent).toBe('\n\n');
+    expect(input.querySelector('pre')?.textContent).toBe('  Indented\nText\n');
+    expect(input.querySelector('meta, style')).toBeNull();
+  });
+
   it('inserts a prepared paste once when insertHTML inserts but reports false', () => {
     render(<WordToHtmlConverter />);
     const input = screen.getByRole('textbox', { name: 'Word document content' });
@@ -327,9 +345,10 @@ describe('WordToHtmlConverter', () => {
     const original = Object.getOwnPropertyDescriptor(document, 'execCommand');
     Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true });
     try {
-      const html = '<p>Read <a href="/concealed" style="color:black;text-decoration:none">our guide</a> first.</p>';
+      const html = '<html>\n<head>\n<meta charset="utf-8">\n</head>\n<body>\n<p>Read <a href="/concealed" style="color:black;text-decoration:none">our guide</a> first.</p></body></html>';
       fireEvent.paste(input, { clipboardData: { getData: (type: string) => type === 'text/html' ? html : '' } });
       expect(execCommand).toHaveBeenCalledWith('insertHTML', false, expect.any(String));
+      expect(execCommand.mock.calls[0][2]).toMatch(/^<p[ >]/);
       expect(input.textContent?.split('our guide')).toHaveLength(2);
     } finally {
       if (original) Object.defineProperty(document, 'execCommand', original);
@@ -458,6 +477,42 @@ describe('WordToHtmlConverter', () => {
     // Editing the pasted text must not restore the concealed link.
     fireEvent.input(input);
     expect(Array.from(preview.querySelectorAll('a')).map(a => a.textContent)).toEqual(['Closet Measurements']);
+  });
+
+  it.each([
+    ['"', '"', true], ['“', '”', true], ['"', '"', false],
+  ] as const)('preserves the pasted closing quote boundary in preview, Code and Blocks (%s…%s, originally linked: %s)', async (opening, closing, inside) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    try {
+      render(<WordToHtmlConverter />);
+      const input = screen.getByRole('textbox', { name: 'Word document content' });
+      const title = "What's the Best Protein for Dogs?";
+      const quote = `<span style="color:black;text-decoration-line:none">${closing}</span>`;
+      const html = '<p style="color:black">See <a href="https://example.com/protein" style="color:inherit;text-decoration-line:none">our article '
+        + `<span style="color:#1155cc;text-decoration-line:underline">${opening}${title}</span>${inside ? quote : ''}</a>${inside ? '' : quote} for details.</p>`;
+      const expected = `${opening}${title}${inside ? closing : ''}`;
+      fireEvent.paste(input, { clipboardData: { getData: (type: string) => type === 'text/html' ? html : '' } });
+      expect(input.querySelector('a')?.textContent).toBe(expected);
+      fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+      const preview = document.querySelector('.output-preview')!;
+      expect(preview.querySelector('a')?.textContent).toBe(expected);
+      expect(preview.textContent).toBe(`See our article ${opening}${title}${closing} for details.`);
+      fireEvent.input(input);
+      expect(preview.querySelector('a')?.textContent).toBe(expected);
+      fireEvent.click(screen.getByTitle('Copy HTML'));
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      const code = new DOMParser().parseFromString(writeText.mock.calls[0][0], 'text/html');
+      expect(code.querySelector('a')?.textContent).toBe(expected);
+      writeText.mockClear();
+      const blocks = new DOMParser().parseFromString(copyAllBlocks(writeText).join(''), 'text/html');
+      expect(blocks.body.innerHTML).toBe(code.body.innerHTML);
+      expect(document.querySelector('iframe')).toBeNull();
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
   });
 
   it.each([
@@ -1016,6 +1071,62 @@ describe('WordToHtmlConverter', () => {
         range.setStart(preview.firstChild!.firstChild!, 2);
         range.setEnd(preview.firstChild!.firstChild!, 5);
       })['text/html']).toBe('<p>pha</p>');
+    });
+
+    it.each([
+      ['parent', false], ['parent', true], ['following', false], ['following', true],
+    ] as const)('excludes hidden output panels when the last paragraph selection ends at %s (reverse: %s)', (endpoint, reverse) => {
+      const lastParagraph = '<p>Not by themselves. Light colors make a room feel more open.</p>';
+      const preview = renderPreview(`<h1>Small Hexagon Tile</h1><p>Earlier section.</p>${lastParagraph}`);
+      fireEvent.click(screen.getByTitle('Preview'));
+      const output = preview.parentElement!;
+      const following = document.createElement('p');
+      following.textContent = 'Next visible area';
+      output.after(following);
+      // Both inactive output views remain mounted after the rendered preview.
+      expect(output.querySelectorAll('.hidden')).toHaveLength(2);
+      const payload = copySelection(preview, range => {
+        range.setStart(preview.lastChild!.firstChild!, 0);
+        if (endpoint === 'parent') range.setEnd(output, output.childNodes.length);
+        else range.setEnd(following, 0);
+      }, reverse);
+      expect(payload['text/html']).toBe(lastParagraph);
+    });
+
+    it.each([
+      ['<p>Alpha</p>', 'Alpha\n\n', 'Alpha'],
+      ['<h2><strong>Alpha</strong></h2>', 'Alpha\n', 'Alpha'],
+      ['<p>Alpha<br>Beta</p>', 'Alpha\nBeta\n\n', 'Alpha\nBeta'],
+      ['<p> Alpha </p>', ' Alpha \n\n', ' Alpha '],
+      ['<p>Alpha</p><p>Beta</p>', 'Alpha\n\nBeta\n\n', 'Alpha\n\nBeta'],
+      ['<p>Alpha<br></p>', 'Alpha\n\n', 'Alpha\n\n'],
+      ['<pre>Alpha\n</pre>', 'Alpha\n\n', 'Alpha\n\n'],
+      ['<p>Alpha</p><p></p>', 'Alpha\n\n', 'Alpha\n\n'],
+    ])('removes only implicit trailing selection line breaks for %s', (html, nativePlain, expectedPlain) => {
+      const preview = renderPreview(`${html}<p>Following</p>`);
+      // jsdom omits the rendered block separators included by browser selections.
+      vi.spyOn(window.getSelection()!, 'toString').mockReturnValue(nativePlain);
+      const payload = copySelection(preview, range => {
+        range.setStart(preview.firstChild!.firstChild!, 0);
+        range.setEnd(preview.lastChild!, 0);
+      }, false, expectedPlain);
+      expect(payload['text/html']).toBe(html);
+    });
+
+    it.each([false, true])('removes implicit trailing selection line breaks at the preview end (reverse: %s)', (reverse) => {
+      const preview = renderPreview('<p>Alpha</p>');
+      vi.spyOn(window.getSelection()!, 'toString').mockReturnValue('Alpha\n\n');
+      const payload = copySelection(preview, range => {
+        range.setStart(preview.firstChild!.firstChild!, 0);
+        range.setEnd(preview.parentElement!, preview.parentElement!.childNodes.length);
+      }, reverse, 'Alpha');
+      expect(payload['text/html']).toBe('<p>Alpha</p>');
+    });
+
+    it('preserves an explicitly selected trailing newline inside text', () => {
+      const preview = renderPreview('<pre>Alpha\nBeta\n</pre>');
+      const payload = copySelection(preview, range => range.selectNodeContents(preview.firstChild!.firstChild!));
+      expect(payload['text/plain']).toBe('Alpha\nBeta\n');
     });
 
     it('retains the first selected following character', () => {
