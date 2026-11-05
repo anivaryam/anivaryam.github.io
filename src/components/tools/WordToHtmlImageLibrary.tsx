@@ -60,8 +60,19 @@ export function ImageLibraryPanel({ library, onChange }: ImageLibraryPanelProps)
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
     if (files.length === 0) return;
-    const texts = await Promise.all(files.map(file => file.text()));
-    addImages(texts.flatMap(parseImageLibraryJson), 0);
+    const results = await Promise.allSettled(files.map(async file =>
+      parseImageLibraryJson(await file.text(), true)
+    ));
+    const entries = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
+    const failures = results.flatMap((result, index) => result.status === "rejected" ? [files[index].name] : []);
+    if (entries.length > 0 || failures.length === 0) addImages(entries, 0);
+    if (failures.length > 0) {
+      toast({
+        title: "Image library import failed",
+        description: `Could not import ${failures.join(", ")}. Choose a readable image-library JSON export. Other valid files were still imported.`,
+        variant: "destructive",
+      });
+    }
   };
 
   return (

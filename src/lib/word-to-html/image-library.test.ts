@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convertToHtml, getUnformattedHtml } from './converter';
 import { cleanWordHtml } from './word-html-cleaner';
 import { validateMode } from './validator';
 import { FINGERPRINT_LENGTH, FINGERPRINT_THRESHOLD, encodeFingerprint } from './image-fingerprint';
+import * as imageFingerprint from './image-fingerprint';
 import {
+  applyImageLibrary,
   findDraftImages,
+  getImageCtaIssues,
   getStoreHost,
   isAltLabelParagraph,
   isShopifyImageBlock,
@@ -12,6 +15,7 @@ import {
   parseImageLibraryJson,
   parseShopifyImages,
   readAltLabel,
+  reconcileImageLibrary,
   resolveImageCta,
   type ImageCta,
   type ImageLibraryEntry,
@@ -104,6 +108,33 @@ describe('image library: saving Shopify images', () => {
     expect(parseImageLibraryJson('{"host":"x.com"}')).toEqual([]);
   });
 
+  it('reports invalid imports without changing tolerant storage parsing', () => {
+    for (const json of ['not json', '{}', '[null]', JSON.stringify([{ host: 'x.com', src: 'javascript:1' }])]) {
+      expect(() => parseImageLibraryJson(json, true)).toThrow();
+      expect(parseImageLibraryJson(json)).toEqual([]);
+    }
+    expect(parseImageLibraryJson('[]', true)).toEqual([]);
+    expect(parseImageLibraryJson(JSON.stringify(library), true)).toEqual(library);
+    expect(parseImageLibraryJson(JSON.stringify([library[0], null]), true)).toEqual(library);
+  });
+
+  it('merges stale-tab additions and deletions without overwriting unrelated images', () => {
+    const red = library[0];
+    const green = { ...red, src: `${CDN}&green`, alt: 'Green' };
+    expect(reconcileImageLibrary([], [green], [red])).toEqual([red, green]);
+    expect(reconcileImageLibrary([red], [], [red, green])).toEqual([green]);
+    expect(reconcileImageLibrary([red], [red], [green])).toEqual([green]);
+  });
+
+  it('preserves concurrent metadata edits during backfill and never resurrects remote deletions', () => {
+    const original = library[0];
+    const backfilled = { ...original, fp: fp(10) };
+    const renamed = { ...original, alt: 'Renamed elsewhere' };
+    expect(reconcileImageLibrary([original], [backfilled], [renamed])).toEqual([{ ...renamed, fp: fp(10) }]);
+    expect(reconcileImageLibrary([original], [backfilled], [])).toEqual([]);
+    expect(reconcileImageLibrary([original], [renamed], [backfilled])).toEqual([{ ...renamed, fp: fp(10) }]);
+  });
+
   it('names the store from absolute, www, and Google Docs redirect links', () => {
     expect(getStoreHost('https://www.LawnSynergy.com/collections/x')).toBe('lawnsynergy.com');
     expect(getStoreHost('https://www.google.com/url?q=https://lawnsynergy.com/collections/x&sa=D')).toBe('lawnsynergy.com');
@@ -111,6 +142,48 @@ describe('image library: saving Shopify images', () => {
     expect(getStoreHost('mailto:a@b.com')).toBeNull();
   });
 
+});
+
+describe('image library: matching reuse', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('reuses decoding and comparisons across conversion, validation and text edits', () => {
+    const saved = Array.from({ length: 50 }, (_, index) => ({ ...library[0], src: `${CDN}&image=${index}`, fp: fp(index + 10) }));
+    const fingerprints = draftFps();
+    const decode = vi.spyOn(imageFingerprint, 'decodeFingerprint');
+    const compare = vi.spyOn(imageFingerprint, 'fingerprintDistance');
+    const html = `<p>Before</p><img src="${DRAFT_SRC}" alt="Draft description">`;
+    const output = applyImageLibrary(html, saved, true, fingerprints);
+    expect(output).toContain(`src="${saved[0].src.replace(/&/g, '&amp;')}"`);
+    expect(decode).toHaveBeenCalledTimes(51);
+    expect(compare).toHaveBeenCalledTimes(50);
+    expect(getImageCtaIssues(saved, fingerprints)).toEqual([]);
+    expect(applyImageLibrary(html.replace('Before', 'Edited'), saved, true, fingerprints)).toBe(output.replace('Before', 'Edited'));
+    expect(decode).toHaveBeenCalledTimes(51);
+    expect(compare).toHaveBeenCalledTimes(50);
+  });
+
+  it('refreshes matches after fingerprint backfill, source edits and library membership changes', () => {
+    const saved = [{ ...library[0], fp: undefined as string | undefined }, { ...library[0], src: `${CDN}&second`, fp: fp(100) }];
+    const fingerprints = draftFps(10);
+    const cta = { src: DRAFT_SRC, href: null };
+    expect(resolveImageCta(cta, saved, fingerprints).status).toBe('unmatched');
+    saved[0].fp = fp(10);
+    expect(resolveImageCta(cta, saved, fingerprints).entry).toBe(saved[0]);
+    saved[0].fp = fp(200);
+    expect(resolveImageCta(cta, saved, fingerprints).status).toBe('unmatched');
+    fingerprints[0].fp = fp(100);
+    expect(resolveImageCta(cta, saved, fingerprints).entry).toBe(saved[1]);
+    saved[0].fp = fp(100);
+    saved[0].alt = 'Updated description';
+    expect(resolveImageCta(cta, saved, fingerprints).entry).toBe(saved[0]);
+    saved[0].host = 'other-store.com';
+    expect(resolveImageCta({ ...cta, href: 'https://lawnsynergy.com/x' }, saved, fingerprints).entry).toBe(saved[1]);
+    saved.splice(0, 1);
+    expect(resolveImageCta(cta, saved, fingerprints).entry).toBe(saved[0]);
+    fingerprints[0].fp = 'invalid';
+    expect(resolveImageCta(cta, saved, fingerprints).status).toBe('unverified');
+  });
 });
 
 describe('image library: blogs conversion', () => {

@@ -43,7 +43,7 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
 // default decimal numbering and is dropped, like start="1".
 const OL_TYPES = ['a', 'A', 'i', 'I'];
 // CSS list numbering with an <ol type> equivalent.
-const LIST_STYLE_TYPES: Record<string, string> = {
+export const LIST_STYLE_TYPES: Record<string, string> = {
   'decimal': '1',
   'lower-alpha': 'a', 'lower-latin': 'a',
   'upper-alpha': 'A', 'upper-latin': 'A',

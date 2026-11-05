@@ -15,7 +15,7 @@ import { getBoldParagraphSpacingIssues, getHeadingSpacingIssues } from './mode-s
 import { isReadMoreParagraph, isSourcesParagraph } from './mode-br-spacing';
 import { isHeaderList } from './mode-ol-header-conversion';
 import { findListLabel } from './mode-list-normalize';
-import { isFootnoteLink, LINK_CONTINUES_TEXT_RE } from './mode-link-spacing';
+import { isFootnoteLink, isUnspacedCjkBoundary, LINK_CONTINUES_TEXT_RE } from './mode-link-spacing';
 import { isDisclaimerParagraph, isDisclaimerSectionStart } from './mode-disclaimer-normalize';
 import { getImageCtaIssues, isAltLabelParagraph, isShopifyImageBlock, isShopifyImageBlockStyled } from './image-library';
 
@@ -668,7 +668,7 @@ export function getLinkSpacingIssues(doc: Document): { element: Element; message
       return;
     }
     /* A link that continues a compound or amount ("non-<a>", "$<a>") needs no space. */
-    if (LINK_CONTINUES_TEXT_RE.test(previousText)) {
+    if (LINK_CONTINUES_TEXT_RE.test(previousText) || isUnspacedCjkBoundary(previousText, link.textContent || '')) {
       return;
     }
     const lastChar = previousText.slice(-1);
