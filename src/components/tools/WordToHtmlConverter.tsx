@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback, type ClipboardEvent as ReactClipboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { memo, useState, useRef, useEffect, useMemo, useCallback, type ClipboardEvent as ReactClipboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import Lenis from "lenis";
 import { Copy, Check, FileText, Code, Braces, ShoppingBag, Newspaper, ChevronDown, ChevronUp, X, Eye, CheckCircle2, AlertCircle, Maximize2, Hash, Link, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,8 @@ import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLin
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "next-themes";
+import { writeRichHtml } from '@/lib/word-to-html/clipboard';
+import { ORDERED_LIST_PREVIEW_CSS, PREVIEW_SANITIZE_CONFIG as BLOCK_SANITIZE_CONFIG, preparePreviewHtml, removePreviewAttributes } from '@/lib/word-to-html/preview';
 
 // Custom theme matching the website's color scheme
 const customTheme = {
@@ -152,7 +154,40 @@ interface ContentBlock {
 
 // DOMPurify drops `target` by default; keep it, as the paste path does, so a
 // block link opens in a new tab instead of replacing the tool.
-const BLOCK_SANITIZE_CONFIG = { ADD_ATTR: ['target'] };
+// View toggles, copy indicators and dialogs must not retokenize an unchanged
+// document. Keep the complete selectable code; do not truncate or virtualize it.
+const HtmlCode = memo(function HtmlCode({ html, dark, maximized = false }: { html: string; dark: boolean; maximized?: boolean }) {
+  const syntaxTheme = dark ? oneDark : oneLight;
+  const codeClass = dark ? 'w2h-code-dark' : 'w2h-code-light';
+  // The default renderer rebuilds inline style objects for every token on
+  // every edit. Emit the same theme's token styles once, scoped to this code.
+  const tokenCSS = useMemo(() => Object.entries(dark ? oneDark : oneLight)
+    .filter(([selector]) => /^[\w-]+(?:\.[\w-]+)*$/.test(selector))
+    .map(([selector, properties]) => {
+      const element = document.createElement('span');
+      Object.assign(element.style, properties);
+      return `.${dark ? 'w2h-code-dark' : 'w2h-code-light'} .token.${selector} { ${element.style.cssText} }`;
+    }).join('\n'), [dark]);
+  return <><style>{tokenCSS}</style><SyntaxHighlighter
+    language="html"
+    style={syntaxTheme}
+    className={codeClass}
+    useInlineStyles={false}
+    customStyle={{
+      ...syntaxTheme['pre[class*="language-"]'],
+      margin: 0,
+      padding: maximized ? '1.5rem' : 0,
+      background: maximized ? 'hsl(var(--background) / 0.8)' : 'transparent',
+      height: 'auto',
+      minHeight: maximized ? '100%' : undefined,
+      overflow: 'visible',
+      fontFamily: 'var(--font-mono)',
+      fontSize: '0.875rem',
+      lineHeight: '1.75',
+    }}
+    codeTagProps={{ style: { fontFamily: 'var(--font-mono)', fontSize: '0.875rem', lineHeight: '1.75' } }}
+  >{html || '// Output will appear here...'}</SyntaxHighlighter></>;
+});
 
 const parseHtmlIntoBlocks = (html: string, customSpacer?: string): ContentBlock[] => {
   const parser = new DOMParser();
@@ -687,12 +722,20 @@ export function WordToHtmlConverter() {
 
     const handlePaste = (e: ClipboardEvent) => {
       const sourceHtml = e.clipboardData?.getData('text/html');
+      const plainText = e.clipboardData?.getData('text/plain') || '';
+      const multilinePlainText = !sourceHtml && /[\r\n]/.test(plainText);
       const pastesTable = /<table\b/i.test(sourceHtml || '');
-      if (sourceHtml || e.clipboardData?.getData('text/plain')) prepareFullReplacement();
-      if (sourceHtml) {
+      if (sourceHtml || plainText) prepareFullReplacement();
+      if (sourceHtml || multilinePlainText) {
         const source = createInertContainer();
-        source.innerHTML = sourceHtml;
-        if (prepareWordSource(source, true)) {
+        if (multilinePlainText) {
+          for (const line of plainText.split(/\r\n|\r|\n/)) {
+            const paragraph = source.ownerDocument.createElement('p');
+            paragraph.textContent = line || '\u00a0';
+            source.appendChild(paragraph);
+          }
+        } else source.innerHTML = sourceHtml;
+        if (multilinePlainText || prepareWordSource(source, true)) {
           // Resolve links and article titles from the original clipboard before
           // native paste can discard their source formatting.
           source.innerHTML = DOMPurify.sanitize(source.innerHTML, { FORBID_TAGS: ['style'], ADD_ATTR: ['target'] });
@@ -808,7 +851,7 @@ export function WordToHtmlConverter() {
   }, [previewHtml]);
 
   // Function to combine custom CSS with HTML output
-  const getHtmlWithCSS = (html: string): string => {
+  const getHtmlWithCSS = useCallback((html: string): string => {
     if (!customCSS.trim()) {
       return html;
     }
@@ -817,10 +860,23 @@ export function WordToHtmlConverter() {
     } else {
       return `${customCSS}\n${html}`;
     }
-  };
+  }, [customCSS, wrapWithStyleTags]);
 
 
   const contentBlocks = useMemo(() => parseHtmlIntoBlocks(previewHtml, effectiveFeatures.customSpacer), [previewHtml, effectiveFeatures.customSpacer]);
+  const blockPreviews = useMemo(() => contentBlocks.map(block => preparePreviewHtml(DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG))), [contentBlocks]);
+
+  const copyBlock = async (block: ContentBlock, index: number, rich: boolean) => {
+    try {
+      if (rich) await writeRichHtml(block.html);
+      else await navigator.clipboard.writeText(getHtmlWithCSS(block.html));
+      setCopiedBlockId(`${block.id}-${rich ? 'formatted' : 'html'}`);
+      setTimeout(() => setCopiedBlockId(null), 2000);
+      toast({ title: 'Copied!', description: `Block ${index + 1} (${rich ? 'formatted' : 'HTML'}) copied` });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to copy block', variant: 'destructive' });
+    }
+  };
 
   // The main and maximized output use the same copy behavior and error handling.
   // Rich HTML follows the existing block-copy fallback; the shared clipboard hook
@@ -831,12 +887,7 @@ export function WordToHtmlConverter() {
     try {
       let copiedRichHtml = false;
       if (rich) {
-        try {
-          await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }) })]);
-          copiedRichHtml = true;
-        } catch {
-          await navigator.clipboard.writeText(html);
-        }
+        copiedRichHtml = await writeRichHtml(html);
       } else {
         await navigator.clipboard.writeText(html);
       }
@@ -918,7 +969,10 @@ export function WordToHtmlConverter() {
       
       const result = await response.json();
       if (controller.signal.aborted) return;
-      setLinkCheckResult(result);
+      // Older deployed workers also include 5xx in brokenLinks. Keep the UI
+      // categories disjoint while the app and worker roll out independently.
+      const brokenLinks = result.brokenLinks.filter((link: { status: number }) => link.status >= 400 && link.status < 500);
+      setLinkCheckResult({ ...result, broken: brokenLinks.length, brokenLinks });
       
       // Show detailed results in dialog
       setShowLinkResults(true);
@@ -1232,7 +1286,9 @@ export function WordToHtmlConverter() {
 
   // The rendered preview can be selected and copied, so it shows the configured
   // spacer markup without the converter's marker.
-  const displayedPreviewHtml = useMemo(() => stripSpacerMarkers(previewHtmlWithWarnings), [previewHtmlWithWarnings]);
+  // Preview safety is independent of the export's opt-in sanitization. Raw
+  // custom spacers remain in Code/Copy, never as executable app DOM.
+  const displayedPreviewHtml = useMemo(() => preparePreviewHtml(previewHtmlWithWarnings), [previewHtmlWithWarnings]);
 
   // A selection copied from the rendered preview leaves out the warning
   // highlights and the spacer marker; the Copy buttons copy clean HTML on their
@@ -1286,7 +1342,7 @@ export function WordToHtmlConverter() {
       }
       container.appendChild(copied);
     }
-    container.querySelectorAll('[data-warning]').forEach(element => element.removeAttribute('data-warning'));
+    removePreviewAttributes(container);
     event.clipboardData.setData('text/html', stripSpacerMarkers(container.innerHTML));
     event.clipboardData.setData('text/plain', plainText);
     event.preventDefault();
@@ -1313,7 +1369,7 @@ export function WordToHtmlConverter() {
                       onChange={(e) => setOutputFormat(e.target.value as OutputMode)}
                       className="accent-primary"
                     />
-                    <span className={`text-sm ${outputFormat === 'regular' ? 'text-primary font-medium' : 'text-foreground'}`}>
+                    <span className={`text-sm ${outputFormat === 'regular' ? 'text-green-700 dark:text-primary font-medium' : 'text-foreground'}`}>
                       Regular
                     </span>
                   </label>
@@ -1326,7 +1382,7 @@ export function WordToHtmlConverter() {
                       onChange={(e) => setOutputFormat(e.target.value as OutputMode)}
                       className="accent-primary"
                     />
-                    <span className={`text-sm ${outputFormat === 'blogs' ? 'text-primary font-medium' : 'text-foreground'}`}>
+                    <span className={`text-sm ${outputFormat === 'blogs' ? 'text-green-700 dark:text-primary font-medium' : 'text-foreground'}`}>
                       Blogs
                     </span>
                   </label>
@@ -1339,7 +1395,7 @@ export function WordToHtmlConverter() {
                       onChange={(e) => setOutputFormat(e.target.value as OutputMode)}
                       className="accent-primary"
                     />
-                    <span className={`text-sm ${outputFormat === 'shoppables' ? 'text-primary font-medium' : 'text-foreground'}`}>
+                    <span className={`text-sm ${outputFormat === 'shoppables' ? 'text-green-700 dark:text-primary font-medium' : 'text-foreground'}`}>
                       Shoppables
                     </span>
                   </label>
@@ -1623,6 +1679,7 @@ export function WordToHtmlConverter() {
                             ? 'The markup is sanitised before it is used.'
                             : 'The markup is inserted verbatim and is not sanitised. It is copied into the published HTML.'}
                         </p>
+                        <p className="text-xs text-muted-foreground mt-1">Previews always remove executable markup; copied HTML follows this setting.</p>
                         {spacerWarnings.length > 0 && (
                           <div role="alert" className="mt-2 flex items-start gap-2 text-xs text-yellow-600 dark:text-yellow-500">
                             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
@@ -1700,7 +1757,7 @@ export function WordToHtmlConverter() {
             }`}>
               <div className={`font-semibold mb-1 ${
                 validationResults.summary.failed === 0
-                  ? 'text-green-500'
+                  ? 'text-green-800 dark:text-green-500'
                   : validationResults.summary.passed > 0
                   ? 'text-yellow-500'
                   : 'text-red-500'
@@ -1709,7 +1766,7 @@ export function WordToHtmlConverter() {
               </div>
               <div className="flex gap-4 text-xs text-muted-foreground">
                 <span>Total: {validationResults.summary.total}</span>
-                <span className="text-green-500">Passed: {validationResults.summary.passed}</span>
+                <span className="text-green-800 dark:text-green-500">Passed: {validationResults.summary.passed}</span>
                 {validationResults.summary.failed > 0 && (
                   <span className="text-red-500">Failed: {validationResults.summary.failed}</span>
                 )}
@@ -2160,8 +2217,10 @@ export function WordToHtmlConverter() {
                 margin: 0.5em 0;
                 padding-left: 2em;
                 color: hsl(var(--foreground) / 0.9);
-                list-style-type: decimal;
                 display: block;
+              }
+              .output-preview ol:not([type]) {
+                list-style-type: decimal;
               }
               .output-preview li {
                 display: list-item;
@@ -2176,14 +2235,15 @@ export function WordToHtmlConverter() {
               .output-preview ul ul ul {
                 list-style-type: square;
               }
-              .output-preview ol ol {
+              .output-preview ol ol:not([type]) {
                 list-style-type: lower-alpha;
                 margin-top: 0.25em;
                 margin-bottom: 0.25em;
               }
-              .output-preview ol ol ol {
+              .output-preview ol ol ol:not([type]) {
                 list-style-type: lower-roman;
               }
+              ${ORDERED_LIST_PREVIEW_CSS}
               .output-preview table {
                 border-collapse: collapse;
                 width: 100%;
@@ -2266,29 +2326,7 @@ export function WordToHtmlConverter() {
                 fontFamily: 'var(--font-mono)',
               }}
             >
-              <SyntaxHighlighter
-                language="html"
-                style={theme === 'dark' ? oneDark : oneLight}
-                customStyle={{
-                  margin: 0,
-                  padding: 0,
-                  background: 'transparent',
-                  height: 'auto',
-                  overflow: 'visible',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.875rem',
-                  lineHeight: '1.75',
-                }}
-                codeTagProps={{
-                  style: {
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '0.875rem',
-                    lineHeight: '1.75',
-                  },
-                }}
-              >
-                {getHtmlWithCSS(outputHtml) || "// Output will appear here..."}
-              </SyntaxHighlighter>
+              <HtmlCode html={getHtmlWithCSS(outputHtml)} dark={theme === 'dark'} />
             </div>
             {/* Blocks View - Detailed Preview */}
             <div
@@ -2297,58 +2335,11 @@ export function WordToHtmlConverter() {
               }`}
               data-lenisignore
             >
-              {contentBlocks.length > 0 ? (
-                <div className="divide-y divide-border/30 output-preview">
+              {outputView === 'blocks' && (contentBlocks.length > 0 ? (
+                <div className="divide-y divide-border/30 output-preview" onCopy={handlePreviewCopy}>
                   {(() => {
                     const visibleBlocks = contentBlocks;
                     return visibleBlocks.map((block, index) => {
-                    const handleCopyFormatted = async () => {
-                      try {
-                        const blockHtml = block.html; // Formatted HTML without CSS wrapper
-                        // Try to copy as rich HTML first (for WordPress visual editor)
-                        try {
-                          const blob = new Blob([blockHtml], { type: 'text/html' });
-                          await navigator.clipboard.write([
-                            new ClipboardItem({ 'text/html': blob })
-                          ]);
-                        } catch (richHtmlError) {
-                          // Fallback to plain text if rich HTML copy fails
-                          await navigator.clipboard.writeText(blockHtml);
-                        }
-                        setCopiedBlockId(`${block.id}-formatted`);
-                        setTimeout(() => setCopiedBlockId(null), 2000);
-                        toast({
-                          title: "Copied!",
-                          description: `Block ${index + 1} (formatted) copied`,
-                        });
-                      } catch (error) {
-                        toast({
-                          title: "Error",
-                          description: "Failed to copy block",
-                          variant: "destructive",
-                        });
-                      }
-                    };
-
-                    const handleCopyHTML = async () => {
-                      try {
-                        const blockHtml = getHtmlWithCSS(block.html); // HTML with CSS
-                        await navigator.clipboard.writeText(blockHtml);
-                        setCopiedBlockId(`${block.id}-html`);
-                        setTimeout(() => setCopiedBlockId(null), 2000);
-                        toast({
-                          title: "Copied!",
-                          description: `Block ${index + 1} (HTML) copied`,
-                        });
-                      } catch (error) {
-                        toast({
-                          title: "Error",
-                          description: "Failed to copy block",
-                          variant: "destructive",
-                        });
-                      }
-                    };
-
                     const typeLabel = {
                       'heading': 'Heading',
                       'content': 'Content',
@@ -2390,7 +2381,7 @@ export function WordToHtmlConverter() {
                             >
                               {block.type === 'heading' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
+                                  dangerouslySetInnerHTML={{ __html: blockPreviews[index] }}
                                   style={{
                                     fontSize: '1.5em',
                                     fontWeight: 'bold',
@@ -2401,7 +2392,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'content' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
+                                  dangerouslySetInnerHTML={{ __html: blockPreviews[index] }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2411,7 +2402,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'image' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
+                                  dangerouslySetInnerHTML={{ __html: blockPreviews[index] }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2420,7 +2411,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'disclaimer' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
+                                  dangerouslySetInnerHTML={{ __html: blockPreviews[index] }}
                                   style={{
                                     fontSize: '0.875rem',
                                     lineHeight: '1.6',
@@ -2432,7 +2423,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'sources' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
+                                  dangerouslySetInnerHTML={{ __html: blockPreviews[index] }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2441,7 +2432,7 @@ export function WordToHtmlConverter() {
                               )}
                               {block.type === 'readmore' && (
                                 <div
-                                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }}
+                                  dangerouslySetInnerHTML={{ __html: blockPreviews[index] }}
                                   style={{
                                     fontSize: '0.9375rem',
                                     lineHeight: '1.6',
@@ -2457,7 +2448,7 @@ export function WordToHtmlConverter() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={handleCopyFormatted}
+                              onClick={() => copyBlock(block, index, true)}
                               className="h-8 px-2 text-xs"
                               title="Copy as formatted HTML"
                             >
@@ -2470,7 +2461,7 @@ export function WordToHtmlConverter() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={handleCopyHTML}
+                              onClick={() => copyBlock(block, index, false)}
                               className="h-8 px-2 text-xs"
                               title="Copy as HTML code with CSS"
                             >
@@ -2491,7 +2482,7 @@ export function WordToHtmlConverter() {
                 <div className="h-full flex items-center justify-center">
                   <p className="text-muted-foreground">No content blocks to display</p>
                 </div>
-              )}
+              ))}
             </div>
             <style>{`
               .output-preview p {
@@ -2665,7 +2656,7 @@ export function WordToHtmlConverter() {
               />
             ) : maximizedOutputView === 'blocks' ? (
               /* Blocks in Modal */
-              <div className="bg-background/80 output-preview">
+              <div className="bg-background/80 output-preview" onCopy={handlePreviewCopy}>
                 {contentBlocks.length > 0 ? (
                   <div className="divide-y divide-border/30">
                     {contentBlocks.map((block, index) => {
@@ -2694,24 +2685,14 @@ export function WordToHtmlConverter() {
                                 {typeLabel}
                               </span>
                               <div className="text-sm leading-relaxed max-w-none" style={{ color: 'hsl(var(--foreground) / 0.9)' }}>
-                                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html, BLOCK_SANITIZE_CONFIG) }} />
+                                <div dangerouslySetInnerHTML={{ __html: blockPreviews[index] }} />
                               </div>
                             </div>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0 ml-2">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={async () => {
-                                  try {
-                                    const blob = new Blob([block.html], { type: 'text/html' });
-                                    await navigator.clipboard.write([new ClipboardItem({ 'text/html': blob })]);
-                                  } catch {
-                                    await navigator.clipboard.writeText(block.html);
-                                  }
-                                  setCopiedBlockId(`${block.id}-formatted`);
-                                  setTimeout(() => setCopiedBlockId(null), 2000);
-                                  toast({ title: "Copied!", description: `Block ${index + 1} (formatted) copied` });
-                                }}
+                                onClick={() => copyBlock(block, index, true)}
                                 className="h-8 px-2 text-xs"
                                 title="Copy as formatted HTML"
                               >
@@ -2720,16 +2701,7 @@ export function WordToHtmlConverter() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={async () => {
-                                  try {
-                                    await navigator.clipboard.writeText(getHtmlWithCSS(block.html));
-                                    setCopiedBlockId(`${block.id}-html`);
-                                    setTimeout(() => setCopiedBlockId(null), 2000);
-                                    toast({ title: "Copied!", description: `Block ${index + 1} (HTML) copied` });
-                                  } catch {
-                                    toast({ title: "Error", description: "Failed to copy block", variant: "destructive" });
-                                  }
-                                }}
+                                onClick={() => copyBlock(block, index, false)}
                                 className="h-8 px-2 text-xs"
                                 title="Copy as HTML code with CSS"
                               >
@@ -2750,30 +2722,7 @@ export function WordToHtmlConverter() {
             ) : (
               /* Code in Modal */
               <div ref={modalCodeAreaRef} className="w-full p-4">
-                <SyntaxHighlighter
-                    language="html"
-                    style={theme === 'dark' ? oneDark : oneLight}
-                    customStyle={{
-                      margin: 0,
-                      padding: '1.5rem',
-                      background: 'hsl(var(--background) / 0.8)',
-                      height: 'auto',
-                      minHeight: '100%',
-                      overflow: 'visible',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.875rem',
-                      lineHeight: '1.75',
-                    }}
-                    codeTagProps={{
-                      style: {
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.875rem',
-                        lineHeight: '1.75',
-                      },
-                    }}
-                  >
-                    {getHtmlWithCSS(outputHtml) || "// Output will appear here..."}
-                  </SyntaxHighlighter>
+                <HtmlCode html={getHtmlWithCSS(outputHtml)} dark={theme === 'dark'} maximized />
               </div>
             )}
           </div>
@@ -2831,7 +2780,7 @@ export function WordToHtmlConverter() {
                   <span className="text-green-600 font-medium">✅ {linkCheckResult.good} valid</span>
                 )}
                 {linkCheckResult.broken > 0 && (
-                  <span className="text-red-600 font-medium">❌ {linkCheckResult.broken} 404</span>
+                  <span className="text-red-600 font-medium">❌ {linkCheckResult.broken} client error</span>
                 )}
                 {linkCheckResult.serverErrors > 0 && (
                   <span className="text-orange-600 font-medium">⚠️ {linkCheckResult.serverErrors} server error</span>
@@ -2862,10 +2811,10 @@ export function WordToHtmlConverter() {
                 </div>
               )}
               
-              {/* Broken Links (404) */}
+              {/* Client Errors */}
               {linkCheckResult.brokenLinks.length > 0 && (
                 <div>
-                  <h4 className="font-medium text-red-600 mb-2">❌ Not Found (404)</h4>
+                  <h4 className="font-medium text-red-600 mb-2">❌ Client Errors (4xx)</h4>
                   <ul className="space-y-1">
                     {linkCheckResult.brokenLinks.map((link, i) => (
                       <li key={i}>
@@ -2875,9 +2824,10 @@ export function WordToHtmlConverter() {
                           rel="noopener noreferrer"
                           className="text-red-700 hover:underline text-sm break-all"
                         >
-                          {link.url}
-                        </a>
-                      </li>
+                            {link.url}
+                          </a>
+                          <span className="text-xs text-red-600 ml-2">Status: {link.status}</span>
+                        </li>
                     ))}
                   </ul>
                 </div>

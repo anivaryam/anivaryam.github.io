@@ -8,7 +8,9 @@ import {
   encodeFingerprint,
   fingerprintDistance,
   fingerprintFromPixels,
+  fingerprintFromPixelsAsync,
   fingerprintsMatch,
+  isCurrentFingerprint,
 } from './image-fingerprint';
 
 const fp = (value: number) => new Uint8Array(FINGERPRINT_LENGTH).fill(value);
@@ -49,6 +51,36 @@ describe('image fingerprint', () => {
     expect(Array.from(cells).every(value => value === 255)).toBe(true);
   });
 
+  it.each([[97, 53], [1920, 1080]])('keeps asynchronous fingerprints byte-identical at %sx%s', async (width, height) => {
+    const rgba = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < rgba.length; i++) rgba[i] = (i * 17 + Math.floor(i / 100)) % 256;
+    const expected = fingerprintFromPixels(rgba, width, height);
+    expect(await fingerprintFromPixelsAsync(rgba, width, height)).toEqual(expected);
+    const reads: number[] = [];
+    expect(await fingerprintFromPixelsAsync((firstRow, rowCount) => {
+      reads.push(width * rowCount);
+      return rgba.subarray(firstRow * width * 4, (firstRow + rowCount) * width * 4);
+    }, width, height)).toEqual(expected);
+    expect(reads.every(count => count <= 65_536)).toBe(true);
+  });
+
+  it('lets another task run before completing a large fingerprint', async () => {
+    const rgba = new Uint8ClampedArray(512 * 512 * 4).fill(255);
+    let finished = false;
+    const pending = fingerprintFromPixelsAsync(rgba, 512, 512).then(result => { finished = true; return result; });
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    expect(finished).toBe(false);
+    expect(await pending).toEqual(fp(255));
+  });
+
+  it('stops queued pixel work when the draft is cancelled', async () => {
+    const controller = new AbortController();
+    const pending = fingerprintFromPixelsAsync(new Uint8ClampedArray(512 * 512 * 4), 512, 512, controller.signal);
+    controller.abort();
+    expect(await pending).toBeNull();
+    expect(await fingerprintFromPixelsAsync(new Uint8ClampedArray(), 0, 0, controller.signal)).toBeNull();
+  });
+
   it('measures the largest per-cell difference', () => {
     const a = fp(100);
     const b = fp(100);
@@ -78,5 +110,27 @@ describe('image fingerprint', () => {
     expect(decodeFingerprint(btoa('too short'))).toBeNull();
     expect(decodeFingerprint(undefined)).toBeNull();
     expect(decodeFingerprint(123)).toBeNull();
+  });
+
+  it('distinguishes color variants with identical luminance', () => {
+    const pixels = (color: number[]) => {
+      const rgba = new Uint8ClampedArray(FINGERPRINT_WIDTH * FINGERPRINT_HEIGHT * 4);
+      for (let i = 0; i < rgba.length; i += 4) rgba.set([...color, 255], i);
+      return fingerprintFromPixels(rgba, FINGERPRINT_WIDTH, FINGERPRINT_HEIGHT);
+    };
+    const red = pixels([255, 0, 0]);
+    const green = pixels([0, 130, 0]);
+    expect(red[0]).toBe(green[0]);
+    expect(fingerprintsMatch(red, green)).toBe(false);
+  });
+
+  it('keeps legacy fingerprints readable but never uses them as verified matches', () => {
+    const legacy = new Uint8Array(FINGERPRINT_WIDTH * FINGERPRINT_HEIGHT).fill(100);
+    const encoded = encodeFingerprint(legacy);
+    expect(decodeFingerprint(encoded)).toEqual(legacy);
+    expect(isCurrentFingerprint(encoded)).toBe(false);
+    expect(isCurrentFingerprint(encodeFingerprint(fp(100)))).toBe(true);
+    expect(fingerprintsMatch(legacy, legacy)).toBe(false);
+    expect(fingerprintsMatch(legacy, fp(100))).toBe(false);
   });
 });

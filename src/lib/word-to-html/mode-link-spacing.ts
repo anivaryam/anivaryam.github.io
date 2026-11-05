@@ -30,6 +30,15 @@ const WORD_CONTINUATION_RE = /^[\p{L}\p{N}\u2010-\u2015-]/u;
  */
 export const LINK_CONTINUES_TEXT_RE = /[\p{Sc}\u2010-\u2015/-]$/u;
 
+// Chinese/Japanese text and full-width punctuation do not acquire English
+// word separators merely because a hyperlink crosses their text boundary.
+const CJK_CHARACTER = '[\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\u3000-\\u303f\\uff01-\\uff60]';
+const CJK_END_RE = new RegExp(`${CJK_CHARACTER}$`, 'u');
+const CJK_START_RE = new RegExp(`^${CJK_CHARACTER}`, 'u');
+export function isUnspacedCjkBoundary(before: string, after: string): boolean {
+  return CJK_END_RE.test(before) || CJK_START_RE.test(after);
+}
+
 // Whitespace that HTML collapses (the set html-cleaner trims). U+00A0 (&nbsp;)
 // is intentional spacing and must survive normalization.
 const COLLAPSIBLE_WHITESPACE_RE = /[\t\n\r\f\v ]+/g;
@@ -149,7 +158,7 @@ export function addLinkSpacing(html: string): string {
         // Add space before if needed (after normalization); a link that
         // continues the preceding word or token stays attached to it
         if (textNodeToModify && !isCodeNeighbor && textContent.trim() && !endsWithWhitespace(textContent) && !endsWithOpeningPunctuation(textContent) &&
-            !LINK_CONTINUES_TEXT_RE.test(textContent)) {
+            !LINK_CONTINUES_TEXT_RE.test(textContent) && !isUnspacedCjkBoundary(textContent, anchor.textContent || '')) {
           textNodeToModify.textContent = textContent + ' ';
         } else if (!textNodeToModify) {
           // No text node found - insert a space node before the anchor
@@ -189,7 +198,8 @@ export function addLinkSpacing(html: string): string {
         // Add space after if needed; a word continuation or a footnote marker
         // in <sup>/<sub> stays attached to the link
         if (nextTextNode && !isCodeNeighbor && nextText.trim() && !WHITESPACE_START_RE.test(nextText) && !CLOSING_PUNCTUATION_RE.test(nextText) &&
-            !WORD_CONTINUATION_RE.test(nextText) && !nextTextNode.parentElement?.closest('sup, sub')) {
+            !WORD_CONTINUATION_RE.test(nextText) && !nextTextNode.parentElement?.closest('sup, sub') &&
+            !isUnspacedCjkBoundary(anchor.textContent || '', nextText)) {
           nextTextNode.textContent = ' ' + nextText;
         } else if (!nextTextNode) {
           // No text node found - insert a space node after the anchor
@@ -205,4 +215,3 @@ export function addLinkSpacing(html: string): string {
     return html;
   }
 }
-

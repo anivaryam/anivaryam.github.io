@@ -83,6 +83,12 @@ export default {
                   redirect: 'follow',
                 });
               }
+              // A working page may not implement HEAD. An HTTP response is
+              // not a thrown network error, so retry these statuses explicitly.
+              if (method === 'HEAD' && (response.status === 405 || response.status === 501)) {
+                method = 'GET';
+                response = await fetch(url, { method, signal: controller.signal, redirect: 'follow' });
+              }
             }
 
             clearTimeout(timeoutId);
@@ -163,7 +169,7 @@ export default {
 
       // Filter links by status
       const goodLinks = results.filter((r) => r.ok && !r.blocked);
-      const brokenLinks = results.filter((r) => !r.ok && !r.blocked && r.status >= 400);
+      const brokenLinks = results.filter((r) => !r.ok && !r.blocked && r.status >= 400 && r.status < 500);
       const serverErrors = results.filter((r) => !r.ok && !r.blocked && r.status >= 500);
       const blockedLinks = results.filter((r) => r.blocked || r.status === 0);
 

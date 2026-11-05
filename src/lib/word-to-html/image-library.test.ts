@@ -15,6 +15,7 @@ import {
   parseImageLibraryJson,
   parseShopifyImages,
   readAltLabel,
+  reconcileImageLibrary,
   resolveImageCta,
   type ImageCta,
   type ImageLibraryEntry,
@@ -105,6 +106,33 @@ describe('image library: saving Shopify images', () => {
     expect(parseImageLibraryJson(JSON.stringify([{ host: 'x.com', src: CDN }]))).toEqual([{ host: 'x.com', alt: '', src: CDN }]);
     expect(parseImageLibraryJson('not json')).toEqual([]);
     expect(parseImageLibraryJson('{"host":"x.com"}')).toEqual([]);
+  });
+
+  it('reports invalid imports without changing tolerant storage parsing', () => {
+    for (const json of ['not json', '{}', '[null]', JSON.stringify([{ host: 'x.com', src: 'javascript:1' }])]) {
+      expect(() => parseImageLibraryJson(json, true)).toThrow();
+      expect(parseImageLibraryJson(json)).toEqual([]);
+    }
+    expect(parseImageLibraryJson('[]', true)).toEqual([]);
+    expect(parseImageLibraryJson(JSON.stringify(library), true)).toEqual(library);
+    expect(parseImageLibraryJson(JSON.stringify([library[0], null]), true)).toEqual(library);
+  });
+
+  it('merges stale-tab additions and deletions without overwriting unrelated images', () => {
+    const red = library[0];
+    const green = { ...red, src: `${CDN}&green`, alt: 'Green' };
+    expect(reconcileImageLibrary([], [green], [red])).toEqual([red, green]);
+    expect(reconcileImageLibrary([red], [], [red, green])).toEqual([green]);
+    expect(reconcileImageLibrary([red], [red], [green])).toEqual([green]);
+  });
+
+  it('preserves concurrent metadata edits during backfill and never resurrects remote deletions', () => {
+    const original = library[0];
+    const backfilled = { ...original, fp: fp(10) };
+    const renamed = { ...original, alt: 'Renamed elsewhere' };
+    expect(reconcileImageLibrary([original], [backfilled], [renamed])).toEqual([{ ...renamed, fp: fp(10) }]);
+    expect(reconcileImageLibrary([original], [backfilled], [])).toEqual([]);
+    expect(reconcileImageLibrary([original], [renamed], [backfilled])).toEqual([{ ...renamed, fp: fp(10) }]);
   });
 
   it('names the store from absolute, www, and Google Docs redirect links', () => {

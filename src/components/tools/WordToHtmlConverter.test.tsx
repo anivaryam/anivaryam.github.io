@@ -9,6 +9,7 @@ import { stripSpacerMarkers } from '@/lib/word-to-html/spacer';
 import Lenis, { type LenisOptions } from 'lenis';
 import { IMAGE_LIBRARY_ENABLED_KEY, useDraftImageFingerprints, useImageLibrary, useImageLibraryFingerprintBackfill } from '@/hooks/use-image-library';
 import * as imageFingerprint from '@/lib/word-to-html/image-fingerprint';
+import { createServer } from 'node:http';
 
 vi.mock('lenis', () => ({
   default: vi.fn(),
@@ -585,6 +586,41 @@ describe('WordToHtmlConverter', () => {
     expect(screen.queryByText(/^Failed:/)).toBeNull();
   });
 
+  it('preserves multiline plain-text paste as paragraphs without interpreting HTML', () => {
+    render(<WordToHtmlConverter />);
+    const input = screen.getByRole('textbox', { name: 'Word document content' });
+    fireEvent.paste(input, { clipboardData: { getData: (type: string) => type === 'text/plain' ? 'First\r\nSecond\n\n<img src=x onerror="throw 1">' : '' } });
+    const paragraphs = document.querySelectorAll('.output-preview p');
+    expect(Array.from(paragraphs, p => p.textContent)).toEqual(['First', 'Second', '<img src=x onerror="throw 1">']);
+    expect(input.querySelector('img')).toBeNull();
+    expect(document.querySelector('.output-preview img')).toBeNull();
+  });
+
+  it.each(['a', 'A', 'i', 'I'])('keeps %s list metadata out of native selection copies', type => {
+    render(<WordToHtmlConverter />);
+    enterHtml(`<ol type="${type}"><li>One</li></ol>`);
+    const preview = document.querySelector('.output-preview')!;
+    expect(preview.querySelector('ol')?.getAttribute('data-w2h-list-type')).toBe(type);
+    const copied = copySelection(preview, range => range.selectNodeContents(preview));
+    expect(copied['text/html']).toBe(`<ol type="${type}"><li>One</li></ol>`);
+    expect(copied['text/html']).not.toContain('data-w2h-list-type');
+  });
+
+  it('keeps complete selectable code and token styling across view-only updates', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Code &amp; text</p>');
+    const code = document.querySelector('pre code')!;
+    const text = code.textContent;
+    const token = code.querySelector('.token.tag')!;
+    expect(token).toBeTruthy();
+    expect(token.hasAttribute('style')).toBe(false);
+    expect(window.getComputedStyle(token).color).not.toBe('');
+    fireEvent.click(screen.getByTitle('Preview'));
+    expect(document.querySelector('pre code')).toBe(code);
+    expect(code.querySelector('.token.tag')).toBe(token);
+    expect(code.textContent).toBe(text);
+  });
+
   it('keeps the accepted FAQ and Shoppables spacing in the UI', () => {
     render(<WordToHtmlConverter />);
     enterHtml('<p>Body.</p><h2>Frequently Asked Questions About How Often Do Newborns Eat?</h2><p><span>&nbsp;</span></p><h3>How many times a day should a newborn eat?</h3><p>Answer.</p>');
@@ -842,6 +878,38 @@ describe('WordToHtmlConverter', () => {
     }
   });
 
+  it.each(['preview', 'blocks', 'maximized blocks'])('copies both clipboard representations from %s', async view => {
+    const write = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { write } });
+    vi.stubGlobal('ClipboardItem', class { constructor(public data: Record<string, Blob>) {} });
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>First</p><p>Second</p>');
+    if (view === 'preview') {
+      fireEvent.click(screen.getByTitle('Preview'));
+      fireEvent.click(screen.getByTitle('Copy Formatted HTML'));
+    } else {
+      fireEvent.click(screen.getByTitle('Copy blocks'));
+      if (view === 'maximized blocks') fireEvent.click(screen.getByTitle('Maximize Output'));
+      const root = view === 'maximized blocks' ? within(screen.getByRole('dialog')) : screen;
+      fireEvent.click(root.getByTitle('Copy as formatted HTML'));
+    }
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    const [{ data }] = write.mock.calls[0][0];
+    expect(await data['text/plain'].text()).toBe('First\nSecond');
+    expect(await data['text/html'].text()).toContain('<p>First</p><p>Second</p>');
+  });
+
+  it('reports total clipboard denial from maximized formatted block copy', async () => {
+    vi.stubGlobal('navigator', { clipboard: { write: vi.fn().mockRejectedValue(new Error('Denied')), writeText: vi.fn().mockRejectedValue(new Error('Denied')) } });
+    render(<WordToHtmlConverter />);
+    enterHtml('<p>Text</p>');
+    fireEvent.click(screen.getByTitle('Copy blocks'));
+    fireEvent.click(screen.getByTitle('Maximize Output'));
+    fireEvent.click(within(screen.getByRole('dialog')).getByTitle('Copy as formatted HTML'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith({ title: 'Error', description: 'Failed to copy block', variant: 'destructive' }));
+    expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Copied!' }));
+  });
+
   it('shows server-error links using the worker response contract', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -860,6 +928,34 @@ describe('WordToHtmlConverter', () => {
     expect(within(dialog).getByRole('link', { name: 'https://example.com/unavailable' })).toBeTruthy();
     fireEvent.keyDown(dialog, { key: 'Escape' });
     await waitFor(() => expect(document.activeElement).toBe(screen.getByTitle('Check Links')));
+  });
+
+  it('labels client errors by category and shows their actual HTTP status', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      total: 1, good: 0, broken: 1, serverErrors: 0, blocked: 0,
+      goodLinks: [], brokenLinks: [{ url: 'https://example.com/private', status: 401 }], serverErrorLinks: [], blockedLinks: [],
+    }) }));
+    render(<WordToHtmlConverter />);
+    enterHtml('<p><a href="https://example.com/private">Private</a></p>');
+    fireEvent.click(screen.getByTitle('Check Links'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/Client Errors \(4xx\)/)).toBeTruthy();
+    expect(within(dialog).getByText('Status: 401')).toBeTruthy();
+    expect(within(dialog).queryByText(/404/)).toBeNull();
+  });
+
+  it('does not duplicate server errors from an older worker in the client-error category', async () => {
+    const server = { url: 'https://example.com/unavailable', status: 503 };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      total: 1, good: 0, broken: 1, serverErrors: 1, blocked: 0,
+      goodLinks: [], brokenLinks: [server], serverErrorLinks: [server], blockedLinks: [],
+    }) }));
+    render(<WordToHtmlConverter />);
+    enterHtml('<p><a href="https://example.com/unavailable">Unavailable</a></p>');
+    fireEvent.click(screen.getByTitle('Check Links'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getAllByText('Status: 503')).toHaveLength(1);
+    expect(within(dialog).queryByText(/Client Errors/)).toBeNull();
   });
 
   it('reports failed link-check requests without opening a results dialog', async () => {
@@ -1332,6 +1428,21 @@ describe('WordToHtmlConverter', () => {
     expect(warning.textContent).toContain('verbatim');
   });
 
+  it('keeps executable custom spacers only in export, never in any preview', () => {
+    render(<WordToHtmlConverter />);
+    enterHtml('<h2>First</h2><p>Body</p><h2>Next</h2>');
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), { target: { value: '<div><style>body{display:none}</style><img src="x" onerror="window.__SPACER=1"></div>' } });
+    expect(document.querySelector('pre code')?.textContent).toContain('onerror');
+    const safe = () => expect(document.querySelectorAll('.output-preview [onerror], .output-preview style, .output-preview script, .output-preview iframe')).toHaveLength(0);
+    safe();
+    fireEvent.click(screen.getByTitle('Copy blocks'));
+    safe();
+    fireEvent.click(screen.getByTitle('Maximize Output'));
+    safe();
+  });
+
   it('sanitizes the custom spacer markup when the opt-in is enabled', () => {
     render(<WordToHtmlConverter />);
     enterHtml('<p>Body text.</p><p>Sources:</p><ol><li>Source one</li></ol>');
@@ -1342,7 +1453,8 @@ describe('WordToHtmlConverter', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Custom Spacer' }), {
       target: { value: '<img src="x" onerror="window.__XSS=1">' },
     });
-    expect(preview.querySelector('img')?.getAttribute('onerror')).toBe('window.__XSS=1');
+    expect(preview.querySelector('img')?.getAttribute('onerror')).toBeNull();
+    expect(document.querySelector('pre code')?.textContent).toContain('onerror="window.__XSS=1"');
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Sanitize the spacer markup' }));
     expect(preview.querySelector('img')?.getAttribute('onerror')).toBeNull();
@@ -1441,6 +1553,25 @@ describe('WordToHtmlConverter', () => {
     fireEvent.change(screen.getByLabelText('Import saved images'), { target: { files: [fileA, fileB] } });
     await waitFor(() => expect(screen.getByText('Image Library (2)')).toBeTruthy());
     expect(toast).toHaveBeenLastCalledWith({ title: '2 new images saved', description: '1 already saved.' });
+  });
+
+  it('reports unreadable and invalid imports while retaining valid files and existing images', async () => {
+    localStorage.clear();
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    const invalid = new File(['not JSON'], 'broken.json', { type: 'application/json' });
+    const unreadable = new File(['[]'], 'unreadable.json', { type: 'application/json' });
+    vi.spyOn(unreadable, 'text').mockRejectedValue(new Error('read failed'));
+    const valid = new File([JSON.stringify([{ host: 'store.com', alt: 'Keep', src: 'https://cdn.shopify.com/keep.png' }])], 'valid.json', { type: 'application/json' });
+    fireEvent.change(screen.getByLabelText('Import saved images'), { target: { files: [invalid, unreadable, valid] } });
+    await waitFor(() => expect(screen.getByText('Image Library (1)')).toBeTruthy());
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Image library import failed', description: expect.stringContaining('broken.json, unreadable.json'), variant: 'destructive' }));
+    vi.mocked(toast).mockClear();
+    fireEvent.change(screen.getByLabelText('Import saved images'), { target: { files: [invalid] } });
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Image library import failed' })));
+    expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ title: '0 new images saved' }));
+    expect(screen.getByText('Image Library (1)')).toBeTruthy();
   });
 
   it.each(['save', 'remove'] as const)('preserves a %s made while a library import is being read', async action => {
@@ -1772,6 +1903,40 @@ describe('WordToHtmlConverter', () => {
     }]);
   });
 
+  it('keeps text and toggles interactive while images finish and discards an older draft', async () => {
+    localStorage.clear();
+    const saved = { host: 'store.com', alt: 'Saved', src: 'https://cdn.shopify.com/saved.png',
+      fp: imageFingerprint.encodeFingerprint(new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(20)) };
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([saved]));
+    let finishOld!: (pixels: Uint8Array) => void;
+    let finishNew!: (pixels: Uint8Array) => void;
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint')
+      .mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { finishNew = resolve; }));
+    render(<WordToHtmlConverter />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blogs Features:' }));
+    const draft = (name: string) => `<h2>${name}</h2><p><img src="https://draft.test/${name}" alt="${name}"></p><p>Link to: <a href="https://store.com/products/item">Shop</a></p>`;
+    enterHtml(draft('First'));
+    expect(document.querySelector('.output-preview h2')?.textContent).toBe('First');
+    expect(document.querySelector('.output-preview img')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByTitle('Preview'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Heading Strong Tags' }));
+    expect(document.querySelector('.output-preview h2 strong')).toBeNull();
+
+    const oldSignal = load.mock.calls[0][1];
+    enterHtml(draft('Second'));
+    expect(oldSignal?.aborted).toBe(true);
+    await act(async () => { finishOld(new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(20)); });
+    expect(document.querySelector('.output-preview h2')?.textContent).toBe('Second');
+    expect(document.querySelector('.output-preview img')).toBeNull();
+    await act(async () => { finishNew(new Uint8Array(imageFingerprint.FINGERPRINT_LENGTH).fill(20)); });
+    await waitFor(() => expect(document.querySelector('.output-preview img')?.getAttribute('src')).toBe(saved.src));
+    expect(document.querySelector('.output-preview img')?.getAttribute('alt')).toBe('Second');
+    expect(document.querySelector('.output-preview h2 strong')).toBeNull();
+  });
+
   it('reports unreadable unlabelled pictures even with no output text', async () => {
     localStorage.clear();
     localStorage.setItem('word-to-html:image-library', JSON.stringify([
@@ -1796,6 +1961,39 @@ describe('saved image fingerprint queue', () => {
     return { library, setLibrary };
   };
 
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('recovers a newly saved image after a temporary fingerprint failure without reloading', async () => {
+    vi.useFakeTimers();
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockResolvedValue(pixels(20))
+      .mockResolvedValueOnce(null);
+    const { result } = renderHook(() => useBackfill(true));
+    act(() => result.current.setLibrary([entry(0)]));
+    await act(async () => {});
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(result.current.library[0].fp).toBeUndefined();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    const expected = imageFingerprint.encodeFingerprint(pixels(20));
+    expect(result.current.library[0].fp).toBe(expected);
+    expect(JSON.parse(localStorage.getItem('word-to-html:image-library')!)[0].fp).toBe(expected);
+    expect(load).toHaveBeenCalledTimes(2);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('backfills legacy grayscale fingerprints without removing the saved image', async () => {
+    const legacy = btoa(String.fromCharCode(...new Uint8Array(imageFingerprint.FINGERPRINT_WIDTH * imageFingerprint.FINGERPRINT_HEIGHT).fill(20)));
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([{ ...entry(0), fp: legacy }]));
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockResolvedValue(pixels(20));
+    const { result } = renderHook(() => useBackfill(true));
+    expect(result.current.library[0].fp).toBe(legacy);
+    await waitFor(() => expect(result.current.library[0].fp).toBe(imageFingerprint.encodeFingerprint(pixels(20))));
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(result.current.library[0].src).toBe(entry(0).src);
+  });
+
   it('retries interrupted loads on re-enable and ignores their late results', async () => {
     localStorage.setItem('word-to-html:image-library', JSON.stringify([entry(0)]));
     let finishOld!: (value: Uint8Array) => void;
@@ -1804,7 +2002,9 @@ describe('saved image fingerprint queue', () => {
       .mockImplementationOnce(() => oldLoad);
     const { result, rerender } = renderHook(({ enabled }) => useBackfill(enabled), { initialProps: { enabled: true } });
     expect(load).toHaveBeenCalledTimes(1);
+    const oldSignal = load.mock.calls[0][1];
     rerender({ enabled: false });
+    expect(oldSignal?.aborted).toBe(true);
     rerender({ enabled: true });
     const expected = imageFingerprint.encodeFingerprint(pixels(20));
     await waitFor(() => expect(result.current.library[0].fp).toBe(expected));
@@ -1829,7 +2029,7 @@ describe('saved image fingerprint queue', () => {
     expect(result.current.library).toEqual([{ ...entry(0), alt: 'Edited description', fp: expected }, { ...entry(1), fp: expected }]);
   });
 
-  it('advances through failed batches and does not retry completed failures', async () => {
+  it('advances through failed batches and retries only unreadable sources on re-enable', async () => {
     const entries = Array.from({ length: 21 }, (_, index) => entry(index));
     localStorage.setItem('word-to-html:image-library', JSON.stringify(entries));
     const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockImplementation(async src =>
@@ -1842,7 +2042,69 @@ describe('saved image fingerprint queue', () => {
     rerender({ enabled: false });
     rerender({ enabled: true });
     await act(async () => {});
-    expect(load).toHaveBeenCalledTimes(21);
+    expect(load).toHaveBeenCalledTimes(41);
+    expect(load.mock.calls.slice(21).every(([src]) => src !== entry(20).src)).toBe(true);
+  });
+
+  it('bounds automatic retries and allows recovery on re-enable without reloading successful images', async () => {
+    vi.useFakeTimers();
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([entry(0), entry(1)]));
+    let recovered = false;
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockImplementation(async src =>
+      src === entry(1).src || recovered ? pixels(20) : null);
+    const { result, rerender } = renderHook(({ enabled }) => useBackfill(enabled), { initialProps: { enabled: true } });
+    await act(async () => {});
+    expect(load).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(999); });
+    expect(load).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(load).toHaveBeenCalledTimes(3);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1999); });
+    expect(load).toHaveBeenCalledTimes(3);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(load).toHaveBeenCalledTimes(4);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    expect(load).toHaveBeenCalledTimes(4);
+    expect(result.current.library[0].fp).toBeUndefined();
+
+    recovered = true;
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+    await act(async () => {});
+    expect(result.current.library.every(image => image.fp === imageFingerprint.encodeFingerprint(pixels(20)))).toBe(true);
+    expect(load).toHaveBeenCalledTimes(5);
+    expect(load.mock.calls.filter(([src]) => src === entry(1).src)).toHaveLength(1);
+  });
+
+  it('does not let a waiting retry block new images or restart its delay after library edits', async () => {
+    vi.useFakeTimers();
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([entry(0)]));
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockResolvedValue(pixels(20))
+      .mockResolvedValueOnce(null);
+    const { result } = renderHook(() => useBackfill(true));
+    await act(async () => {});
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    act(() => result.current.setLibrary(previous => [...previous, entry(1)]));
+    await act(async () => {});
+    expect(load.mock.calls.map(([src]) => src)).toEqual([entry(0).src, entry(1).src]);
+    expect(result.current.library[1].fp).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(result.current.library.every(image => image.fp)).toBe(true);
+    expect(load.mock.calls.map(([src]) => src)).toEqual([entry(0).src, entry(1).src, entry(0).src]);
+  });
+
+  it.each(['remove', 'disable', 'unmount'])('cancels a waiting fingerprint retry on %s', async action => {
+    vi.useFakeTimers();
+    localStorage.setItem('word-to-html:image-library', JSON.stringify([entry(0)]));
+    const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockResolvedValue(null);
+    const { result, rerender, unmount } = renderHook(({ enabled }) => useBackfill(enabled), { initialProps: { enabled: true } });
+    await act(async () => {});
+    if (action === 'remove') act(() => result.current.setLibrary([]));
+    else if (action === 'disable') rerender({ enabled: false });
+    else unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem('word-to-html:image-library')!)).toEqual(action === 'remove' ? [] : [entry(0)]);
   });
 
   it('loads at most ten distinct sources per batch and shares results across stores', async () => {
@@ -1868,9 +2130,95 @@ describe('saved image fingerprint queue', () => {
     const pending = new Promise<Uint8Array>(resolve => { finish = resolve; });
     const load = vi.spyOn(imageFingerprint, 'loadFingerprint').mockReturnValue(pending);
     const { unmount } = renderHook(() => useBackfill(true));
+    const signal = load.mock.calls[0][1];
     unmount();
+    expect(signal?.aborted).toBe(true);
     await act(async () => { finish(pixels(20)); });
     expect(localStorage.getItem('word-to-html:image-library')).toBe(initial);
     expect(load).toHaveBeenCalledTimes(10);
+  });
+});
+
+describe('image library cross-tab persistence', () => {
+  const key = 'word-to-html:image-library';
+  const image = (name: string) => ({ host: 'store.com', src: `https://cdn.shopify.com/${name}.png`, alt: name });
+
+  it('merges a stale local save into the latest stored entries', () => {
+    const { result } = renderHook(() => useImageLibrary());
+    localStorage.setItem(key, JSON.stringify([image('red')]));
+    act(() => result.current[1]([image('green')]));
+    expect(result.current[0]).toEqual([image('red'), image('green')]);
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual([image('red'), image('green')]);
+  });
+
+  it('receives remote additions and removals instead of writing stale state back', () => {
+    localStorage.setItem(key, JSON.stringify([image('red')]));
+    const { result } = renderHook(() => useImageLibrary());
+    localStorage.setItem(key, JSON.stringify([image('green')]));
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key })));
+    expect(result.current[0]).toEqual([image('green')]);
+    localStorage.removeItem(key);
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: null })));
+    expect(result.current[0]).toEqual([]);
+    expect(localStorage.getItem(key)).toBeNull();
+  });
+
+  it.each([false, true])('finishes only the latest queued edit on unmount (removed: %s)', async removed => {
+    const writes: (() => void)[] = [];
+    const request = vi.fn((_name: string, save: () => void) => new Promise<void>(resolve => {
+      writes.push(() => { save(); resolve(); });
+    }));
+    vi.stubGlobal('navigator', { locks: { request } });
+    const { result, unmount } = renderHook(() => useImageLibrary());
+    act(() => result.current[1]([image('red')]));
+    if (removed) act(() => result.current[1]([]));
+    unmount();
+    await act(async () => writes.forEach(save => save()));
+    expect(JSON.parse(localStorage.getItem(key) || '[]')).toEqual(removed ? [] : [image('red')]);
+    expect(request).toHaveBeenCalledWith(key, expect.any(Function));
+  });
+
+  it('serializes pending writes and retains remote additions', async () => {
+    const writes: (() => void)[] = [];
+    vi.stubGlobal('navigator', { locks: { request: (_name: string, save: () => void) => new Promise<void>(resolve => {
+      writes.push(() => { save(); resolve(); });
+    }) } });
+    const { result } = renderHook(() => useImageLibrary());
+    act(() => result.current[1]([image('red')]));
+    act(() => result.current[1](previous => [...previous, image('green')]));
+    localStorage.setItem(key, JSON.stringify([image('blue')]));
+    await act(async () => writes.forEach(save => save()));
+    expect(result.current[0]).toEqual([image('blue'), image('red'), image('green')]);
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(result.current[0]);
+  });
+});
+
+describe('Word to HTML link checker worker', () => {
+  it('retries unsupported HEAD responses and keeps HTTP categories disjoint against real local endpoints', async () => {
+    const calls: string[] = [];
+    const server = createServer((request, response) => {
+      calls.push(`${request.method} ${request.url}`);
+      const unsupported = request.url === '/head405' ? 405 : request.url === '/head501' ? 501 : 0;
+      response.statusCode = unsupported && request.method === 'HEAD' ? unsupported
+        : request.url === '/missing' ? 404 : request.url === '/private' ? 401
+        : request.url === '/server' ? 503 : request.url === '/blocked' ? 403 : 200;
+      response.end();
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Local test server did not start');
+      const links = ['/good', '/head405', '/head501', '/missing', '/private', '/server', '/blocked'].map(path => `http://127.0.0.1:${address.port}${path}`);
+      const { default: worker } = await import('../../../link-checker-worker/index.js');
+      const response = await worker.fetch(new Request('https://worker.test', { method: 'POST', body: JSON.stringify({ links }) }), {}, {});
+      const results = await response.json();
+      expect(results).toMatchObject({ total: 7, good: 3, broken: 2, serverErrors: 1, blocked: 1 });
+      expect(results.brokenLinks.map((link: { status: number }) => link.status)).toEqual([404, 401]);
+      expect(results.serverErrorLinks.map((link: { status: number }) => link.status)).toEqual([503]);
+      expect(calls.filter(call => call.startsWith('GET'))).toEqual(['GET /head405', 'GET /head501']);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
   });
 });

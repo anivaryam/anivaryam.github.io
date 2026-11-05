@@ -173,21 +173,52 @@ export function mergeImageLibrary(saved: ImageLibraryEntry[], incoming: ImageLib
   return { library: Array.from(byKey.values()), added, updated };
 }
 
+/** Apply only this tab's edits to the latest stored library, not its stale snapshot. */
+export function reconcileImageLibrary(before: ImageLibraryEntry[], after: ImageLibraryEntry[], latest: ImageLibraryEntry[]): ImageLibraryEntry[] {
+  const oldEntries = new Map(before.map(entry => [entryKey(entry.host, entry.src), entry]));
+  const newEntries = new Map(after.map(entry => [entryKey(entry.host, entry.src), entry]));
+  const retained = latest.filter(entry => {
+    const key = entryKey(entry.host, entry.src);
+    return !oldEntries.has(key) || newEntries.has(key);
+  });
+  const latestEntries = new Map(retained.map(entry => [entryKey(entry.host, entry.src), entry]));
+  const changes: ImageLibraryEntry[] = [];
+  for (const [key, entry] of newEntries) {
+    const old = oldEntries.get(key);
+    if (!old) changes.push(entry);
+    else {
+      const current = latestEntries.get(key);
+      // Backfill or an old tab's metadata edit must never resurrect a removed image.
+      if (!current) continue;
+      const alt = old.alt !== entry.alt ? entry.alt : current.alt;
+      const fp = old.fp !== entry.fp ? entry.fp : current.fp;
+      if (alt !== current.alt || fp !== current.fp) changes.push({ ...current, alt, fp });
+    }
+  }
+  return mergeImageLibrary(retained, changes).library;
+}
+
 /** Keeps only well-formed entries from stored or imported JSON. */
-export function parseImageLibraryJson(json: string): ImageLibraryEntry[] {
+export function parseImageLibraryJson(json: string, strict = false): ImageLibraryEntry[] {
   let data: unknown;
   try {
     data = JSON.parse(json);
   } catch {
+    if (strict) throw new Error('The file is not valid JSON.');
     return [];
   }
-  if (!Array.isArray(data)) return [];
-  return data.filter((entry): entry is ImageLibraryEntry =>
+  if (!Array.isArray(data)) {
+    if (strict) throw new Error('An image library must be a JSON array.');
+    return [];
+  }
+  const entries = data.filter((entry): entry is ImageLibraryEntry =>
     !!entry && typeof entry === 'object'
       && typeof entry.host === 'string' && !!entry.host
       && (entry.alt === undefined || typeof entry.alt === 'string')
       && typeof entry.src === 'string' && /^(https:)?\/\//i.test(entry.src)
-  ).map(({ host, alt = '', src, fp }) => decodeFingerprint(fp) ? { host, alt, src, fp } : { host, alt, src });
+  );
+  if (strict && data.length > 0 && entries.length === 0) throw new Error('The file contains no valid image entries.');
+  return entries.map(({ host, alt = '', src, fp }) => decodeFingerprint(fp) ? { host, alt, src, fp } : { host, alt, src });
 }
 
 /**

@@ -1481,6 +1481,17 @@ describe('non-redundant link underlining', () => {
 
 describe('spacing within formatted links', () => {
   it.each([
+    ['<p>你好<a href="/guide">世界</a>！</p>', '你好世界！'],
+    ['<p>「<a href="/guide">日本語</a>」の説明。</p>', '「日本語」の説明。'],
+    ['<p>你好 <a href="/guide">世界</a> ！</p>', '你好 世界 ！'],
+  ])('preserves authored Chinese/Japanese link boundaries: %s', (input, text) => {
+    for (const mode of ['regular', 'blogs', 'shoppables'] as const) {
+      const output = getUnformattedHtml(input, mode);
+      expect(new DOMParser().parseFromString(output, 'text/html').body.textContent).toBe(text);
+      expect(validateMode(output, mode, {}).results.find(result => result.ruleId === 'link-spacing')?.passed).toBe(true);
+    }
+  });
+  it.each([
     '<p>visit <a href="/how-it-works">our <strong><u>How It Works</u></strong></a> page.</p>',
     '<p>visit <a href="/how-it-works"><span style="font-size:11pt">our </span><strong><u>How It Works</u></strong></a> page.</p>',
     '<p>visit our <a href="/how-it-works"><strong><u>How It Works</u></strong> page</a>.</p>',
