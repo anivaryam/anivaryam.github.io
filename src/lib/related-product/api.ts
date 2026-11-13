@@ -252,15 +252,15 @@ export async function classifyProducts(
 }
 
 export function formatMinorityResult(
-  productNames: string[],
+  products: ProductCandidate[],
   decisions: ProductDecision[],
 ): string {
-  if (productNames.length === 0 || decisions.length !== productNames.length) {
+  if (products.length === 0 || decisions.length !== products.length) {
     throw new Error("There are no complete product classifications to display.");
   }
 
-  const related = productNames.filter((_, index) => decisions[index].related);
-  const unrelated = productNames.filter((_, index) => !decisions[index].related);
+  const related = products.filter((_, index) => decisions[index].related);
+  const unrelated = products.filter((_, index) => !decisions[index].related);
 
   if (unrelated.length === 0) return "All related";
   if (related.length === 0) return "All unrelated";
@@ -269,5 +269,14 @@ export function formatMinorityResult(
   const showRelated = unrelated.length >= 10 && related.length < unrelated.length;
   const heading = showRelated ? "Related Product" : "Unrelated Product";
   const selected = showRelated ? related : unrelated;
-  return `${heading}\n${selected.map((name) => `- ${name}`).join("\n")}`;
+  const formatProduct = (product: ProductCandidate) => {
+    const sources = [...new Set(product.foundVia || [])];
+    if (sources.length === 0) return `- ${product.name}`;
+    return [
+      `- ${product.name}`,
+      `  Found via: ${sources[0]}`,
+      ...sources.slice(1).map((source) => `  Also found via: ${source}`),
+    ].join("\n");
+  };
+  return `${heading}\n${selected.map(formatProduct).join("\n")}`;
 }

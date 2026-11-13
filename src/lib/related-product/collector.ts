@@ -399,8 +399,8 @@ function parseProductPage(html: string, pageUrl: string): ProductCandidate | nul
 }
 
 export function deduplicateProducts(products: ProductCandidate[]): ProductCandidate[] {
-  const seenUrls = new Set<string>();
-  const seenNames = new Set<string>();
+  const seenUrls = new Map<string, number>();
+  const seenNames = new Map<string, number>();
   const unique: ProductCandidate[] = [];
   for (const product of products) {
     const normalizedUrl = new URL(product.url);
@@ -408,9 +408,18 @@ export function deduplicateProducts(products: ProductCandidate[]): ProductCandid
     normalizedUrl.search = "";
     const urlKey = normalizedUrl.href.replace(/\/+$/, "").toLowerCase();
     const nameKey = product.name.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-    if (!nameKey || seenUrls.has(urlKey) || seenNames.has(nameKey)) continue;
-    seenUrls.add(urlKey);
-    seenNames.add(nameKey);
+    if (!nameKey) continue;
+
+    const duplicateIndex = seenUrls.get(urlKey) ?? seenNames.get(nameKey);
+    if (duplicateIndex !== undefined) {
+      const existing = unique[duplicateIndex];
+      const foundVia = [...new Set([...(existing.foundVia || []), ...(product.foundVia || [])])];
+      if (foundVia.length > 0) unique[duplicateIndex] = { ...existing, foundVia };
+      continue;
+    }
+
+    seenUrls.set(urlKey, unique.length);
+    seenNames.set(nameKey, unique.length);
     unique.push(product);
   }
   return unique;
@@ -615,7 +624,10 @@ export async function collectProductsFromUrls(
       signal,
       (message) => onProgress(message, index + 0.5, urls.length),
     );
-    products.push(...result.products);
+    products.push(...result.products.map((product) => ({
+      ...product,
+      foundVia: [...new Set([...(product.foundVia || []), urls[index]])],
+    })));
     if (deduplicateProducts(products).length > MAX_PRODUCTS_PER_RUN) {
       throw new Error(`A run can check up to ${MAX_PRODUCTS_PER_RUN.toLocaleString()} unique products.`);
     }

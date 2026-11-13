@@ -8,8 +8,8 @@ import {
 import type { ProductCandidate } from "./types";
 
 const products: ProductCandidate[] = [
-  { name: "Cash Acceptor", productType: "Bill acceptor", description: "Accepts bills.", price: "", url: "https://shop.example/products/cash-acceptor" },
-  { name: "Card Reader", productType: "Card reader", description: "Accepts cards.", price: "", url: "https://shop.example/products/card-reader" },
+  { name: "Cash Acceptor", productType: "Bill acceptor", description: "Accepts bills.", price: "", url: "https://shop.example/products/cash-acceptor", foundVia: ["https://shop.example/collections/acceptors"] },
+  { name: "Card Reader", productType: "Card reader", description: "Accepts cards.", price: "", url: "https://shop.example/products/card-reader", foundVia: ["https://shop.example/collections/readers"] },
 ];
 
 afterEach(() => vi.unstubAllGlobals());
@@ -73,15 +73,44 @@ describe("related product API", () => {
   });
 
   it("formats all-related, all-unrelated, small unrelated lists, and the minority result", () => {
-    expect(formatMinorityResult(["one"], [{ id: "product-1", related: true }])).toBe("All related");
-    expect(formatMinorityResult(["one"], [{ id: "product-1", related: false }])).toBe("All unrelated");
     expect(formatMinorityResult(
-      ["Relevant", "Other"],
+      [products[0]],
+      [{ id: "product-1", related: true }],
+    )).toBe("All related");
+    expect(formatMinorityResult(
+      [products[0]],
+      [{ id: "product-1", related: false }],
+    )).toBe("All unrelated");
+    expect(formatMinorityResult(
+      [
+        { ...products[0], name: "Relevant" },
+        {
+          ...products[1],
+          name: "Other",
+          foundVia: [
+            "https://shop.example/collections/other",
+            "https://shop.example/collections/accessories",
+          ],
+        },
+      ],
       [{ id: "product-1", related: true }, { id: "product-2", related: false }],
-    )).toBe("Unrelated Product\n- Other");
+    )).toBe(
+      "Unrelated Product\n- Other\n"
+      + "  Found via: https://shop.example/collections/other\n"
+      + "  Also found via: https://shop.example/collections/accessories",
+    );
 
     const names = Array.from({ length: 12 }, (_, index) => `Product ${index + 1}`);
     const decisions = names.map((_, index) => ({ id: `product-${index + 1}`, related: index < 2 }));
-    expect(formatMinorityResult(names, decisions)).toBe("Related Product\n- Product 1\n- Product 2");
+    const candidates = names.map((name, index) => ({
+      ...products[0],
+      name,
+      foundVia: [`https://shop.example/collections/${index + 1}`],
+    }));
+    expect(formatMinorityResult(candidates, decisions)).toBe(
+      "Related Product\n"
+      + "- Product 1\n  Found via: https://shop.example/collections/1\n"
+      + "- Product 2\n  Found via: https://shop.example/collections/2",
+    );
   });
 });

@@ -305,7 +305,7 @@ export function RelatedProductFinderTool() {
         },
       );
       const text = formatMinorityResult(
-        collected.products.map((product) => product.name),
+        collected.products,
         decisions,
       );
       setOutput(text);

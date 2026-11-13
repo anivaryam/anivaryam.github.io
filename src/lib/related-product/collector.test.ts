@@ -74,6 +74,46 @@ describe("related product collection scope", () => {
     expect(deduplicateProducts(products)).toEqual([products[0], products[2]]);
   });
 
+  it("records submitted source URLs and preserves all of them for duplicate products", async () => {
+    const urls = [
+      "https://shop.example/collections/acceptors",
+      "https://shop.example/collections/bill-handling",
+      "https://shop.example/products/stacker",
+    ];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const proxyUrl = new URL(String(input), "http://localhost:8000");
+      const targetUrl = new URL(proxyUrl.searchParams.get("url") || "");
+      expect(proxyUrl.pathname).toBe("/__related-product/page");
+
+      const contents = targetUrl.pathname === "/products/stacker"
+        ? "<html><body><h1>Replacement Stacker</h1></body></html>"
+        : JSON.stringify({
+          products: [{
+            title: "Bill Acceptor",
+            handle: "bill-acceptor",
+            product_type: "Bill acceptor",
+            body_html: "<p>Accepts bills</p>",
+            variants: [{ price: "10.00" }],
+          }],
+        });
+      return new Response(JSON.stringify({ contents }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectProductsFromUrls(urls, new AbortController().signal, () => undefined);
+
+    expect(result.products).toHaveLength(2);
+    expect(result.products[0]).toMatchObject({
+      name: "Bill Acceptor",
+      foundVia: urls.slice(0, 2),
+    });
+    expect(result.products[1]).toMatchObject({
+      name: "Replacement Stacker",
+      foundVia: [urls[2]],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("does not fall back to a partial collection if a Shopify feed stops midway", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const proxyUrl = new URL(String(input), "http://localhost:8000");

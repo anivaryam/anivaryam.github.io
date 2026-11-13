@@ -4,6 +4,7 @@ export interface ProductCandidate {
   description: string;
   price: string;
   url: string;
+  foundVia?: string[];
 }
 
 export interface ProductModel {
