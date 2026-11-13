@@ -1,7 +1,7 @@
 import type { CollectionResult, ProductCandidate } from "./types";
 import { isPrivateHost } from "./url-safety";
+import { LINK_CHECKER_WORKER_URL } from "../worker-endpoints";
 
-const CORS_PROXY = "https://api.allorigins.win/get?url=";
 const MAX_PAGES_PER_COLLECTION = 20;
 const MAX_PRODUCTS_PER_COLLECTION = 1_000;
 const MAX_COLLECTION_URLS = 10;
@@ -49,18 +49,40 @@ async function fetchPage(targetUrl: string, expectedOrigin: string, signal: Abor
   else signal.addEventListener("abort", abortFromParent, { once: true });
 
   try {
-    const pageFetchUrl = import.meta.env.DEV
-      ? `${DEV_PAGE_FETCH_ENDPOINT}${encodeURIComponent(safeUrl.href)}`
-      : `${CORS_PROXY}${encodeURIComponent(safeUrl.href)}`;
-    const response = await fetch(pageFetchUrl, {
+    const isDevelopment = import.meta.env.DEV;
+    const requestInit: RequestInit = {
+      method: isDevelopment ? "GET" : "POST",
       signal: controller.signal,
       cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        ...(import.meta.env.DEV ? { "X-Related-Product-Dev-Proxy": "1" } : {}),
-      },
-    });
-    if (!response.ok) throw new Error(`Page fetch failed (${response.status}).`);
+      headers: isDevelopment
+        ? {
+          Accept: "application/json",
+          "X-Related-Product-Dev-Proxy": "1",
+        }
+        : {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+    };
+    if (!isDevelopment) {
+      requestInit.body = JSON.stringify({ action: "fetch-page", url: safeUrl.href });
+    }
+    const response = await fetch(
+      isDevelopment
+        ? `${DEV_PAGE_FETCH_ENDPOINT}${encodeURIComponent(safeUrl.href)}`
+        : LINK_CHECKER_WORKER_URL,
+      requestInit,
+    );
+    if (!response.ok) {
+      let message = `Page fetch failed (${response.status}).`;
+      try {
+        const payload = await response.json() as { error?: unknown };
+        if (typeof payload.error === "string") message = payload.error;
+      } catch {
+        // Keep a bounded status-only message if the fetch service returned non-JSON.
+      }
+      throw new Error(message);
+    }
     const payload = await response.json() as { contents?: unknown };
     if (typeof payload.contents !== "string") {
       throw new Error("The page-fetch proxy returned no page content.");
@@ -71,7 +93,7 @@ async function fetchPage(targetUrl: string, expectedOrigin: string, signal: Abor
     if (signal.aborted) throw new Error("Collection cancelled.");
     if (controller.signal.aborted) throw new Error("A page request timed out.");
     if (error instanceof TypeError) {
-      throw new Error("Could not fetch this page through the CORS proxy. It may be blocked or unavailable.");
+      throw new Error("Could not reach the page-fetch service. The site or fetch service may be blocked or unavailable.");
     }
     throw error;
   } finally {

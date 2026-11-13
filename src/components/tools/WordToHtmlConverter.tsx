@@ -22,6 +22,7 @@ import { isHeaderList } from "@/lib/word-to-html/mode-ol-header-conversion";
 import { isBrSpacingParagraph, isSpacerElement } from "@/lib/word-to-html/html-spacing";
 import { getCustomSpacerWarnings, parseCustomSpacer, sanitizeCustomSpacerMarkup, stripSpacerMarkers } from "@/lib/word-to-html/spacer";
 import { isAltLabelParagraph, isShopifyImageBlock, isShopifyImageBlockStyled, readAltLabel } from "@/lib/word-to-html/image-library";
+import { LINK_CHECKER_WORKER_URL } from "@/lib/worker-endpoints";
 import { ImageLibraryPanel } from "./WordToHtmlImageLibrary";
 import { useDraftImageFingerprints, useImageLibrary, useImageLibraryEnabled, useImageLibraryFingerprintBackfill } from "@/hooks/use-image-library";
 import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
@@ -956,7 +957,7 @@ export function WordToHtmlConverter() {
     linkCheckAbortRef.current = controller;
 
     try {
-      const response = await fetch('https://link-checker.rosettascript.workers.dev', {
+      const response = await fetch(LINK_CHECKER_WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ links }),

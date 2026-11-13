@@ -727,7 +727,7 @@ export function RelatedProductFinderTool() {
       <Alert>
         <ShieldCheck className="h-4 w-4" />
         <AlertDescription className="text-xs leading-relaxed">
-          The API key is kept in memory while unlocked and stored only as AES-GCM-encrypted data in this browser’s localStorage. It is sent only to the API base URL you choose, never to the page-fetch proxy. Local development fetches pages through the Vite dev server; the deployed static version uses AllOrigins, which can see requested URLs and page content. Use a unique strong vault passphrase; a compromised browser or same-page script can still access a key while unlocked.
+          The API key is kept in memory while unlocked and stored only as AES-GCM-encrypted data in this browser’s localStorage. It is sent only to the API base URL you choose, never to the page-fetch service. Local development uses the Vite dev server; the deployed version uses the site’s Cloudflare Worker to fetch public pages, which the Worker can see. Use a unique strong vault passphrase; a compromised browser or same-page script can still access a key while unlocked.
         </AlertDescription>
       </Alert>
     </div>

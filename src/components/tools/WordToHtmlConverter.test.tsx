@@ -2221,4 +2221,94 @@ describe('Word to HTML link checker worker', () => {
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     }
   });
+
+  it('fetches page content for the GitHub Pages origin and adds CORS headers', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(
+      new Response('<h1>Journal</h1>', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    );
+    vi.stubGlobal('fetch', upstreamFetch);
+    const { default: worker } = await import('../../../link-checker-worker/index.js');
+
+    const response = await worker.fetch(new Request('https://worker.test', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://anivaryam.github.io',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'fetch-page',
+        url: 'https://store.example/products/journal',
+      }),
+    }), {}, {});
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    await expect(response.json()).resolves.toEqual({ contents: '<h1>Journal</h1>' });
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    expect(upstreamFetch.mock.calls[0][0].href).toBe('https://store.example/products/journal');
+    expect(upstreamFetch.mock.calls[0][1]).toMatchObject({ method: 'GET', redirect: 'manual' });
+    expect(upstreamFetch.mock.calls[0][1].headers).toMatchObject({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'User-Agent': expect.stringContaining('Mozilla/5.0'),
+    });
+  });
+
+  it('rejects unapproved origins and private page targets without fetching them', async () => {
+    const upstreamFetch = vi.fn();
+    vi.stubGlobal('fetch', upstreamFetch);
+    const { default: worker } = await import('../../../link-checker-worker/index.js');
+
+    const unapprovedOrigin = await worker.fetch(new Request('https://worker.test', {
+      method: 'POST',
+      headers: { Origin: 'https://attacker.example', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'fetch-page', url: 'https://store.example/products/journal' }),
+    }), {}, {});
+    expect(unapprovedOrigin.status).toBe(403);
+
+    const privateTarget = await worker.fetch(new Request('https://worker.test', {
+      method: 'POST',
+      headers: { Origin: 'https://anivaryam.github.io', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'fetch-page', url: 'http://127.0.0.1/private' }),
+    }), {}, {});
+    expect(privateTarget.status).toBe(400);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
+  it('blocks cross-origin redirects and applies the per-IP rate limit', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(
+      new Response(null, { status: 302, headers: { Location: 'https://other.example/page' } }),
+    );
+    vi.stubGlobal('fetch', upstreamFetch);
+    const { default: worker } = await import('../../../link-checker-worker/index.js');
+
+    const redirectResponse = await worker.fetch(new Request('https://worker.test', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://anivaryam.github.io',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'fetch-page',
+        url: 'https://store.example/products/journal',
+      }),
+    }), {}, {});
+    expect(redirectResponse.status).toBe(403);
+
+    const limiter = { limit: vi.fn().mockResolvedValue({ success: false }) };
+    const limitedResponse = await worker.fetch(new Request('https://worker.test', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://anivaryam.github.io',
+        'CF-Connecting-IP': '203.0.113.42',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'fetch-page',
+        url: 'https://store.example/products/journal',
+      }),
+    }), { RELATED_PRODUCT_FETCH_LIMITER: limiter }, {});
+    expect(limitedResponse.status).toBe(429);
+    expect(limiter.limit).toHaveBeenCalledWith({ key: '203.0.113.42' });
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+  });
 });

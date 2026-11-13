@@ -2,5 +2,13 @@ name = "link-checker"
 main = "index.js"
 compatibility_date = "2024-01-01"
 
+[[ratelimits]]
+name = "RELATED_PRODUCT_FETCH_LIMITER"
+namespace_id = "1842739106"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
 [observability]
 enabled = true
