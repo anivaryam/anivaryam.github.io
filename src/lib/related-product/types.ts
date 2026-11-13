@@ -7,6 +7,15 @@ export interface ProductCandidate {
   foundVia?: string[];
 }
 
+export interface ProductResultGroup {
+  sourceUrl: string | null;
+  products: ProductCandidate[];
+}
+
+export type MinorityResult =
+  | { kind: "summary"; text: "All related" | "All unrelated" }
+  | { kind: "groups"; heading: string; groups: ProductResultGroup[] };
+
 export interface ProductModel {
   id: string;
   ownedBy?: string;

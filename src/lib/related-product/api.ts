@@ -1,4 +1,4 @@
-import type { ProductCandidate, ProductDecision, ProductModel } from "./types";
+import type { MinorityResult, ProductCandidate, ProductDecision, ProductModel } from "./types";
 
 export const DEFAULT_API_BASE = "https://api.openai.com/v1";
 
@@ -251,10 +251,10 @@ export async function classifyProducts(
   return decisions;
 }
 
-export function formatMinorityResult(
+export function buildMinorityResult(
   products: ProductCandidate[],
   decisions: ProductDecision[],
-): string {
+): MinorityResult {
   if (products.length === 0 || decisions.length !== products.length) {
     throw new Error("There are no complete product classifications to display.");
   }
@@ -262,21 +262,38 @@ export function formatMinorityResult(
   const related = products.filter((_, index) => decisions[index].related);
   const unrelated = products.filter((_, index) => !decisions[index].related);
 
-  if (unrelated.length === 0) return "All related";
-  if (related.length === 0) return "All unrelated";
+  if (unrelated.length === 0) return { kind: "summary", text: "All related" };
+  if (related.length === 0) return { kind: "summary", text: "All unrelated" };
 
   // A small unrelated list is the requested exception to the general minority rule.
   const showRelated = unrelated.length >= 10 && related.length < unrelated.length;
   const heading = showRelated ? "Related Product" : "Unrelated Product";
   const selected = showRelated ? related : unrelated;
-  const formatProduct = (product: ProductCandidate) => {
+  const groups = new Map<string | null, ProductCandidate[]>();
+  for (const product of selected) {
     const sources = [...new Set(product.foundVia || [])];
-    if (sources.length === 0) return `- ${product.name}`;
-    return [
-      `- ${product.name}`,
-      `  Found via: ${sources[0]}`,
-      ...sources.slice(1).map((source) => `  Also found via: ${source}`),
-    ].join("\n");
+    for (const source of sources.length > 0 ? sources : [null]) {
+      const group = groups.get(source) || [];
+      group.push(product);
+      groups.set(source, group);
+    }
+  }
+
+  return {
+    kind: "groups",
+    heading,
+    groups: [...groups].map(([sourceUrl, groupedProducts]) => ({
+      sourceUrl,
+      products: groupedProducts,
+    })),
   };
-  return `${heading}\n${selected.map(formatProduct).join("\n")}`;
+}
+
+export function formatMinorityResult(result: MinorityResult): string {
+  if (result.kind === "summary") return result.text;
+  const groups = result.groups.map(({ sourceUrl, products }) => [
+    `Submitted URL: ${sourceUrl || "unavailable"}`,
+    ...products.map((product) => `- ${product.name}`),
+  ].join("\n"));
+  return `${result.heading}\n\n${groups.join("\n\n")}`;
 }

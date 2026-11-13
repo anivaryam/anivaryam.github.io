@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildMinorityResult,
   classifyProducts,
   fetchAvailableModels,
   formatMinorityResult,
@@ -73,15 +74,20 @@ describe("related product API", () => {
   });
 
   it("formats all-related, all-unrelated, small unrelated lists, and the minority result", () => {
+    const formatResult = (items: ProductCandidate[], related: boolean[]) => formatMinorityResult(
+      buildMinorityResult(items, related.map((isRelated, index) => ({
+        id: `product-${index + 1}`,
+        related: isRelated,
+      }))),
+    );
+
     expect(formatMinorityResult(
-      [products[0]],
-      [{ id: "product-1", related: true }],
+      buildMinorityResult([products[0]], [{ id: "product-1", related: true }]),
     )).toBe("All related");
     expect(formatMinorityResult(
-      [products[0]],
-      [{ id: "product-1", related: false }],
+      buildMinorityResult([products[0]], [{ id: "product-1", related: false }]),
     )).toBe("All unrelated");
-    expect(formatMinorityResult(
+    expect(formatResult(
       [
         { ...products[0], name: "Relevant" },
         {
@@ -93,24 +99,27 @@ describe("related product API", () => {
           ],
         },
       ],
-      [{ id: "product-1", related: true }, { id: "product-2", related: false }],
+      [true, false],
     )).toBe(
-      "Unrelated Product\n- Other\n"
-      + "  Found via: https://shop.example/collections/other\n"
-      + "  Also found via: https://shop.example/collections/accessories",
+      "Unrelated Product\n\n"
+      + "Submitted URL: https://shop.example/collections/other\n"
+      + "- Other\n\n"
+      + "Submitted URL: https://shop.example/collections/accessories\n"
+      + "- Other",
     );
 
     const names = Array.from({ length: 12 }, (_, index) => `Product ${index + 1}`);
-    const decisions = names.map((_, index) => ({ id: `product-${index + 1}`, related: index < 2 }));
     const candidates = names.map((name, index) => ({
       ...products[0],
       name,
       foundVia: [`https://shop.example/collections/${index + 1}`],
     }));
-    expect(formatMinorityResult(candidates, decisions)).toBe(
-      "Related Product\n"
-      + "- Product 1\n  Found via: https://shop.example/collections/1\n"
-      + "- Product 2\n  Found via: https://shop.example/collections/2",
+    expect(formatResult(candidates, names.map((_, index) => index < 2))).toBe(
+      "Related Product\n\n"
+      + "Submitted URL: https://shop.example/collections/1\n"
+      + "- Product 1\n\n"
+      + "Submitted URL: https://shop.example/collections/2\n"
+      + "- Product 2",
     );
   });
 });

@@ -17,10 +17,10 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { API_PRESETS, DEFAULT_API_BASE, classifyProducts, fetchAvailableModels, formatMinorityResult, normalizeApiBase } from "@/lib/related-product/api";
+import { API_PRESETS, DEFAULT_API_BASE, buildMinorityResult, classifyProducts, fetchAvailableModels, formatMinorityResult, normalizeApiBase } from "@/lib/related-product/api";
 import { collectProductsFromUrls, normalizeCollectionUrl } from "@/lib/related-product/collector";
 import { forgetProviderSettings, hasSavedProviderSettings, saveProviderSettings, unlockProviderSettings } from "@/lib/related-product/storage";
-import type { ProductModel, SavedProviderSettings } from "@/lib/related-product/types";
+import type { MinorityResult, ProductModel, SavedProviderSettings } from "@/lib/related-product/types";
 import {
   AlertTriangle,
   Check,
@@ -58,6 +58,7 @@ export function RelatedProductFinderTool() {
   const [progressMessage, setProgressMessage] = useState("");
   const [runError, setRunError] = useState("");
   const [output, setOutput] = useState("");
+  const [resultView, setResultView] = useState<MinorityResult | null>(null);
   const [resultNote, setResultNote] = useState("");
   const [copied, setCopied] = useState(false);
   const [forgetDialogOpen, setForgetDialogOpen] = useState(false);
@@ -232,6 +233,7 @@ export function RelatedProductFinderTool() {
   const handleRun = async () => {
     setRunError("");
     setOutput("");
+    setResultView(null);
     setResultNote("");
     setCopied(false);
 
@@ -304,11 +306,12 @@ export function RelatedProductFinderTool() {
           },
         },
       );
-      const text = formatMinorityResult(
+      const result = buildMinorityResult(
         collected.products,
         decisions,
       );
-      setOutput(text);
+      setResultView(result);
+      setOutput(formatMinorityResult(result));
       setResultNote(
         `${collected.products.length} unique product${collected.products.length === 1 ? "" : "s"} checked across ${urls.length} URL${urls.length === 1 ? "" : "s"}.`
         + (collected.warnings.length ? ` ${collected.warnings.join(" ")}` : ""),
@@ -717,9 +720,64 @@ export function RelatedProductFinderTool() {
             </Button>
           </div>
           {output && (
-            <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-background/70 p-4 font-mono text-sm" data-lenisignore>
-              {output}
-            </pre>
+            resultView?.kind === "groups" ? (
+              <div className="max-h-[32rem] space-y-4 overflow-y-auto pr-1" data-lenisignore>
+                <h3 className="text-lg font-semibold">{resultView.heading}</h3>
+                {resultView.groups.map((group, groupIndex) => (
+                  <section
+                    key={`${group.sourceUrl || "unknown-source"}-${groupIndex}`}
+                    aria-labelledby={`related-source-${groupIndex}`}
+                    className="overflow-hidden rounded-lg border border-border bg-background"
+                  >
+                    <header className="space-y-2 border-b border-border bg-muted/60 px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4
+                          id={`related-source-${groupIndex}`}
+                          className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                        >
+                          Submitted URL
+                        </h4>
+                        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                          {group.products.length} product{group.products.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      {group.sourceUrl ? (
+                        <a
+                          href={group.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block break-all text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {group.sourceUrl}
+                        </a>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Source URL unavailable</p>
+                      )}
+                    </header>
+                    <ul className="divide-y divide-border">
+                      {group.products.map((product, productIndex) => (
+                        <li
+                          key={`${product.url}-${productIndex}`}
+                          className="bg-card px-4 py-3 sm:px-5"
+                        >
+                          <p className="break-words text-base font-semibold leading-snug text-foreground">
+                            {product.name}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <p
+                role="status"
+                className="rounded-lg border border-border bg-muted/30 px-4 py-5 text-lg font-semibold text-foreground"
+                data-lenisignore
+              >
+                {output}
+              </p>
+            )
           )}
         </section>
       )}
