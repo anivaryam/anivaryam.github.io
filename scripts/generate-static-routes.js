@@ -87,6 +87,7 @@ const routes = [
   '/tools/random-universe-cipher',
   '/tools/listicle-template',
   '/tools/image-extractor',
+  '/tools/related-product-finder',
   '/downloads',
   '/blogs',
   '/news',
@@ -128,8 +129,8 @@ const toolsMap = new Map(toolsMetadata.map(tool => [tool.path, tool]));
 // Route metadata for better SEO and bot accessibility
 const routeMetadata = {
   '/tools': {
-    title: 'Free Online Developer Tools - 20+ Tools',
-    description: 'Browse 20+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required.'
+    title: 'Free Online Developer Tools - 24+ Tools',
+    description: 'Browse 24+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required.'
   },
   '/downloads': {
     title: 'Free Downloads & Scripts',
@@ -338,4 +339,3 @@ if (fs.existsSync(assetsDir)) {
 }
 
 console.log(`✅ Static routes generated successfully (${routes.length} routes)`);
-

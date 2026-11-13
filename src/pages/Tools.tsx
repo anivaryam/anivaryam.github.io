@@ -1,7 +1,7 @@
 import { Layout } from "@/components/layout/Layout";
 import { SEO } from "@/components/SEO";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Code2, FileCode, ArrowRight, Braces, Binary, Link as LinkIcon, Palette, Fingerprint, Regex, Hash, KeyRound, Clock, Globe, Search, QrCode, GitCompare, FileText, Image, Lock, LayoutTemplate, ImageDown, Combine, Images } from "lucide-react";
+import { Code2, FileCode, ArrowRight, Braces, Binary, Link as LinkIcon, Palette, Fingerprint, Regex, Hash, KeyRound, Clock, Globe, Search, QrCode, GitCompare, FileText, Image, Lock, LayoutTemplate, ImageDown, Combine, Images, PackageSearch } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const tools = [
@@ -189,14 +189,22 @@ const tools = [
     path: "/tools/image-extractor",
     color: "text-[hsl(var(--syntax-green))]",
   },
+  {
+    id: "related-product-finder",
+    title: "Related Product Finder",
+    description: "Compare products from store collections with a content draft using your own LLM API key. Choose a model and get only the smaller matching product group.",
+    icon: PackageSearch,
+    path: "/tools/related-product-finder",
+    color: "text-primary",
+  },
 ];
 
 export default function Tools() {
   return (
     <Layout>
       <SEO
-        title="Free Online Developer Tools - 20+ Tools"
-        description="Browse 20+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required."
+        title="Free Online Developer Tools - 24+ Tools"
+        description="Browse 24+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required."
         canonical="https://anivaryam.github.io/tools"
         structuredData={{
           type: "WebPage",
@@ -217,7 +225,7 @@ export default function Tools() {
             Free Online Developer Tools
           </h1>
           <p className="text-muted-foreground max-w-2xl mx-auto mb-4">
-            Browse my complete collection of 20+ free online developer tools designed to streamline your workflow. From document conversion and code formatting to data encoding and web scraping—find the perfect tool for your needs.
+            Browse my complete collection of 24+ free online developer tools designed to streamline your workflow. From document conversion and code formatting to data encoding, web scraping, and product matching—find the perfect tool for your needs.
           </p>
           <p className="text-muted-foreground max-w-2xl mx-auto">
             All tools run entirely in your browser with no signup required. Your data stays private, processing happens locally, and everything is completely free. Perfect for web developers, content editors, technical writers, and SEO specialists.

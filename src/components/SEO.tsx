@@ -58,7 +58,7 @@ export function SEO({
   const mainPagesWithoutBrand = [
     "Home",
     "Free Developer Tools - Conversion & Formatting",
-    "Free Online Developer Tools - 20+ Tools"
+    "Free Online Developer Tools - 24+ Tools"
   ];
   
   if (mainPagesWithoutBrand.includes(title)) {

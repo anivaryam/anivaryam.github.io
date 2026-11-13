@@ -17,8 +17,8 @@ const routeMetadata = {
     description: 'Free online developer tools for Word to HTML conversion, text formatting, code cleanup, and automation. No signup, fast & privacy-friendly.'
   },
   '/tools': {
-    title: 'Free Online Developer Tools - 20+ Tools',
-    description: 'Browse 20+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required.'
+    title: 'Free Online Developer Tools - 24+ Tools',
+    description: 'Browse 24+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required.'
   },
   '/blogs': {
     title: 'Developer Blog & Tutorials',
@@ -205,4 +205,3 @@ results.forEach(result => {
 console.log(`\n📊 Summary: ${allGood ? '✅ All pages OK' : '❌ Some issues found'}`);
 
 process.exit(allGood ? 0 : 1);
-

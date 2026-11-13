@@ -303,6 +303,13 @@ const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
+
+  <url>
+    <loc>${baseUrl}/tools/related-product-finder</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
   
   <!-- Blog Posts -->
 ${blogPosts.map(post => `  <url>
@@ -333,4 +340,3 @@ if (fs.existsSync(distDir)) {
 }
 
 console.log(`✅ Sitemap generated successfully with ${blogPosts.length} blog posts and ${newsArticles.length} news articles`);
-

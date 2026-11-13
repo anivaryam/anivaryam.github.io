@@ -91,8 +91,8 @@ setTimeout(async () => {
   
   const toolsOk = await testRoute(
     '/tools/',
-    'Free Online Developer Tools - 20+ Tools',
-    'Browse 20+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required.'
+    'Free Online Developer Tools - 24+ Tools',
+    'Browse 24+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required.'
   );
   
   console.log(`\n📊 Summary:`);
@@ -107,4 +107,3 @@ setTimeout(async () => {
     process.exit(1);
   }
 }, 2000);
-

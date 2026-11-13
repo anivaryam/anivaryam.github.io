@@ -33,6 +33,7 @@ const ListicleTemplate = lazy(() => import("./pages/tools/ListicleTemplate"));
 const ImageResizer = lazy(() => import("./pages/tools/ImageResizer"));
 const ImageCombiner = lazy(() => import("./pages/tools/ImageCombiner"));
 const ImageExtractor = lazy(() => import("./pages/tools/ImageExtractor"));
+const RelatedProductFinder = lazy(() => import("./pages/tools/RelatedProductFinder"));
 const Downloads = lazy(() => import("./pages/Downloads"));
 const Blogs = lazy(() => import("./pages/Blogs"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
@@ -135,6 +136,7 @@ const App = () => (
               <Route path="/tools/image-resizer" element={<ImageResizer />} />
               <Route path="/tools/image-combiner" element={<ImageCombiner />} />
               <Route path="/tools/image-extractor" element={<ImageExtractor />} />
+              <Route path="/tools/related-product-finder" element={<RelatedProductFinder />} />
               <Route path="/downloads" element={<Downloads />} />
               <Route path="/blogs" element={<Blogs />} />
               <Route path="/blogs/:id" element={<BlogPost />} />

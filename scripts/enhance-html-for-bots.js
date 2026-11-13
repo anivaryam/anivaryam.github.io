@@ -174,7 +174,8 @@ function getToolsMetadata() {
       'listicle-template': 'ListicleTemplate.tsx',
       'image-resizer': 'ImageResizer.tsx',
       'image-combiner': 'ImageCombiner.tsx',
-      'image-extractor': 'ImageExtractor.tsx'
+      'image-extractor': 'ImageExtractor.tsx',
+      'related-product-finder': 'RelatedProductFinder.tsx'
     };
     
     // Read Tools.tsx to get paths
@@ -455,7 +456,7 @@ function injectMetaTags(html, metadata, route, structuredData = null) {
   const mainPagesWithoutBrand = [
     "Home",
     "Free Developer Tools - Conversion & Formatting",
-    "Free Online Developer Tools - 20+ Tools"
+    "Free Online Developer Tools - 24+ Tools"
   ];
   
   let fullTitle;
@@ -607,7 +608,8 @@ function extractToolIntroParagraphs(toolId) {
       'listicle-template': 'ListicleTemplate.tsx',
       'image-resizer': 'ImageResizer.tsx',
       'image-combiner': 'ImageCombiner.tsx',
-      'image-extractor': 'ImageExtractor.tsx'
+      'image-extractor': 'ImageExtractor.tsx',
+      'related-product-finder': 'RelatedProductFinder.tsx'
     };
     
     const componentFile = toolFileMap[toolId];

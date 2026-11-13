@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CommandDialog, CommandInput, CommandList, CommandGroup, CommandItem } from "@/components/ui/command";
-import { Calculator, FileJson, Lock, Unlock, Link, Type, Image, Clock, Hash, Key, Regex, Scissors, FileCode, Table, QrCode, TextCursor, Download, Palette, Wand2, Search, Calendar, Images } from "lucide-react";
+import { Calculator, FileJson, Lock, Unlock, Link, Type, Image, Clock, Hash, Key, Regex, Scissors, FileCode, Table, QrCode, TextCursor, Download, Palette, Wand2, Search, Calendar, Images, PackageSearch } from "lucide-react";
 
 const tools = [
   { name: "Word to HTML", description: "Convert Word documents to HTML", icon: FileCode, path: "/tools/word-to-html", keywords: ["word", "html", "converter", "document"] },
@@ -25,6 +25,7 @@ const tools = [
   { name: "Random Universe Cipher", description: "Quantum-safe encryption", icon: Wand2, path: "/tools/random-universe-cipher", keywords: ["cipher", "encryption", "quantum", "ruc"] },
   { name: "Timestamp Converter", description: "Time and date conversions", icon: Calendar, path: "/tools/timestamp-converter", keywords: ["time", "date", "epoch", "converter"] },
   { name: "Image Extractor", description: "Extract images from Google Docs / Word", icon: Images, path: "/tools/image-extractor", keywords: ["image", "extract", "google docs", "docx", "scrape"] },
+  { name: "Related Product Finder", description: "Match store products to a content draft", icon: PackageSearch, path: "/tools/related-product-finder", keywords: ["related", "product", "draft", "collection", "llm", "model"] },
 ];
 
 export function QuickSearch() {
