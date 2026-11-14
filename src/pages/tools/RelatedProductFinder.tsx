@@ -11,7 +11,7 @@ export default function RelatedProductFinder() {
     <Layout>
       <SEO
         title="Related Product Finder - Match Store Products to a Draft"
-        description="Compare products from store collection pages with a content draft using your own LLM API key. Choose a model and get only the relevant minority product list."
+        description="Compare store products with a content draft using your own LLM API key. Review related and unrelated products by collection alongside a summary."
         canonical="https://anivaryam.github.io/tools/related-product-finder"
         breadcrumbs={[
           { name: "Home", url: "https://anivaryam.github.io/" },
@@ -25,7 +25,7 @@ export default function RelatedProductFinder() {
           offers: { price: "0", priceCurrency: "USD" },
         }}
       />
-      <div className="container mx-auto px-4 py-12">
+      <div className="mx-auto w-full max-w-[1800px] px-4 py-8 sm:px-6 lg:px-8">
         <UpdateNotification />
         <Breadcrumb className="mb-8">
           <BreadcrumbList>
@@ -61,7 +61,7 @@ export default function RelatedProductFinder() {
           </p>
         </div>
 
-        <div className="terminal-bg mx-auto max-w-5xl rounded-xl p-4 sm:p-6 lg:p-8">
+        <div className="terminal-bg mx-auto w-full rounded-xl p-4 sm:p-6">
           <div className="mb-6 flex items-center gap-2 border-b border-border pb-4">
             <div className="h-3 w-3 rounded-full bg-destructive/80" />
             <div className="h-3 w-3 rounded-full bg-[hsl(var(--syntax-yellow))]/80" />
@@ -80,7 +80,7 @@ export default function RelatedProductFinder() {
             Enter collection or product-page URLs, paste the full draft, connect an OpenAI-compatible provider, and explicitly select an available model. The tool reads Shopify product feeds when available and otherwise follows product listings and same-site pagination. It removes duplicate product names across submitted URLs. JavaScript-only “load more” collections are stopped rather than returning a partial result.
           </p>
           <p className="mt-3">
-            Results follow the smaller-group rule: all-related or all-unrelated collections get a short status; otherwise only one product group is listed, without URLs. If fewer than ten products are unrelated, only that unrelated group is shown.
+            Related and unrelated products appear in separate panels, grouped under their submitted URL with links to each product. The summary shows the unique-product counts. Copy result retains the smaller-group rule: all-related or all-unrelated collections get a short status; otherwise it copies one group of product names. If fewer than ten products are unrelated, that unrelated group is copied.
           </p>
         </div>
       </div>
