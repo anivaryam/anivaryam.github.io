@@ -12,18 +12,20 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { API_PRESETS, DEFAULT_API_BASE, buildMinorityResult, classifyProducts, fetchAvailableModels, formatMinorityResult, normalizeApiBase } from "@/lib/related-product/api";
+import { API_PRESETS, DEFAULT_API_BASE, buildMinorityResult, classifyProducts, fetchAvailableModels, formatMinorityResult, groupProductsBySource, normalizeApiBase } from "@/lib/related-product/api";
 import { collectProductsFromUrls, normalizeCollectionUrl } from "@/lib/related-product/collector";
 import { forgetProviderSettings, hasSavedProviderSettings, saveProviderSettings, unlockProviderSettings } from "@/lib/related-product/storage";
-import type { MinorityResult, ProductModel, SavedProviderSettings } from "@/lib/related-product/types";
+import type { MinorityResult, ProductModel, ProductResultGroup, SavedProviderSettings } from "@/lib/related-product/types";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   Copy,
   KeyRound,
   Loader2,
@@ -36,6 +38,73 @@ import {
 } from "lucide-react";
 
 type VaultState = "checking" | "setup" | "locked" | "unlocked";
+
+interface FinderResult {
+  minority: MinorityResult;
+  relatedGroups: ProductResultGroup[];
+  unrelatedGroups: ProductResultGroup[];
+  relatedCount: number;
+  unrelatedCount: number;
+  note: string;
+}
+
+function ProductResultsPanel({
+  id, title, groups, count, hasResult, running,
+}: {
+  id: string;
+  title: string;
+  groups: ProductResultGroup[];
+  count: number;
+  hasResult: boolean;
+  running: boolean;
+}) {
+  return (
+    <section aria-labelledby={id} aria-busy={running} className="flex min-h-80 min-w-0 flex-col rounded-xl border border-border bg-card/50 p-4">
+      <header className="mb-4 flex items-center justify-between gap-3">
+        <h2 id={id} className="font-semibold">{title}</h2>
+        {hasResult && <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">{count}</span>}
+      </header>
+      <div className="min-h-0 max-h-[32rem] flex-1 space-y-3 overflow-y-auto rounded-lg border border-border bg-background/40 p-3" data-lenisignore>
+        {groups.length > 0 ? groups.map((group, groupIndex) => (
+          <section
+            key={`${group.sourceUrl || "unknown-source"}-${groupIndex}`}
+            aria-labelledby={`${id}-source-${groupIndex}`}
+            className="overflow-hidden rounded-lg border border-border bg-background"
+          >
+            <header className="space-y-2 border-b border-border bg-muted/50 px-3 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 id={`${id}-source-${groupIndex}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Submitted URL {groupIndex + 1}
+                </h3>
+                <span className="text-xs text-muted-foreground">{group.products.length} product{group.products.length === 1 ? "" : "s"}</span>
+              </div>
+              {group.sourceUrl ? (
+                <a href={group.sourceUrl} target="_blank" rel="noopener noreferrer" className="block break-all text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {group.sourceUrl}
+                </a>
+              ) : <p className="text-xs text-muted-foreground">Source URL unavailable</p>}
+            </header>
+            <ul className="divide-y divide-border">
+              {group.products.map((product, productIndex) => (
+                <li key={`${product.url}-${productIndex}`} className="px-3 py-3">
+                  <a href={product.url} target="_blank" rel="noopener noreferrer" className="block rounded-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <span className="block break-words text-sm font-medium text-foreground">{product.name}</span>
+                    <span className="mt-1 block break-all text-xs text-muted-foreground">{product.url}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )) : (
+          <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-3 text-center text-sm text-muted-foreground">
+            <PackageSearch className="h-7 w-7 opacity-60" aria-hidden="true" />
+            <p>{running ? "Results will appear when the check finishes." : hasResult ? `No ${title.toLowerCase()} found in this check.` : "Add your collection links and draft, then run a check."}</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 export function RelatedProductFinderTool() {
   const [vaultState, setVaultState] = useState<VaultState>("checking");
@@ -57,12 +126,13 @@ export function RelatedProductFinderTool() {
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
   const [runError, setRunError] = useState("");
-  const [output, setOutput] = useState("");
-  const [resultView, setResultView] = useState<MinorityResult | null>(null);
-  const [resultNote, setResultNote] = useState("");
+  const [resultView, setResultView] = useState<FinderResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [forgetDialogOpen, setForgetDialogOpen] = useState(false);
+  const [connectionExpanded, setConnectionExpanded] = useState(true);
 
+  const connectionContentRef = useRef<HTMLDivElement>(null);
+  const urlsInputRef = useRef<HTMLTextAreaElement>(null);
   const passphraseRef = useRef("");
   const settingsRef = useRef<SavedProviderSettings | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -78,10 +148,26 @@ export function RelatedProductFinderTool() {
     }
   }, []);
 
-  const presetValue = API_PRESETS.find((preset) => preset.url === apiBase)?.url || "custom";
+  const providerPreset = API_PRESETS.find((preset) => preset.url === apiBase);
+  const presetValue = providerPreset?.url || "custom";
   const selectedModelIsAvailable = models.some((model) => model.id === selectedModel);
+  const providerName = providerPreset?.name
+    || (vaultState === "unlocked" ? new URL(apiBase).host : "");
+  const connectionNeedsAttention = vaultState !== "unlocked"
+    || !selectedModelIsAvailable || Boolean(settingsError || modelError);
+  const connectionOpen = connectionExpanded || connectionNeedsAttention;
+  const output = resultView ? formatMinorityResult(resultView.minority) : "";
+
+  const collapseConnectionSettings = () => {
+    // Advance from settings without stealing focus from inputs edited during the save.
+    if (connectionContentRef.current?.contains(document.activeElement)) {
+      urlsInputRef.current?.focus();
+    }
+    setConnectionExpanded(false);
+  };
 
   const refreshModelList = async (settings: SavedProviderSettings) => {
+    setConnectionExpanded(true);
     setLoadingModels(true);
     setModelError("");
     try {
@@ -90,6 +176,7 @@ export function RelatedProductFinderTool() {
       if (available.length === 0) {
         setModelError("The provider returned no models for this API key.");
       }
+      return available;
     } catch (error) {
       setModelError(error instanceof Error ? error.message : "Could not load models.");
     } finally {
@@ -161,7 +248,10 @@ export function RelatedProductFinderTool() {
       setSelectedModel(saved.selectedModel);
       setUnlockPassphrase("");
       setVaultState("unlocked");
-      await refreshModelList(settings);
+      const available = await refreshModelList(settings);
+      if (available?.some((model) => model.id === settings.selectedModel)) {
+        collapseConnectionSettings();
+      }
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : "Could not unlock saved settings.");
     }
@@ -175,6 +265,7 @@ export function RelatedProductFinderTool() {
     setApiKey("");
     setModels([]);
     setModelError("");
+    setConnectionExpanded(true);
     setVaultState("locked");
   };
 
@@ -195,6 +286,7 @@ export function RelatedProductFinderTool() {
       setSetupPassphrase("");
       setSetupPassphraseConfirmation("");
       setVaultState("setup");
+      setConnectionExpanded(true);
       setForgetDialogOpen(false);
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : "Could not forget saved settings.");
@@ -222,7 +314,11 @@ export function RelatedProductFinderTool() {
     saveQueueRef.current = write;
 
     void write
+      .then(() => {
+        if (saveVersionRef.current === saveVersion) collapseConnectionSettings();
+      })
       .catch((error) => {
+        setConnectionExpanded(true);
         setSettingsError(error instanceof Error ? error.message : "Could not save the selected model.");
       })
       .finally(() => {
@@ -232,9 +328,7 @@ export function RelatedProductFinderTool() {
 
   const handleRun = async () => {
     setRunError("");
-    setOutput("");
     setResultView(null);
-    setResultNote("");
     setCopied(false);
 
     if (!urlsInput.trim()) {
@@ -305,17 +399,21 @@ export function RelatedProductFinderTool() {
             setProgress(50 + Math.round((completed / total) * 50));
           },
         },
-      );
-      const result = buildMinorityResult(
-        collected.products,
-        decisions,
-      );
-      setResultView(result);
-      setOutput(formatMinorityResult(result));
-      setResultNote(
-        `${collected.products.length} unique product${collected.products.length === 1 ? "" : "s"} checked across ${urls.length} URL${urls.length === 1 ? "" : "s"}.`
-        + (collected.warnings.length ? ` ${collected.warnings.join(" ")}` : ""),
-      );
+      ).catch((error) => {
+        if (!controller.signal.aborted) setConnectionExpanded(true);
+        throw error;
+      });
+      const related = collected.products.filter((_, index) => decisions[index].related);
+      const unrelated = collected.products.filter((_, index) => !decisions[index].related);
+      setResultView({
+        minority: buildMinorityResult(collected.products, decisions),
+        relatedGroups: groupProductsBySource(related),
+        unrelatedGroups: groupProductsBySource(unrelated),
+        relatedCount: related.length,
+        unrelatedCount: unrelated.length,
+        note: `${collected.products.length} unique product${collected.products.length === 1 ? "" : "s"} checked across ${urls.length} URL${urls.length === 1 ? "" : "s"}.`
+          + (collected.warnings.length ? ` ${collected.warnings.join(" ")}` : ""),
+      });
       setProgress(100);
       setProgressMessage("Done.");
     } catch (error) {
@@ -339,294 +437,321 @@ export function RelatedProductFinderTool() {
     }
   };
 
+  const handleNewCheck = () => {
+    setUrlsInput("");
+    setDraft("");
+    setResultView(null);
+    setRunError("");
+    setProgress(0);
+    setProgressMessage("");
+    setCopied(false);
+    urlsInputRef.current?.focus();
+  };
+
   return (
-    <div className="space-y-6">
-      <section aria-labelledby="api-settings-title" className="rounded-xl border border-border bg-card/50 p-4 sm:p-6">
-        <div className="mb-4 flex items-start gap-3">
-          <div className="rounded-lg bg-primary/10 p-2 text-primary">
-            {vaultState === "unlocked" ? <ShieldCheck className="h-5 w-5" /> : <LockKeyhole className="h-5 w-5" />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 id="api-settings-title" className="font-semibold">Connect your LLM</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Your key loads the models enabled for your provider account. Choose a model yourself below.
-            </p>
-          </div>
-          {vaultState === "unlocked" && (
-            <Button type="button" variant="outline" size="sm" onClick={handleLock} disabled={loadingModels}>
-              <LockKeyhole className="mr-2 h-4 w-4" />
-              Lock
-            </Button>
-          )}
-        </div>
-
-        {vaultState === "checking" && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Checking this browser…
-          </div>
-        )}
-
-        {vaultState === "setup" && (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="related-api-provider">API provider</Label>
-                <select
-                  id="related-api-provider"
-                  value={presetValue}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    if (next !== "custom") {
-                      setApiBase(next);
-                    }
-                  }}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {API_PRESETS.map((preset) => (
-                    <option key={preset.url} value={preset.url}>{preset.name}</option>
-                  ))}
-                  <option value="custom">Other OpenAI-compatible API</option>
-                </select>
+    <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(16rem,0.85fr)_minmax(0,1.9fr)_minmax(18rem,1fr)] xl:grid-rows-[max-content_1fr_auto]">
+      <Collapsible open={connectionOpen} onOpenChange={setConnectionExpanded} asChild>
+        <section aria-labelledby="api-settings-title" className="min-w-0 rounded-xl border border-border bg-card/50 p-4 sm:p-5 xl:col-start-1 xl:row-start-1">
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="rounded-lg bg-primary/10 p-2 text-primary">
+              {vaultState === "unlocked" ? <ShieldCheck className="h-5 w-5" /> : <LockKeyhole className="h-5 w-5" />}
+            </div>
+            <div className="min-w-0 flex-1 basis-40">
+              <h2 id="api-settings-title" className="font-semibold">{vaultState === "unlocked" ? "LLM connection" : "Connect your LLM"}</h2>
+              {vaultState === "unlocked" ? (
+                <div className="mt-1 space-y-1 text-xs">
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-medium text-green-800 dark:text-primary">Connected</span>
+                    <span className="break-all text-muted-foreground">{providerName}</span>
+                  </p>
+                  <p className="break-all font-mono text-muted-foreground">
+                    {selectedModelIsAvailable ? selectedModel : selectedModel ? `Saved model unavailable: ${selectedModel}` : "Choose a model below"}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Your key loads the models enabled for your provider account. Choose a model yourself below.
+                </p>
+              )}
+            </div>
+            {vaultState === "unlocked" && (
+              <div className="ml-auto flex flex-wrap gap-2">
+                <CollapsibleTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" disabled={connectionNeedsAttention || loadingModels || savingSelection}>
+                    <ChevronDown className={`mr-2 h-4 w-4 ${connectionOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+                    {connectionOpen ? "Hide settings" : "Manage"}
+                  </Button>
+                </CollapsibleTrigger>
+                <Button type="button" variant="outline" size="sm" onClick={handleLock} disabled={loadingModels}>
+                  <LockKeyhole className="mr-2 h-4 w-4" />
+                  Lock
+                </Button>
               </div>
-              {presetValue === "custom" && (
-                <div className="space-y-2">
-                  <Label htmlFor="related-api-base">API base URL</Label>
+            )}
+          </div>
+
+          <CollapsibleContent ref={connectionContentRef} className="mt-4">
+            {vaultState === "checking" && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking this browser…
+              </div>
+            )}
+
+            {vaultState === "setup" && (
+              <div className="space-y-4">
+                <div className="grid gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="related-api-provider">API provider</Label>
+                    <select
+                      id="related-api-provider"
+                      value={presetValue}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        if (next !== "custom") {
+                          setApiBase(next);
+                        }
+                      }}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {API_PRESETS.map((preset) => (
+                        <option key={preset.url} value={preset.url}>{preset.name}</option>
+                      ))}
+                      <option value="custom">Other OpenAI-compatible API</option>
+                    </select>
+                  </div>
+                  {presetValue === "custom" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="related-api-base">API base URL</Label>
+                      <Input
+                        id="related-api-base"
+                        value={apiBase}
+                        onChange={(event) => setApiBase(event.target.value)}
+                        placeholder="https://api.example.com/v1"
+                        autoComplete="url"
+                      />
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="related-api-key">API key</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="related-api-key"
+                        type={apiKeyVisible ? "text" : "password"}
+                        value={apiKey}
+                        onChange={(event) => setApiKey(event.target.value)}
+                        placeholder="Paste your provider API key"
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setApiKeyVisible((visible) => !visible)}
+                        aria-label={apiKeyVisible ? "Hide API key" : "Show API key"}
+                      >
+                        {apiKeyVisible ? "Hide" : "Show"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="related-vault-passphrase">Vault passphrase</Label>
+                    <Input
+                      id="related-vault-passphrase"
+                      type="password"
+                      value={setupPassphrase}
+                      onChange={(event) => setSetupPassphrase(event.target.value)}
+                      placeholder="At least 12 characters"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="related-vault-confirm">Confirm passphrase</Label>
+                    <Input
+                      id="related-vault-confirm"
+                      type="password"
+                      value={setupPassphraseConfirmation}
+                      onChange={(event) => setSetupPassphraseConfirmation(event.target.value)}
+                      placeholder="Enter it again"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  The key and chosen model are encrypted with AES-GCM before being saved in this browser. Your passphrase is never saved; if you forget it, the key cannot be recovered.
+                </p>
+                <Button
+                  type="button"
+                  onClick={handleConnect}
+                  disabled={loadingModels || !apiKey.trim() || setupPassphrase.length < 12 || !setupPassphraseConfirmation}
+                  className="w-full text-black"
+                >
+                  {loadingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                  {loadingModels ? "Connecting and loading models…" : "Connect & load models"}
+                </Button>
+              </div>
+            )}
+
+            {vaultState === "locked" && (
+              <div className="space-y-4">
+                <div className="max-w-xl space-y-2">
+                  <Label htmlFor="related-unlock-passphrase">Unlock your saved settings</Label>
                   <Input
-                    id="related-api-base"
-                    value={apiBase}
-                    onChange={(event) => setApiBase(event.target.value)}
-                    placeholder="https://api.example.com/v1"
-                    autoComplete="url"
+                    id="related-unlock-passphrase"
+                    type="password"
+                    value={unlockPassphrase}
+                    onChange={(event) => setUnlockPassphrase(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && unlockPassphrase) void handleUnlock();
+                    }}
+                    placeholder="Vault passphrase"
+                    autoComplete="current-password"
                   />
                 </div>
-              )}
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="related-api-key">API key</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="related-api-key"
-                    type={apiKeyVisible ? "text" : "password"}
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    placeholder="Paste your provider API key"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" onClick={handleUnlock} disabled={!unlockPassphrase || loadingModels} className="text-black">
+                    {loadingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UnlockKeyhole className="mr-2 h-4 w-4" />}
+                    {loadingModels ? "Unlocking…" : "Unlock & load models"}
+                  </Button>
+                  <AlertDialog open={forgetDialogOpen} onOpenChange={setForgetDialogOpen}>
+                    <AlertDialogTrigger asChild>
+                      <Button type="button" variant="ghost">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Forget saved key
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Forget the saved API settings?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This permanently removes the encrypted key and selected model from this browser. You will need to connect again.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction className="text-black" onClick={(event) => {
+                          event.preventDefault();
+                          void handleForget();
+                        }}>
+                          Forget settings
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            )}
+
+            {vaultState === "unlocked" && (
+              <div className="space-y-4">
+                {savingSelection && <p role="status" className="text-xs text-muted-foreground">Saving selection…</p>}
+                {!selectedModel && (
+                  <p className="text-sm text-muted-foreground">
+                    No model is selected yet. Choose one with its radio button; this choice will be remembered.
+                  </p>
+                )}
+                {selectedModel && !selectedModelIsAvailable && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      The saved model was not returned by the provider. It remains selected until you choose another model below.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-medium">Available models</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {models.length} model{models.length === 1 ? "" : "s"} returned for this API key
+                    </p>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setApiKeyVisible((visible) => !visible)}
-                    aria-label={apiKeyVisible ? "Hide API key" : "Show API key"}
+                    size="sm"
+                    onClick={() => settingsRef.current && void refreshModelList(settingsRef.current)}
+                    disabled={loadingModels}
                   >
-                    {apiKeyVisible ? "Hide" : "Show"}
+                    {loadingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                    Refresh models
                   </Button>
                 </div>
+
+                {selectedModel && !selectedModelIsAvailable && (
+                  <label className="flex cursor-not-allowed items-start gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3 opacity-80">
+                    <input
+                      type="radio"
+                      name="related-product-model"
+                      checked
+                      disabled
+                      readOnly
+                      className="mt-1 accent-primary"
+                      aria-label={`Saved model ${selectedModel}, no longer available`}
+                    />
+                    <span className="min-w-0">
+                      <span className="block break-all font-mono text-sm">{selectedModel}</span>
+                      <span className="text-xs text-muted-foreground">Saved selection · not returned by the latest model list</span>
+                    </span>
+                  </label>
+                )}
+
+                <RadioGroup
+                  value={selectedModelIsAvailable ? selectedModel : ""}
+                  onValueChange={handleModelChange}
+                  aria-label="Choose an available LLM model"
+                  className="max-h-72 gap-2 overflow-y-auto rounded-lg border border-border bg-background/40 p-2"
+                  data-lenisignore
+                >
+                  {models.map((model) => (
+                    <Label
+                      key={model.id}
+                      htmlFor={`related-model-${encodeURIComponent(model.id)}`}
+                      className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${
+                        selectedModel === model.id
+                          ? "border-primary bg-primary/5"
+                          : "border-transparent hover:border-border hover:bg-muted/40"
+                      }`}
+                    >
+                      <RadioGroupItem
+                        id={`related-model-${encodeURIComponent(model.id)}`}
+                        value={model.id}
+                        className="mt-0.5"
+                      />
+                      <span className="min-w-0">
+                        <span className="block break-all font-mono text-sm">{model.id}</span>
+                        {model.ownedBy && (
+                          <span className="mt-0.5 block text-xs text-muted-foreground">{model.ownedBy}</span>
+                        )}
+                      </span>
+                    </Label>
+                  ))}
+                  {models.length === 0 && !loadingModels && (
+                    <p className="p-3 text-sm text-muted-foreground">No model IDs are available to display. Refresh or check your provider.</p>
+                  )}
+                </RadioGroup>
               </div>
-            </div>
+            )}
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="related-vault-passphrase">Vault passphrase</Label>
-                <Input
-                  id="related-vault-passphrase"
-                  type="password"
-                  value={setupPassphrase}
-                  onChange={(event) => setSetupPassphrase(event.target.value)}
-                  placeholder="At least 12 characters"
-                  autoComplete="new-password"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="related-vault-confirm">Confirm passphrase</Label>
-                <Input
-                  id="related-vault-confirm"
-                  type="password"
-                  value={setupPassphraseConfirmation}
-                  onChange={(event) => setSetupPassphraseConfirmation(event.target.value)}
-                  placeholder="Enter it again"
-                  autoComplete="new-password"
-                />
-              </div>
-            </div>
-
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              The key and chosen model are encrypted with AES-GCM before being saved in this browser. Your passphrase is never saved; if you forget it, the key cannot be recovered.
-            </p>
-            <Button
-              type="button"
-              onClick={handleConnect}
-              disabled={loadingModels || !apiKey.trim() || setupPassphrase.length < 12 || !setupPassphraseConfirmation}
-              className="w-full sm:w-auto"
-            >
-              {loadingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-              {loadingModels ? "Connecting and loading models…" : "Connect & load models"}
-            </Button>
-          </div>
-        )}
-
-        {vaultState === "locked" && (
-          <div className="space-y-4">
-            <div className="max-w-xl space-y-2">
-              <Label htmlFor="related-unlock-passphrase">Unlock your saved settings</Label>
-              <Input
-                id="related-unlock-passphrase"
-                type="password"
-                value={unlockPassphrase}
-                onChange={(event) => setUnlockPassphrase(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && unlockPassphrase) void handleUnlock();
-                }}
-                placeholder="Vault passphrase"
-                autoComplete="current-password"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={handleUnlock} disabled={!unlockPassphrase || loadingModels}>
-                {loadingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UnlockKeyhole className="mr-2 h-4 w-4" />}
-                {loadingModels ? "Unlocking…" : "Unlock & load models"}
-              </Button>
-              <AlertDialog open={forgetDialogOpen} onOpenChange={setForgetDialogOpen}>
-                <AlertDialogTrigger asChild>
-                  <Button type="button" variant="ghost">
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Forget saved key
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Forget the saved API settings?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This permanently removes the encrypted key and selected model from this browser. You will need to connect again.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={(event) => {
-                      event.preventDefault();
-                      void handleForget();
-                    }}>
-                      Forget settings
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </div>
-        )}
-
-        {vaultState === "unlocked" && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-primary">Connected</span>
-              <span className="font-mono text-muted-foreground">{new URL(apiBase).host}</span>
-              {selectedModel && (
-                <span className="rounded-full border border-border px-3 py-1">
-                  {selectedModelIsAvailable ? `Selected: ${selectedModel}` : `Saved model unavailable: ${selectedModel}`}
-                </span>
-              )}
-              {savingSelection && <span className="text-xs text-muted-foreground">Saving selection…</span>}
-            </div>
-            {!selectedModel && (
-              <p className="text-sm text-muted-foreground">
-                No model is selected yet. Choose one with its radio button; this choice will be remembered.
+            {settingsError && (
+              <p role="alert" className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {settingsError}
               </p>
             )}
-            {selectedModel && !selectedModelIsAvailable && (
-              <Alert>
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  The saved model was not returned by the provider. It remains selected until you choose another model below.
-                </AlertDescription>
-              </Alert>
+            {modelError && (
+              <p role="alert" className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {modelError}
+              </p>
             )}
+          </CollapsibleContent>
+        </section>
+      </Collapsible>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="font-medium">Available models</h3>
-                <p className="text-xs text-muted-foreground">
-                  {models.length} model{models.length === 1 ? "" : "s"} returned for this API key
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => settingsRef.current && void refreshModelList(settingsRef.current)}
-                disabled={loadingModels}
-              >
-                {loadingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                Refresh models
-              </Button>
-            </div>
-
-            {selectedModel && !selectedModelIsAvailable && (
-              <label className="flex cursor-not-allowed items-start gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3 opacity-80">
-                <input
-                  type="radio"
-                  name="related-product-model"
-                  checked
-                  disabled
-                  readOnly
-                  className="mt-1 accent-primary"
-                  aria-label={`Saved model ${selectedModel}, no longer available`}
-                />
-                <span className="min-w-0">
-                  <span className="block break-all font-mono text-sm">{selectedModel}</span>
-                  <span className="text-xs text-muted-foreground">Saved selection · not returned by the latest model list</span>
-                </span>
-              </label>
-            )}
-
-            <RadioGroup
-              value={selectedModelIsAvailable ? selectedModel : ""}
-              onValueChange={handleModelChange}
-              aria-label="Choose an available LLM model"
-              className="max-h-72 gap-2 overflow-y-auto rounded-lg border border-border bg-background/40 p-2"
-            >
-              {models.map((model) => (
-                <Label
-                  key={model.id}
-                  htmlFor={`related-model-${encodeURIComponent(model.id)}`}
-                  className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${
-                    selectedModel === model.id
-                      ? "border-primary bg-primary/5"
-                      : "border-transparent hover:border-border hover:bg-muted/40"
-                  }`}
-                >
-                  <RadioGroupItem
-                    id={`related-model-${encodeURIComponent(model.id)}`}
-                    value={model.id}
-                    className="mt-0.5"
-                  />
-                  <span className="min-w-0">
-                    <span className="block break-all font-mono text-sm">{model.id}</span>
-                    {model.ownedBy && (
-                      <span className="mt-0.5 block text-xs text-muted-foreground">{model.ownedBy}</span>
-                    )}
-                  </span>
-                </Label>
-              ))}
-              {models.length === 0 && !loadingModels && (
-                <p className="p-3 text-sm text-muted-foreground">No model IDs are available to display. Refresh or check your provider.</p>
-              )}
-            </RadioGroup>
-          </div>
-        )}
-
-        {settingsError && (
-          <p role="alert" className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {settingsError}
-          </p>
-        )}
-        {modelError && (
-          <p role="alert" className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {modelError}
-          </p>
-        )}
-      </section>
-
-      <section aria-labelledby="product-check-title" className="rounded-xl border border-border bg-card/50 p-4 sm:p-6">
+      <section aria-labelledby="product-check-title" className="flex min-w-0 flex-col rounded-xl border border-border bg-card/50 p-4 sm:p-5 xl:col-start-3 xl:row-span-2 xl:row-start-1 xl:h-full">
         <div className="mb-5 flex items-start gap-3">
           <div className="rounded-lg bg-primary/10 p-2 text-primary">
             <PackageSearch className="h-5 w-5" />
@@ -639,43 +764,36 @@ export function RelatedProductFinderTool() {
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="flex flex-1 flex-col gap-4">
           <div className="space-y-2">
-            <Label htmlFor="related-collection-urls">Collection or product URLs</Label>
+            <Label htmlFor="related-collection-urls">Collection links</Label>
             <Textarea
               id="related-collection-urls"
+              ref={urlsInputRef}
               value={urlsInput}
               onChange={(event) => setUrlsInput(event.target.value)}
               placeholder={"https://store.example/collections/bill-acceptors\nhttps://store.example/collections/stackers"}
               className="min-h-24 font-mono text-sm"
               disabled={running}
+              data-lenisignore
             />
             <p className="text-xs text-muted-foreground">
               Separate multiple URLs with a new line or comma. Collections and individual product pages are supported (up to 10 URLs and 1,000 unique products per run).
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="related-draft">Content draft</Label>
+          <div className="flex flex-1 flex-col gap-2">
+            <Label htmlFor="related-draft">Draft content</Label>
             <Textarea
               id="related-draft"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               placeholder="Paste the complete draft you want to match products against…"
-              className="min-h-48 text-sm"
+              className="min-h-80 flex-1 text-sm"
               disabled={running}
+              data-lenisignore
             />
           </div>
-
-          {running && (
-            <div className="space-y-2" aria-live="polite">
-              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                <span>{progressMessage}</span>
-                <span>{progress}%</span>
-              </div>
-              <Progress value={progress} className="h-2" />
-            </div>
-          )}
 
           {runError && (
             <Alert variant="destructive" role="alert">
@@ -684,12 +802,12 @@ export function RelatedProductFinderTool() {
             </Alert>
           )}
 
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               onClick={() => void handleRun()}
               disabled={running || vaultState !== "unlocked" || !selectedModel || !selectedModelIsAvailable || savingSelection}
-              className="flex-1"
+              className="flex-1 text-black"
             >
               {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageSearch className="mr-2 h-4 w-4" />}
               {running ? "Checking products…" : "Find related products"}
@@ -703,86 +821,85 @@ export function RelatedProductFinderTool() {
                 Cancel
               </Button>
             )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleNewCheck}
+              disabled={running || (!urlsInput && !draft && !resultView && !runError)}
+            >
+              New check
+            </Button>
           </div>
         </div>
       </section>
 
-      {(output || resultNote) && (
-        <section aria-labelledby="related-result-title" className="rounded-xl border border-primary/30 bg-card/50 p-4 sm:p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 id="related-result-title" className="font-semibold">Result</h2>
-              {resultNote && <p className="mt-1 text-xs text-muted-foreground">{resultNote}</p>}
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => void handleCopy()} disabled={!output}>
-              {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
-              {copied ? "Copied" : "Copy result"}
-            </Button>
-          </div>
-          {output && (
-            resultView?.kind === "groups" ? (
-              <div className="max-h-[32rem] space-y-4 overflow-y-auto pr-1" data-lenisignore>
-                <h3 className="text-lg font-semibold">{resultView.heading}</h3>
-                {resultView.groups.map((group, groupIndex) => (
-                  <section
-                    key={`${group.sourceUrl || "unknown-source"}-${groupIndex}`}
-                    aria-labelledby={`related-source-${groupIndex}`}
-                    className="overflow-hidden rounded-lg border border-border bg-background"
-                  >
-                    <header className="space-y-2 border-b border-border bg-muted/60 px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h4
-                          id={`related-source-${groupIndex}`}
-                          className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-                        >
-                          Submitted URL
-                        </h4>
-                        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-                          {group.products.length} product{group.products.length === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                      {group.sourceUrl ? (
-                        <a
-                          href={group.sourceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block break-all text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          {group.sourceUrl}
-                        </a>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Source URL unavailable</p>
-                      )}
-                    </header>
-                    <ul className="divide-y divide-border">
-                      {group.products.map((product, productIndex) => (
-                        <li
-                          key={`${product.url}-${productIndex}`}
-                          className="bg-card px-4 py-3 sm:px-5"
-                        >
-                          <p className="break-words text-base font-semibold leading-snug text-foreground">
-                            {product.name}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                ))}
-              </div>
-            ) : (
-              <p
-                role="status"
-                className="rounded-lg border border-border bg-muted/30 px-4 py-5 text-lg font-semibold text-foreground"
-                data-lenisignore
-              >
-                {output}
-              </p>
-            )
-          )}
-        </section>
-      )}
+      <div className="grid min-w-0 grid-rows-2 gap-4 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:h-full">
+        <ProductResultsPanel
+          id="related-products-title"
+          title="Related Products"
+          groups={resultView?.relatedGroups || []}
+          count={resultView?.relatedCount || 0}
+          hasResult={Boolean(resultView)}
+          running={running}
+        />
+        <ProductResultsPanel
+          id="unrelated-products-title"
+          title="Unrelated Products"
+          groups={resultView?.unrelatedGroups || []}
+          count={resultView?.unrelatedCount || 0}
+          hasResult={Boolean(resultView)}
+          running={running}
+        />
+      </div>
 
-      <Alert>
+      <section aria-labelledby="related-summary-title" className="flex min-h-80 min-w-0 flex-col rounded-xl border border-primary/30 bg-card/50 p-4 xl:col-start-1 xl:row-start-2">
+        <h2 id="related-summary-title" className="mb-4 font-semibold">Summary</h2>
+        {running ? (
+          <div className="space-y-3" aria-live="polite">
+            <p className="text-sm text-muted-foreground">{progressMessage}</p>
+            <Progress value={progress} className="h-2" />
+            <p className="text-xs text-muted-foreground">{progress}% complete</p>
+          </div>
+        ) : resultView ? (
+          <div className="space-y-5">
+            <p role="status" className="rounded-lg border border-border bg-background/60 p-3 font-semibold">
+              {resultView.minority.kind === "summary" ? resultView.minority.text : "Check complete"}
+            </p>
+            <dl className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 rounded-lg border border-border bg-background/40 p-3">
+                <dt className="text-xs text-muted-foreground">Unique products</dt>
+                <dd className="mt-1 text-2xl font-semibold">{resultView.relatedCount + resultView.unrelatedCount}</dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/40 p-3">
+                <dt className="text-xs text-muted-foreground">Related</dt>
+                <dd className="mt-1 text-xl font-semibold">{resultView.relatedCount}</dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/40 p-3">
+                <dt className="text-xs text-muted-foreground">Unrelated</dt>
+                <dd className="mt-1 text-xl font-semibold">{resultView.unrelatedCount}</dd>
+              </div>
+            </dl>
+            <p className="break-words text-xs leading-relaxed text-muted-foreground">{resultView.note}</p>
+            {resultView.minority.kind === "groups" && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Copy result keeps the smaller-group rule and its fewer-than-ten unrelated products exception. Both complete groups are visible alongside this summary.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {runError ? "The check did not finish. Review the error and try again." : "Connect your provider, choose a model, and check a draft to see the product breakdown here."}
+          </p>
+        )}
+        <div className="mt-auto pt-6">
+          <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => void handleCopy()} disabled={!output}>
+            {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+            {copied ? "Copied" : "Copy result"}
+          </Button>
+        </div>
+      </section>
+
+      <Alert className="xl:col-span-3">
         <ShieldCheck className="h-4 w-4" />
         <AlertDescription className="text-xs leading-relaxed">
           The API key is kept in memory while unlocked and stored only as AES-GCM-encrypted data in this browser’s localStorage. It is sent only to the API base URL you choose, never to the page-fetch service. Local development uses the Vite dev server; the deployed version uses the site’s Cloudflare Worker to fetch public pages, which the Worker can see. Use a unique strong vault passphrase; a compromised browser or same-page script can still access a key while unlocked.

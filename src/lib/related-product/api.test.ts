@@ -4,6 +4,7 @@ import {
   classifyProducts,
   fetchAvailableModels,
   formatMinorityResult,
+  groupProductsBySource,
   normalizeApiBase,
 } from "./api";
 import type { ProductCandidate } from "./types";
@@ -16,6 +17,19 @@ const products: ProductCandidate[] = [
 afterEach(() => vi.unstubAllGlobals());
 
 describe("related product API", () => {
+  it("groups products by every submitted URL without duplicating repeated sources", () => {
+    const first = { ...products[0], foundVia: ["https://shop.example/first", "https://shop.example/second", "https://shop.example/first"] };
+    const second = { ...products[1], foundVia: ["https://shop.example/second"] };
+    expect(groupProductsBySource([first, second])).toEqual([
+      { sourceUrl: "https://shop.example/first", products: [first] },
+      { sourceUrl: "https://shop.example/second", products: [first, second] },
+    ]);
+    expect(groupProductsBySource([])).toEqual([]);
+    expect(groupProductsBySource([{ ...products[0], foundVia: [] }])).toEqual([
+      { sourceUrl: null, products: [{ ...products[0], foundVia: [] }] },
+    ]);
+  });
+
   it("normalizes API roots and rejects insecure or credential-bearing URLs", () => {
     expect(normalizeApiBase("https://api.example.com/v1/")).toBe("https://api.example.com/v1");
     expect(() => normalizeApiBase("http://api.example.com/v1")).toThrow("must use HTTPS");

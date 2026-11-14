@@ -1,4 +1,4 @@
-import type { MinorityResult, ProductCandidate, ProductDecision, ProductModel } from "./types";
+import type { MinorityResult, ProductCandidate, ProductDecision, ProductModel, ProductResultGroup } from "./types";
 
 export const DEFAULT_API_BASE = "https://api.openai.com/v1";
 
@@ -251,6 +251,22 @@ export async function classifyProducts(
   return decisions;
 }
 
+export function groupProductsBySource(products: ProductCandidate[]): ProductResultGroup[] {
+  const groups = new Map<string | null, ProductCandidate[]>();
+  for (const product of products) {
+    const sources = [...new Set(product.foundVia || [])];
+    for (const source of sources.length > 0 ? sources : [null]) {
+      const group = groups.get(source) || [];
+      group.push(product);
+      groups.set(source, group);
+    }
+  }
+  return [...groups].map(([sourceUrl, groupedProducts]) => ({
+    sourceUrl,
+    products: groupedProducts,
+  }));
+}
+
 export function buildMinorityResult(
   products: ProductCandidate[],
   decisions: ProductDecision[],
@@ -269,23 +285,11 @@ export function buildMinorityResult(
   const showRelated = unrelated.length >= 10 && related.length < unrelated.length;
   const heading = showRelated ? "Related Product" : "Unrelated Product";
   const selected = showRelated ? related : unrelated;
-  const groups = new Map<string | null, ProductCandidate[]>();
-  for (const product of selected) {
-    const sources = [...new Set(product.foundVia || [])];
-    for (const source of sources.length > 0 ? sources : [null]) {
-      const group = groups.get(source) || [];
-      group.push(product);
-      groups.set(source, group);
-    }
-  }
 
   return {
     kind: "groups",
     heading,
-    groups: [...groups].map(([sourceUrl, groupedProducts]) => ({
-      sourceUrl,
-      products: groupedProducts,
-    })),
+    groups: groupProductsBySource(selected),
   };
 }
 
