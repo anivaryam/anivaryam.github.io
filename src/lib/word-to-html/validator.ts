@@ -1669,6 +1669,7 @@ export function validateMode(html: string, mode: OutputMode, features: FeatureFl
   results.addResult(validateBrBeforeReadMore(doc, mode, features));
   results.addResult(validateBrBeforeSources(doc, mode, features));
   results.addResult(validateWrapLinksStrongUnderline(doc, mode, features));
+  results.addResult(validateDuplicateImages(doc, mode));
   results.addResult(validateImageLibrary(mode, features));
 
   return results;
@@ -1740,6 +1741,60 @@ function validateWrapLinksStrongUnderline(doc: Document, mode: OutputMode, featu
       ? `All ${anchors.length} link(s) wrapped correctly`
       : `${unwrapped.length} of ${anchors.length} link(s) missing wrap`,
     details: unwrapped.length > 0 ? [`${unwrapped.length} link(s) missing wrap`] : null,
+  };
+}
+
+/**
+ * Repeated image sources, shared with preview highlights. Alt text and links
+ * are metadata, not image identity. Keep URL case and query parameters intact:
+ * different values can serve different pictures.
+ */
+export function getDuplicateImageIssues(doc: Document): { element: Element; message: string }[] {
+  const issues: { element: Element; message: string }[] = [];
+  const firstBySource = new Map<string, number>();
+  const images = Array.from(doc.body.querySelectorAll('img')).filter(image => !isWithinInsertedSpacer(image));
+
+  images.forEach((image, index) => {
+    const src = (image.getAttribute('src') || '').trim();
+    if (!src) return;
+    const first = firstBySource.get(src);
+    if (first === undefined) {
+      firstBySource.set(src, index + 1);
+      return;
+    }
+    issues.push({ element: image, message: `Image ${index + 1} repeats image ${first} (same source)` });
+  });
+
+  return issues;
+}
+
+function validateDuplicateImages(doc: Document, mode: OutputMode): TestResult {
+  if (mode !== 'blogs') {
+    return {
+      ruleId: 'duplicate-images',
+      feature: 'Duplicate Images',
+      mode,
+      passed: true,
+      message: 'Duplicate image validation is a blogs feature (skipped)',
+      severity: 'info',
+    };
+  }
+
+  const issues = getDuplicateImageIssues(doc);
+  return {
+    ruleId: 'duplicate-images',
+    feature: 'Duplicate Images',
+    mode,
+    passed: issues.length === 0,
+    message: issues.length === 0
+      ? 'No duplicate image sources found'
+      : `${issues.length} duplicate image occurrence(s) found`,
+    severity: issues.length === 0 ? 'info' : 'warning',
+    expected: 'Each blog image uses a unique source, excluding inserted spacers',
+    actual: issues.length === 0
+      ? 'No repeated image sources'
+      : `${issues.length} image occurrence(s) repeat an earlier source`,
+    details: issues.length > 0 ? issues.map(issue => issue.message) : null,
   };
 }
 

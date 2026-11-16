@@ -25,7 +25,7 @@ import { isAltLabelParagraph, isShopifyImageBlock, isShopifyImageBlockStyled, re
 import { LINK_CHECKER_WORKER_URL } from "@/lib/worker-endpoints";
 import { ImageLibraryPanel } from "./WordToHtmlImageLibrary";
 import { useDraftImageFingerprints, useImageLibrary, useImageLibraryEnabled, useImageLibraryFingerprintBackfill } from "@/hooks/use-image-library";
-import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
+import { validateMode, getUnexpectedSpacingIssues, findDisclaimerSection, getDuplicateImageIssues, getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, type ValidationResults } from "@/lib/word-to-html/validator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "next-themes";
@@ -1275,6 +1275,10 @@ export function WordToHtmlConverter() {
           sourcesSections.forEach(({ label }) => {
             if (!isBrSpacingParagraph(label.previousElementSibling)) label.setAttribute('data-warning', result.message);
           });
+        }
+
+        if (result.ruleId === 'duplicate-images') {
+          getDuplicateImageIssues(doc).forEach(issue => issue.element.setAttribute('data-warning', issue.message));
         }
       });
       

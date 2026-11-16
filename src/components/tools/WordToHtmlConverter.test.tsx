@@ -808,6 +808,42 @@ describe('WordToHtmlConverter', () => {
     expect(list?.getAttribute('data-warning')).toContain('Invalid child structure');
   });
 
+  it('highlights duplicate images only in Blogs without changing the exported images', () => {
+    // Stand in output so this tests validation independently of image-library matching.
+    converterOutput.html = '<p><img src="/hero.png" alt="Hero"></p><p><img src="/other.png" alt="Hero"></p><p><img src="/hero.png" alt="Another description"></p>';
+    render(<WordToHtmlConverter />);
+    enterHtml(converterOutput.html);
+    const preview = document.querySelector('.output-preview')!;
+    expect(preview.querySelector('img[data-warning]')).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    expect(Array.from(preview.querySelectorAll('img')).map(image => image.getAttribute('data-warning'))).toEqual([
+      null, null, 'Image 3 repeats image 1 (same source)',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText('Duplicate Images')).toBeTruthy();
+    expect(screen.getByText('1 duplicate image occurrence(s) found')).toBeTruthy();
+    const exported = new DOMParser().parseFromString(document.querySelector('pre code')!.textContent || '', 'text/html');
+    expect(Array.from(exported.querySelectorAll('img')).map(image => image.getAttribute('src'))).toEqual(['/hero.png', '/other.png', '/hero.png']);
+    expect(exported.querySelector('[data-warning]')).toBeNull();
+
+    fireEvent.click(screen.getByTitle('Preview'));
+    fireEvent.click(screen.getByTitle('Hide Validation Warnings'));
+    expect(preview.querySelector('img[data-warning]')).toBeNull();
+    expect(screen.getByText('1 duplicate image occurrence(s) found')).toBeTruthy();
+    fireEvent.click(screen.getByTitle('Show Validation Warnings'));
+    expect(preview.querySelectorAll('img[data-warning]')).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Shoppables' }));
+    expect(preview.querySelector('img[data-warning]')).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: 'Blogs' }));
+    expect(preview.querySelectorAll('img[data-warning]')).toHaveLength(1);
+    converterOutput.html = converterOutput.html.replace('src="/hero.png" alt="Another description"', 'src="/new.png" alt="Another description"');
+    enterHtml(converterOutput.html);
+    expect(preview.querySelector('img[data-warning]')).toBeNull();
+    expect(screen.queryByText('1 duplicate image occurrence(s) found')).toBeNull();
+  });
+
   it('highlights the list items the bold-label rule counts', () => {
     render(<WordToHtmlConverter />);
     enterHtml('<ol><li><em>Step</em> one: preheat</li><li><strong>Step two:</strong> serve</li></ol>');

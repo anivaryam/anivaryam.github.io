@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, validateMode, type ValidationResults } from './validator';
+import { getDuplicateImageIssues, getLinkSpacingIssues, getListNormalizationIssues, getOlBoldLabelItems, getSectionSpacingIssues, validateMode, type ValidationResults } from './validator';
 import type { FeatureFlags, OutputMode } from './converter';
+import { markSpacerElement } from './spacer';
 
 function getResult(results: ValidationResults, ruleId: string) {
   const r = results.results.find((x) => x.ruleId === ruleId);
@@ -25,6 +26,80 @@ function expectSkipped(results: ValidationResults, ruleId: string) {
 }
 
 const defaultFeatures: FeatureFlags = {};
+
+/* ------------------------------------------------------------------ */
+/* validateDuplicateImages                                             */
+/* ------------------------------------------------------------------ */
+
+describe('validateDuplicateImages', () => {
+  it('warns about repeated sources regardless of alt text or destination link', () => {
+    const html = '<p><img src="/hero.png" alt="Hero"></p><p><img src="/other.png" alt="Hero"></p><p><a href="/shop"><img src=" /hero.png " alt="Shop"></a></p>';
+    const result = getResult(validateMode(html, 'blogs', defaultFeatures), 'duplicate-images');
+    expect(result).toMatchObject({
+      feature: 'Duplicate Images',
+      passed: false,
+      severity: 'warning',
+      message: '1 duplicate image occurrence(s) found',
+      details: ['Image 3 repeats image 1 (same source)'],
+    });
+  });
+
+  it('reports each extra occurrence against the first image and shares preview diagnostics', () => {
+    const html = '<img src="/a.png"><img src="/b.png"><img src="/a.png"><img src="/a.png"><img src="/b.png">';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const before = doc.body.innerHTML;
+    const issues = getDuplicateImageIssues(doc);
+    expect(issues.map(issue => issue.element)).toEqual(Array.from(doc.querySelectorAll('img')).slice(2));
+    expect(issues.map(issue => issue.message)).toEqual([
+      'Image 3 repeats image 1 (same source)',
+      'Image 4 repeats image 1 (same source)',
+      'Image 5 repeats image 2 (same source)',
+    ]);
+    const result = getResult(validateMode(html, 'blogs', defaultFeatures), 'duplicate-images');
+    expect(result.details).toEqual(issues.map(issue => issue.message));
+    expect(result.message).toBe('3 duplicate image occurrence(s) found');
+    expect(doc.body.innerHTML).toBe(before);
+  });
+
+  it.each([
+    '<p>No images.</p>',
+    '<img src="/one.png" alt="Same"><img src="/two.png" alt="Same">',
+    '<img><img src=""><img src="   ">',
+    '<img src="/image.png?v=1"><img src="/image.png?v=2"><img src="/Image.png?v=1">',
+  ])('passes without repeated non-empty sources: %s', (html) => {
+    const result = getResult(validateMode(html, 'blogs', defaultFeatures), 'duplicate-images');
+    expect(result).toMatchObject({ passed: true, severity: 'info', details: null });
+  });
+
+  it('detects repeated embedded images without putting their data in diagnostics', () => {
+    const src = `data:image/png;base64,${'A'.repeat(2000)}`;
+    const result = getResult(validateMode(`<img src="${src}"><img src="${src}">`, 'blogs', defaultFeatures), 'duplicate-images');
+    expect(result).toMatchObject({
+      passed: false,
+      details: ['Image 2 repeats image 1 (same source)'],
+    });
+    expect(JSON.stringify(result)).not.toContain(src);
+  });
+
+  it('ignores inserted image spacers but still checks ordinary matching images', () => {
+    const doc = new DOMParser().parseFromString('<img src="/image.png"><div><img src="/image.png"></div><img src="/image.png"><img src="/image.png">', 'text/html');
+    markSpacerElement(doc.body.children[0]);
+    markSpacerElement(doc.body.children[1]);
+    const issues = getDuplicateImageIssues(doc);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].element).toBe(doc.body.lastElementChild);
+    expect(getResult(validateMode(doc.body.innerHTML, 'blogs', defaultFeatures), 'duplicate-images').details).toEqual(issues.map(issue => issue.message));
+  });
+
+  it.each<OutputMode>(['regular', 'shoppables'])('skips duplicate detection in %s mode', (mode) => {
+    const result = getResult(validateMode('<img src="/same.png"><img src="/same.png">', mode, defaultFeatures), 'duplicate-images');
+    expect(result).toMatchObject({
+      passed: true,
+      severity: 'info',
+      message: 'Duplicate image validation is a blogs feature (skipped)',
+    });
+  });
+});
 
 /* ------------------------------------------------------------------ */
 /* Empty input                                                        */
