@@ -7,6 +7,7 @@ const MAX_PRODUCTS_PER_COLLECTION = 1_000;
 const MAX_COLLECTION_URLS = 10;
 const MAX_PRODUCTS_PER_RUN = 1_000;
 const MAX_DETAIL_REQUESTS = 80;
+export const MAX_SAMPLE_PRODUCTS_PER_URL = 40;
 const DEV_PAGE_FETCH_ENDPOINT = "/__related-product/page?url=";
 
 class CollectionSafetyLimitError extends Error {}
@@ -429,6 +430,7 @@ async function collectShopifyCollection(
   collectionUrl: string,
   signal: AbortSignal,
   onProgress: (message: string) => void,
+  sampleOnly = false,
 ): Promise<ProductCandidate[]> {
   const collection = new URL(collectionUrl);
   const path = collection.pathname.replace(/\/+$/, "");
@@ -436,7 +438,7 @@ async function collectShopifyCollection(
 
   for (let page = 1; page <= MAX_PAGES_PER_COLLECTION; page++) {
     const feedUrl = new URL(`${path}/products.json`, collection.origin);
-    feedUrl.searchParams.set("limit", "250");
+    feedUrl.searchParams.set("limit", String(sampleOnly ? MAX_SAMPLE_PRODUCTS_PER_URL : 250));
     feedUrl.searchParams.set("page", String(page));
     onProgress(`Reading Shopify product feed, page ${page}…`);
     let raw: string;
@@ -476,6 +478,7 @@ async function collectShopifyCollection(
       if (page === 1) throw new Error("No products were returned by the Shopify feed.");
       return deduplicateProducts(products);
     }
+    if (sampleOnly) return deduplicateProducts(pageProducts).slice(0, MAX_SAMPLE_PRODUCTS_PER_URL);
     products.push(...pageProducts);
     if (products.length > MAX_PRODUCTS_PER_COLLECTION) {
       throw new CollectionSafetyLimitError(`This collection exceeds the ${MAX_PRODUCTS_PER_COLLECTION.toLocaleString()}-product safety limit.`);
@@ -509,6 +512,7 @@ async function collectGenericCollection(
   collectionUrl: string,
   signal: AbortSignal,
   onProgress: (message: string) => void,
+  sampleOnly = false,
 ): Promise<CollectionResult> {
   const origin = new URL(collectionUrl).origin;
   const queue = [collectionUrl];
@@ -526,6 +530,13 @@ async function collectGenericCollection(
     onProgress(`Reading collection page ${visitedPages.size}…`);
     const html = await fetchPage(pageUrl, origin, signal);
     const parsed = parseCollectionHtml(html, pageUrl);
+    if (sampleOnly) {
+      if (parsed.products.length === 0) throw new Error("No product cards were found on the first listing page.");
+      return {
+        products: deduplicateProducts(parsed.products).slice(0, MAX_SAMPLE_PRODUCTS_PER_URL),
+        warnings: ["Only the first listing page was sampled; pagination, load-more controls and product details were not followed."],
+      };
+    }
     if (parsed.hasDynamicLoadMore) {
       throw new Error("This collection uses a JavaScript load-more control. No partial result was produced; use a collection with pagination or provide its product-page URLs.");
     }
@@ -581,6 +592,7 @@ async function collectOneCollection(
   collectionUrl: string,
   signal: AbortSignal,
   onProgress: (message: string) => void,
+  sampleOnly = false,
 ): Promise<CollectionResult> {
   const url = new URL(collectionUrl);
   if (productPath(url.pathname)) {
@@ -593,7 +605,7 @@ async function collectOneCollection(
 
   if (/\/collections\/[^/]+/i.test(url.pathname)) {
     try {
-      const products = await collectShopifyCollection(collectionUrl, signal, onProgress);
+      const products = await collectShopifyCollection(collectionUrl, signal, onProgress, sampleOnly);
       return { products, warnings: [] };
     } catch (error) {
       if (signal.aborted) throw error;
@@ -604,13 +616,14 @@ async function collectOneCollection(
     }
   }
 
-  return collectGenericCollection(collectionUrl, signal, onProgress);
+  return collectGenericCollection(collectionUrl, signal, onProgress, sampleOnly);
 }
 
 export async function collectProductsFromUrls(
   urls: string[],
   signal: AbortSignal,
   onProgress: (message: string, completed: number, total: number) => void,
+  options: { sampleOnly?: boolean } = {},
 ): Promise<CollectionResult> {
   if (urls.length > MAX_COLLECTION_URLS) {
     throw new Error(`A run can check up to ${MAX_COLLECTION_URLS} collection URLs.`);
@@ -618,12 +631,22 @@ export async function collectProductsFromUrls(
   const products: ProductCandidate[] = [];
   const warnings: string[] = [];
   for (let index = 0; index < urls.length; index++) {
+    if (signal.aborted) throw new Error("Collection cancelled.");
     onProgress(`Reading collection ${index + 1} of ${urls.length}…`, index, urls.length);
-    const result = await collectOneCollection(
-      urls[index],
-      signal,
-      (message) => onProgress(message, index + 0.5, urls.length),
-    );
+    let result: CollectionResult;
+    try {
+      result = await collectOneCollection(
+        urls[index],
+        signal,
+        (message) => onProgress(message, index + 0.5, urls.length),
+        options.sampleOnly,
+      );
+    } catch (error) {
+      if (signal.aborted || !options.sampleOnly) throw error;
+      warnings.push(`No sample from ${urls[index]}: ${error instanceof Error ? error.message : "Page unavailable."}`);
+      continue;
+    }
+    if (signal.aborted) throw new Error("Collection cancelled.");
     products.push(...result.products.map((product) => ({
       ...product,
       foundVia: [...new Set([...(product.foundVia || []), urls[index]])],
@@ -636,6 +659,9 @@ export async function collectProductsFromUrls(
   }
 
   const uniqueProducts = deduplicateProducts(products);
-  if (uniqueProducts.length === 0) throw new Error("No products were found in the provided URLs.");
+  if (uniqueProducts.length === 0 && !options.sampleOnly) throw new Error("No products were found in the provided URLs.");
+  if (options.sampleOnly) {
+    warnings.unshift(`Sample only: at most ${MAX_SAMPLE_PRODUCTS_PER_URL} products from the first page of each URL. Total collection sizes and complete coverage were not checked.`);
+  }
   return { products: uniqueProducts, warnings: [...new Set(warnings)] };
 }

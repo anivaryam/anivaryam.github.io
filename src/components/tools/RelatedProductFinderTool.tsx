@@ -18,10 +18,12 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { API_PRESETS, DEFAULT_API_BASE, buildMinorityResult, classifyProducts, fetchAvailableModels, formatMinorityResult, groupProductsBySource, normalizeApiBase } from "@/lib/related-product/api";
-import { collectProductsFromUrls, normalizeCollectionUrl } from "@/lib/related-product/collector";
+import { SmartCollectionConditions } from "./SmartCollectionConditions";
+import { API_PRESETS, DEFAULT_API_BASE, buildMinorityResult, classifyProducts, fetchAvailableModels, formatMinorityResult, groupProductsBySource, normalizeApiBase, suggestSmartCollection } from "@/lib/related-product/api";
+import { collectProductsFromUrls, MAX_SAMPLE_PRODUCTS_PER_URL, normalizeCollectionUrl } from "@/lib/related-product/collector";
+import { formatSmartCollectionSuggestion, previewSmartCollectionTitles, type SmartCollectionSuggestion } from "@/lib/related-product/smart-collection";
 import { forgetProviderSettings, hasSavedProviderSettings, saveProviderSettings, unlockProviderSettings } from "@/lib/related-product/storage";
-import type { MinorityResult, ProductModel, ProductResultGroup, SavedProviderSettings } from "@/lib/related-product/types";
+import type { MinorityResult, ProductCandidate, ProductModel, ProductResultGroup, SavedProviderSettings } from "@/lib/related-product/types";
 import {
   AlertTriangle,
   Check,
@@ -38,6 +40,13 @@ import {
 } from "lucide-react";
 
 type VaultState = "checking" | "setup" | "locked" | "unlocked";
+type FinderMode = "manual" | "smart";
+
+interface SmartResult {
+  suggestion: SmartCollectionSuggestion;
+  samples: ProductCandidate[];
+  warnings: string[];
+}
 
 interface FinderResult {
   minority: MinorityResult;
@@ -49,7 +58,7 @@ interface FinderResult {
 }
 
 function ProductResultsPanel({
-  id, title, groups, count, hasResult, running,
+  id, title, groups, count, hasResult, running, sampleOnly = false,
 }: {
   id: string;
   title: string;
@@ -57,6 +66,7 @@ function ProductResultsPanel({
   count: number;
   hasResult: boolean;
   running: boolean;
+  sampleOnly?: boolean;
 }) {
   return (
     <section aria-labelledby={id} aria-busy={running} className="flex min-h-80 min-w-0 flex-col rounded-xl border border-border bg-card/50 p-4">
@@ -99,6 +109,7 @@ function ProductResultsPanel({
           <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-3 text-center text-sm text-muted-foreground">
             <PackageSearch className="h-7 w-7 opacity-60" aria-hidden="true" />
             <p>{running ? "Results will appear when the check finishes." : hasResult ? `No ${title.toLowerCase()} found in this check.` : "Add your collection links and draft, then run a check."}</p>
+            {sampleOnly && <p>First-page sample only. Passing title rules does not confirm relevance, category, status or stock.</p>}
           </div>
         )}
       </div>
@@ -122,11 +133,13 @@ export function RelatedProductFinderTool() {
   const [settingsError, setSettingsError] = useState("");
   const [urlsInput, setUrlsInput] = useState("");
   const [draft, setDraft] = useState("");
+  const [mode, setMode] = useState<FinderMode>("manual");
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
   const [runError, setRunError] = useState("");
   const [resultView, setResultView] = useState<FinderResult | null>(null);
+  const [smartResult, setSmartResult] = useState<SmartResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [forgetDialogOpen, setForgetDialogOpen] = useState(false);
   const [connectionExpanded, setConnectionExpanded] = useState(true);
@@ -146,6 +159,7 @@ export function RelatedProductFinderTool() {
       setSettingsError(error instanceof Error ? error.message : "Could not read browser storage.");
       setVaultState("setup");
     }
+    return () => runControllerRef.current?.abort();
   }, []);
 
   const providerPreset = API_PRESETS.find((preset) => preset.url === apiBase);
@@ -156,7 +170,10 @@ export function RelatedProductFinderTool() {
   const connectionNeedsAttention = vaultState !== "unlocked"
     || !selectedModelIsAvailable || Boolean(settingsError || modelError);
   const connectionOpen = connectionExpanded || connectionNeedsAttention;
-  const output = resultView ? formatMinorityResult(resultView.minority) : "";
+  const output = smartResult
+    ? `${formatSmartCollectionSuggestion(smartResult.suggestion)}\n\nSampling notes:\n${smartResult.warnings.map((warning) => `- ${warning}`).join("\n")}`
+    : resultView ? formatMinorityResult(resultView.minority) : "";
+  const titlePreview = smartResult ? previewSmartCollectionTitles(smartResult.samples, smartResult.suggestion) : null;
 
   const collapseConnectionSettings = () => {
     // Advance from settings without stealing focus from inputs edited during the save.
@@ -329,6 +346,7 @@ export function RelatedProductFinderTool() {
   const handleRun = async () => {
     setRunError("");
     setResultView(null);
+    setSmartResult(null);
     setCopied(false);
 
     if (!urlsInput.trim()) {
@@ -360,6 +378,10 @@ export function RelatedProductFinderTool() {
       setRunError("Add one or more collection or product URLs.");
       return;
     }
+    if (mode === "smart" && new Set(urls.map((url) => new URL(url).origin)).size > 1) {
+      setRunError("Use URLs from one Shopify store for smart-collection suggestions.");
+      return;
+    }
 
     const settings = settingsRef.current;
     if (!settings) {
@@ -371,7 +393,7 @@ export function RelatedProductFinderTool() {
     runControllerRef.current = controller;
     setRunning(true);
     setProgress(0);
-    setProgressMessage("Starting collection…");
+    setProgressMessage(mode === "smart" ? "Sampling collection listings…" : "Starting collection…");
 
     try {
       const collected = await collectProductsFromUrls(
@@ -381,39 +403,54 @@ export function RelatedProductFinderTool() {
           setProgressMessage(message);
           setProgress(total > 0 ? Math.round((completed / total) * 45) : 0);
         },
+        { sampleOnly: mode === "smart" },
       );
       if (controller.signal.aborted) throw new Error("Run cancelled.");
-      setProgressMessage(`Classifying ${collected.products.length} unique products…`);
       setProgress(50);
 
-      const decisions = await classifyProducts(
-        settings.apiBase,
-        settings.apiKey,
-        selectedModel,
-        draft.trim(),
-        collected.products,
-        {
-          signal: controller.signal,
-          onProgress: (completed, total) => {
-            setProgressMessage(`Classifying products (${completed}/${total})…`);
-            setProgress(50 + Math.round((completed / total) * 50));
+      if (mode === "smart") {
+        setProgressMessage(`Suggesting conditions using the draft and ${collected.products.length} sample products…`);
+        const suggestion = await suggestSmartCollection(
+          settings.apiBase, settings.apiKey, selectedModel, draft.trim(), urls,
+          collected.products, controller.signal,
+        ).catch((error) => {
+          if (!controller.signal.aborted) setConnectionExpanded(true);
+          throw error;
+        });
+        if (controller.signal.aborted) throw new Error("Run cancelled.");
+        setSmartResult({ suggestion, samples: collected.products, warnings: collected.warnings });
+      } else {
+        setProgressMessage(`Classifying ${collected.products.length} unique products…`);
+        const decisions = await classifyProducts(
+          settings.apiBase,
+          settings.apiKey,
+          selectedModel,
+          draft.trim(),
+          collected.products,
+          {
+            signal: controller.signal,
+            onProgress: (completed, total) => {
+              setProgressMessage(`Classifying products (${completed}/${total})…`);
+              setProgress(50 + Math.round((completed / total) * 50));
+            },
           },
-        },
-      ).catch((error) => {
-        if (!controller.signal.aborted) setConnectionExpanded(true);
-        throw error;
-      });
-      const related = collected.products.filter((_, index) => decisions[index].related);
-      const unrelated = collected.products.filter((_, index) => !decisions[index].related);
-      setResultView({
-        minority: buildMinorityResult(collected.products, decisions),
-        relatedGroups: groupProductsBySource(related),
-        unrelatedGroups: groupProductsBySource(unrelated),
-        relatedCount: related.length,
-        unrelatedCount: unrelated.length,
-        note: `${collected.products.length} unique product${collected.products.length === 1 ? "" : "s"} checked across ${urls.length} URL${urls.length === 1 ? "" : "s"}.`
-          + (collected.warnings.length ? ` ${collected.warnings.join(" ")}` : ""),
-      });
+        ).catch((error) => {
+          if (!controller.signal.aborted) setConnectionExpanded(true);
+          throw error;
+        });
+        if (controller.signal.aborted) throw new Error("Run cancelled.");
+        const related = collected.products.filter((_, index) => decisions[index].related);
+        const unrelated = collected.products.filter((_, index) => !decisions[index].related);
+        setResultView({
+          minority: buildMinorityResult(collected.products, decisions),
+          relatedGroups: groupProductsBySource(related),
+          unrelatedGroups: groupProductsBySource(unrelated),
+          relatedCount: related.length,
+          unrelatedCount: unrelated.length,
+          note: `${collected.products.length} unique product${collected.products.length === 1 ? "" : "s"} checked across ${urls.length} URL${urls.length === 1 ? "" : "s"}.`
+            + (collected.warnings.length ? ` ${collected.warnings.join(" ")}` : ""),
+        });
+      }
       setProgress(100);
       setProgressMessage("Done.");
     } catch (error) {
@@ -441,6 +478,7 @@ export function RelatedProductFinderTool() {
     setUrlsInput("");
     setDraft("");
     setResultView(null);
+    setSmartResult(null);
     setRunError("");
     setProgress(0);
     setProgressMessage("");
@@ -757,14 +795,37 @@ export function RelatedProductFinderTool() {
             <PackageSearch className="h-5 w-5" />
           </div>
           <div>
-            <h2 id="product-check-title" className="font-semibold">Check products against a draft</h2>
+            <h2 id="product-check-title" className="font-semibold">{mode === "smart" ? "Suggest Shopify collection conditions" : "Check products against a draft"}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Add collection URLs (one per line) and the content draft. Only products on those sites are considered.
+              {mode === "smart"
+                ? "Use the AM’s collection URLs and draft to suggest a compact set of conditions. Suggestions are for manual entry in Shopify, not automatic collection creation."
+                : "Add collection URLs (one per line) and the content draft. Only products on those sites are considered."}
             </p>
           </div>
         </div>
 
         <div className="flex flex-1 flex-col gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="related-output-mode">Output mode</Label>
+            <select
+              id="related-output-mode"
+              value={mode}
+              disabled={running}
+              onChange={(event) => {
+                setMode(event.target.value as FinderMode);
+                setResultView(null);
+                setSmartResult(null);
+                setRunError("");
+                setProgress(0);
+                setProgressMessage("");
+                setCopied(false);
+              }}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="manual">Manual product matching</option>
+              <option value="smart">Smart collection suggestions</option>
+            </select>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="related-collection-urls">Collection links</Label>
             <Textarea
@@ -778,7 +839,9 @@ export function RelatedProductFinderTool() {
               data-lenisignore
             />
             <p className="text-xs text-muted-foreground">
-              Separate multiple URLs with a new line or comma. Collections and individual product pages are supported (up to 10 URLs and 1,000 unique products per run).
+              {mode === "smart"
+                ? `Up to 10 URLs from one store. Reads at most ${MAX_SAMPLE_PRODUCTS_PER_URL} products from the first page of each URL, not the full collection. Blocked pages are reported; suggestions can still use the draft and URL paths.`
+                : "Separate multiple URLs with a new line or comma. Collections and individual product pages are supported (up to 10 URLs and 1,000 unique products per run)."}
             </p>
           </div>
 
@@ -810,7 +873,9 @@ export function RelatedProductFinderTool() {
               className="flex-1 text-black"
             >
               {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageSearch className="mr-2 h-4 w-4" />}
-              {running ? "Checking products…" : "Find related products"}
+              {mode === "smart"
+                ? running ? "Generating suggestions…" : "Suggest smart conditions"
+                : running ? "Checking products…" : "Find related products"}
             </Button>
             {running && (
               <Button
@@ -825,7 +890,7 @@ export function RelatedProductFinderTool() {
               type="button"
               variant="outline"
               onClick={handleNewCheck}
-              disabled={running || (!urlsInput && !draft && !resultView && !runError)}
+              disabled={running || (!urlsInput && !draft && !resultView && !smartResult && !runError)}
             >
               New check
             </Button>
@@ -833,22 +898,32 @@ export function RelatedProductFinderTool() {
         </div>
       </section>
 
-      <div className="grid min-w-0 grid-rows-2 gap-4 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:h-full">
+      <div className={`grid min-w-0 gap-4 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:h-full ${mode === "manual" ? "grid-rows-2" : "content-start"}`}>
+        {mode === "smart" && <SmartCollectionConditions suggestion={smartResult?.suggestion || null} />}
+        {mode === "smart" && smartResult && smartResult.samples.length === 0 && (
+          <Alert role="status">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>No product samples were readable. These suggestions use only the draft and URL paths; no product preview is available.</AlertDescription>
+          </Alert>
+        )}
+        {mode === "smart" && <p className="text-xs leading-relaxed text-muted-foreground">Title-only sample preview: category, status, stock and editorial relevance are not evaluated. Counts below are sample counts, not collection totals.</p>}
         <ProductResultsPanel
           id="related-products-title"
-          title="Related Products"
-          groups={resultView?.relatedGroups || []}
-          count={resultView?.relatedCount || 0}
-          hasResult={Boolean(resultView)}
+          title={mode === "smart" ? "Samples passing title rules" : "Related Products"}
+          groups={titlePreview ? groupProductsBySource(titlePreview.passed) : resultView?.relatedGroups || []}
+          count={titlePreview?.passed.length ?? resultView?.relatedCount ?? 0}
+          hasResult={Boolean(resultView || smartResult)}
           running={running}
+          sampleOnly={mode === "smart"}
         />
         <ProductResultsPanel
           id="unrelated-products-title"
-          title="Unrelated Products"
-          groups={resultView?.unrelatedGroups || []}
-          count={resultView?.unrelatedCount || 0}
-          hasResult={Boolean(resultView)}
+          title={mode === "smart" ? "Samples filtered out by title rules" : "Unrelated Products"}
+          groups={titlePreview ? groupProductsBySource(titlePreview.excluded) : resultView?.unrelatedGroups || []}
+          count={titlePreview?.excluded.length ?? resultView?.unrelatedCount ?? 0}
+          hasResult={Boolean(resultView || smartResult)}
           running={running}
+          sampleOnly={mode === "smart"}
         />
       </div>
 
@@ -859,6 +934,17 @@ export function RelatedProductFinderTool() {
             <p className="text-sm text-muted-foreground">{progressMessage}</p>
             <Progress value={progress} className="h-2" />
             <p className="text-xs text-muted-foreground">{progress}% complete</p>
+          </div>
+        ) : smartResult ? (
+          <div className="space-y-4">
+            <p role="status" className="rounded-lg border border-border bg-background/60 p-3 font-semibold">Suggestions ready — review in Shopify</p>
+            <dl className="rounded-lg border border-border bg-background/40 p-3">
+              <dt className="text-xs text-muted-foreground">Unique sample products</dt>
+              <dd className="mt-1 text-2xl font-semibold">{smartResult.samples.length}</dd>
+            </dl>
+            <ul className="space-y-3 break-words text-xs leading-relaxed text-muted-foreground">
+              {smartResult.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
+            </ul>
           </div>
         ) : resultView ? (
           <div className="space-y-5">
@@ -888,13 +974,13 @@ export function RelatedProductFinderTool() {
           </div>
         ) : (
           <p className="text-sm leading-relaxed text-muted-foreground">
-            {runError ? "The check did not finish. Review the error and try again." : "Connect your provider, choose a model, and check a draft to see the product breakdown here."}
+            {runError ? "The check did not finish. Review the error and try again." : mode === "smart" ? "Connect your provider, choose a model, and generate suggested conditions. First-page samples are not a complete product audit." : "Connect your provider, choose a model, and check a draft to see the product breakdown here."}
           </p>
         )}
         <div className="mt-auto pt-6">
-          <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => void handleCopy()} disabled={!output}>
+          <Button type="button" variant="outline" size="sm" className="w-full hover:bg-muted hover:text-foreground" onClick={() => void handleCopy()} disabled={!output}>
             {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
-            {copied ? "Copied" : "Copy result"}
+            {copied ? "Copied" : mode === "smart" ? "Copy conditions" : "Copy result"}
           </Button>
         </div>
       </section>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { collectProductsFromUrls, deduplicateProducts, normalizeCollectionUrl, parseCollectionHtml } from "./collector";
+import { collectProductsFromUrls, deduplicateProducts, MAX_SAMPLE_PRODUCTS_PER_URL, normalizeCollectionUrl, parseCollectionHtml } from "./collector";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -140,5 +140,89 @@ describe("related product collection scope", () => {
       () => undefined,
     )).rejects.toThrow("No partial result was used");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("samples only the first feed page even when a large store ignores the requested limit", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const proxyUrl = new URL(String(input), "http://localhost:8000");
+      const target = new URL(proxyUrl.searchParams.get("url") || "");
+      expect(target.searchParams.get("page")).toBe("1");
+      expect(target.searchParams.get("limit")).toBe(String(MAX_SAMPLE_PRODUCTS_PER_URL));
+      return new Response(JSON.stringify({
+        contents: JSON.stringify({
+          products: Array.from({ length: 1_200 }, (_, index) => ({
+            title: `Watch ${index}`, handle: `watch-${index}`, body_html: "<p>Watch</p>",
+          })),
+        }),
+      }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const url = "https://shop.example/collections/watches";
+    const result = await collectProductsFromUrls(
+      [url], new AbortController().signal, () => undefined, { sampleOnly: true },
+    );
+    expect(result.products).toHaveLength(MAX_SAMPLE_PRODUCTS_PER_URL);
+    expect(result.products[0].foundVia).toEqual([url]);
+    expect(result.warnings.join(" ")).toContain("Sample only");
+    expect(result.warnings.join(" ")).toContain("complete coverage were not checked");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("samples HTML listings without following pagination, dynamic controls or detail pages", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      contents: `<main>
+        ${Array.from({ length: 60 }, (_, index) => `<article class="product-card"><a href="/products/pin-${index}">Vintage Pin ${index}</a></article>`).join("")}
+        <a href="/category/pins?page=2">Next</a><button>Load more products</button>
+      </main>`,
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await collectProductsFromUrls(
+      ["https://shop.example/category/pins"], new AbortController().signal, () => undefined,
+      { sampleOnly: true },
+    );
+    expect(result.products).toHaveLength(MAX_SAMPLE_PRODUCTS_PER_URL);
+    expect(result.warnings.join(" ")).toContain("product details were not followed");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports blocked samples per source, keeps readable sources, and permits an explicitly empty sample", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const target = new URL(new URL(String(input), "http://localhost:8000").searchParams.get("url") || "");
+      return target.pathname.includes("blocked")
+        ? new Response("rate limited", { status: 429 })
+        : new Response(JSON.stringify({
+          contents: JSON.stringify({ products: [{ title: "Turquoise Ring", handle: "turquoise-ring" }] }),
+        }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const blockedUrl = "https://shop.example/collections/blocked";
+    const result = await collectProductsFromUrls(
+      [blockedUrl, "https://shop.example/collections/turquoise"],
+      new AbortController().signal, () => undefined, { sampleOnly: true },
+    );
+    expect(result.products.map((product) => product.name)).toEqual(["Turquoise Ring"]);
+    expect(result.warnings.join(" ")).toContain(`No sample from ${blockedUrl}`);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const empty = await collectProductsFromUrls(
+      [blockedUrl], new AbortController().signal, () => undefined, { sampleOnly: true },
+    );
+    expect(empty.products).toEqual([]);
+    expect(empty.warnings.join(" ")).toContain("No sample");
+    await expect(collectProductsFromUrls(
+      [blockedUrl], new AbortController().signal, () => undefined,
+    )).rejects.toThrow("429");
+  });
+
+  it("does not swallow cancellation or lift URL limits in sample mode", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(collectProductsFromUrls(
+      ["https://shop.example/collections/pins"], controller.signal, () => undefined, { sampleOnly: true },
+    )).rejects.toThrow("cancelled");
+    await expect(collectProductsFromUrls(
+      Array.from({ length: 11 }, (_, index) => `https://shop.example/collections/${index}`),
+      new AbortController().signal, () => undefined, { sampleOnly: true },
+    )).rejects.toThrow("up to 10 collection URLs");
   });
 });

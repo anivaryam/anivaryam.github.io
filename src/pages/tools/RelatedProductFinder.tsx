@@ -11,7 +11,7 @@ export default function RelatedProductFinder() {
     <Layout>
       <SEO
         title="Related Product Finder - Match Store Products to a Draft"
-        description="Compare store products with a content draft using your own LLM API key. Review related and unrelated products by collection alongside a summary."
+        description="Match store products to a draft or suggest simple Shopify smart-collection conditions using your own LLM API key."
         canonical="https://anivaryam.github.io/tools/related-product-finder"
         breadcrumbs={[
           { name: "Home", url: "https://anivaryam.github.io/" },
@@ -57,7 +57,7 @@ export default function RelatedProductFinder() {
           </div>
           <h1 className="mb-4 text-3xl font-bold lg:text-4xl">Related Product Finder</h1>
           <p className="text-muted-foreground">
-            Find the products that best match your draft across one or more store collections. The tool stays within the provided stores and deduplicates products shared across URLs.
+            Match products to a draft for manual selection, or suggest simple Shopify smart-collection conditions from the AM’s collection links and your draft.
           </p>
         </div>
 
@@ -81,6 +81,9 @@ export default function RelatedProductFinder() {
           </p>
           <p className="mt-3">
             Related and unrelated products appear in separate panels, grouped under their submitted URL with links to each product. The summary shows the unique-product counts. Copy result retains the smaller-group rule: all-related or all-unrelated collections get a short status; otherwise it copies one group of product names. If fewer than ten products are unrelated, that unrelated group is copied.
+          </p>
+          <p className="mt-3">
+            Smart collection suggestions use first-page product samples rather than scanning large collections in full. They recommend one Products source with Match all conditions: category and title rules, Active status, and inventory greater than zero. The preview checks sampled titles only, not categories, status, stock or editorial relevance. Category labels must be confirmed in Shopify, and rules can select products outside the submitted collections. Copy the suggestions for manual entry and review Shopify’s preview; this tool never creates or modifies a Shopify collection.
           </p>
         </div>
       </div>

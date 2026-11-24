@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RelatedProductFinderTool } from "./RelatedProductFinderTool";
 import { DEFAULT_API_BASE } from "@/lib/related-product/api";
 import * as providerStorage from "@/lib/related-product/storage";
+import { formatSmartCollectionSuggestion, parseSmartCollectionSuggestion } from "@/lib/related-product/smart-collection";
 
 afterEach(() => {
   cleanup();
@@ -65,6 +66,27 @@ function mockFinderFetch(related: boolean[]) {
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     throw new Error(`Unexpected request: ${url}`);
+  });
+}
+
+const smartConditions = {
+  categories: ["Cleaning Supplies"],
+  titleIncludes: [{ match: "any", values: ["Polishing"] }],
+  titleExcludes: ["Replacement"],
+  notes: ["Confirm category labels and stock in Shopify."],
+};
+
+function mockSmartFinderFetch(payload: unknown = smartConditions, blocked = false) {
+  const manualFetch = mockFinderFetch([true, false, false]);
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/chat/completions")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify(payload) } }],
+      }), { status: 200 });
+    }
+    if (blocked && url.startsWith("/__related-product/page")) return new Response("blocked", { status: 429 });
+    return manualFetch(input, init);
   });
 }
 
@@ -318,5 +340,138 @@ describe("RelatedProductFinderTool result presentation", () => {
     expect(await screen.findByText("Provider error (403): Model access was revoked.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Hide settings" }).getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("radio", { name: /model-a/ }).getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+describe("RelatedProductFinderTool smart collection suggestions", () => {
+  it("generates and copies conditions with a title-only sample preview, then preserves manual matching", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText }, userAgent: navigator.userAgent, platform: navigator.platform });
+    const fetchMock = mockSmartFinderFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RelatedProductFinderTool />);
+    fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "smart" } });
+    expect(screen.getByRole("region", { name: "Smart Collection Suggestions" })).toBeTruthy();
+    fireEvent.click(await connectProvider());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Suggest smart conditions" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.change(screen.getByLabelText("Collection links"), { target: { value: sourceUrl } });
+    fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "A draft about polishing cloths." } });
+    fireEvent.click(screen.getByRole("button", { name: "Suggest smart conditions" }));
+
+    const summary = within(screen.getByRole("region", { name: "Summary" }));
+    expect(await summary.findByRole("status")).toHaveProperty("textContent", "Suggestions ready — review in Shopify");
+    const table = within(screen.getByRole("table", { name: "Suggested Shopify conditions" }));
+    expect(table.getByRole("cell", { name: "Active" })).toBeTruthy();
+    expect(table.getByRole("cell", { name: "Inventory stock" })).toBeTruthy();
+    const passed = within(screen.getByRole("region", { name: "Samples passing title rules" }));
+    const excluded = within(screen.getByRole("region", { name: "Samples filtered out by title rules" }));
+    expect(passed.getByText("Polishing Cloth")).toBeTruthy();
+    expect(passed.queryByText("Paint Polish")).toBeNull();
+    expect(excluded.getByText("Paint Polish")).toBeTruthy();
+    expect(excluded.getByText("Heavy Metal Polish")).toBeTruthy();
+    expect(summary.getByText("Unique sample products").nextElementSibling?.textContent).toBe("3");
+    expect(summary.getByText(/Sample only:/)).toBeTruthy();
+    expect(screen.getByText(/Counts below are sample counts/)).toBeTruthy();
+    const completions = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/chat/completions"));
+    expect(completions).toHaveLength(1);
+    expect(JSON.parse(JSON.parse(String(completions[0][1]?.body)).messages[1].content).samples).toHaveLength(3);
+    const copyButton = summary.getByRole("button", { name: "Copy conditions" });
+    expect(copyButton.className).toContain("hover:bg-muted");
+    expect(copyButton.className).toContain("hover:text-foreground");
+    fireEvent.click(copyButton);
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0][0]).toContain(formatSmartCollectionSuggestion(parseSmartCollectionSuggestion(smartConditions)));
+    expect(writeText.mock.calls[0][0]).toContain("Sampling notes:");
+
+    fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "manual" } });
+    expect(screen.queryByRole("table", { name: "Suggested Shopify conditions" })).toBeNull();
+    expect((screen.getByLabelText("Collection links") as HTMLTextAreaElement).value).toBe(sourceUrl);
+    expect(summary.getByRole("button", { name: "Copy result" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Manage" })).toBeTruthy();
+    vi.stubGlobal("fetch", mockFinderFetch([true, false, false]));
+    fireEvent.click(screen.getByRole("button", { name: "Find related products" }));
+    expect(await summary.findByRole("status")).toHaveProperty("textContent", "Check complete");
+    expect(within(screen.getByRole("region", { name: "Related Products" })).getByText("Polishing Cloth")).toBeTruthy();
+  });
+
+  it("makes no-sample fallback explicit and clears results without forgetting the provider", async () => {
+    vi.stubGlobal("fetch", mockSmartFinderFetch(smartConditions, true));
+    render(<RelatedProductFinderTool />);
+    fireEvent.click(await connectProvider());
+    await screen.findByRole("button", { name: "Manage" });
+    fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "smart" } });
+    fireEvent.change(screen.getByLabelText("Collection links"), { target: { value: sourceUrl } });
+    fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "A draft about polishing cloths." } });
+    fireEvent.click(screen.getByRole("button", { name: "Suggest smart conditions" }));
+    expect(await screen.findByText(/No product samples were readable/)).toBeTruthy();
+    const summary = within(screen.getByRole("region", { name: "Summary" }));
+    expect(summary.getByText("Unique sample products").nextElementSibling?.textContent).toBe("0");
+    expect(summary.getByText(/No sample from/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New check" }));
+    expect(screen.queryByRole("table", { name: "Suggested Shopify conditions" })).toBeNull();
+    expect((screen.getByLabelText("Output mode") as HTMLSelectElement).value).toBe("smart");
+    expect((screen.getByLabelText("Draft content") as HTMLTextAreaElement).value).toBe("");
+    expect(summary.getByRole("button", { name: "Copy conditions" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Manage" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByLabelText("Collection links"));
+  });
+
+  it("rejects combining different stores before collecting or generating conditions", async () => {
+    const fetchMock = mockSmartFinderFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RelatedProductFinderTool />);
+    fireEvent.click(await connectProvider());
+    await screen.findByRole("button", { name: "Manage" });
+    fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "smart" } });
+    fireEvent.change(screen.getByLabelText("Collection links"), {
+      target: { value: `${sourceUrl}\nhttps://different.example/collections/pins` },
+    });
+    fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "Draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Suggest smart conditions" }));
+    expect(await screen.findByText("Use URLs from one Shopify store for smart-collection suggestions.")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects unsupported conditions rather than displaying or copying unsafe model output", async () => {
+    vi.stubGlobal("fetch", mockSmartFinderFetch({ ...smartConditions, status: "Draft" }));
+    render(<RelatedProductFinderTool />);
+    fireEvent.click(await connectProvider());
+    await screen.findByRole("button", { name: "Manage" });
+    fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "smart" } });
+    fireEvent.change(screen.getByLabelText("Collection links"), { target: { value: sourceUrl } });
+    fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "Draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Suggest smart conditions" }));
+    expect(await screen.findByText("The selected model returned invalid smart-collection conditions. Try another model.")).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "Suggested Shopify conditions" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy conditions" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Hide settings" })).toBeTruthy();
+  });
+
+  it("cancels a pending suggestion without publishing a result or losing the connection", async () => {
+    const normalFetch = mockSmartFinderFetch();
+    let started!: () => void;
+    const providerStarted = new Promise<void>((resolve) => { started = resolve; });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (!String(input).endsWith("/chat/completions")) return normalFetch(input, init);
+      started();
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+      });
+    }));
+    render(<RelatedProductFinderTool />);
+    fireEvent.click(await connectProvider());
+    await screen.findByRole("button", { name: "Manage" });
+    fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "smart" } });
+    fireEvent.change(screen.getByLabelText("Collection links"), { target: { value: sourceUrl } });
+    fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "Draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Suggest smart conditions" }));
+    await providerStarted;
+    expect(screen.getByLabelText("Output mode").hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByText("Request cancelled.")).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "Suggested Shopify conditions" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy conditions" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByLabelText("Output mode").hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "Manage" })).toBeTruthy();
   });
 });

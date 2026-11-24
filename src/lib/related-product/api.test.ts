@@ -6,6 +6,7 @@ import {
   formatMinorityResult,
   groupProductsBySource,
   normalizeApiBase,
+  suggestSmartCollection,
 } from "./api";
 import type { ProductCandidate } from "./types";
 
@@ -135,5 +136,61 @@ describe("related product API", () => {
       + "Submitted URL: https://shop.example/collections/2\n"
       + "- Product 2",
     );
+  });
+
+  it("suggests one source using the chosen model, draft and bounded sample data without sending URLs", async () => {
+    const conditions = {
+      categories: ["Watches"], titleIncludes: [], titleExcludes: ["Women", "Ladies", "Lady"],
+      notes: ["Check gender-neutral titles and vintage age in the listing."],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: `\`\`\`json\n${JSON.stringify(conditions)}\n\`\`\`` } }],
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await suggestSmartCollection(
+      "https://api.example.com/v1", "secret-key", "chosen-model", "Men's watch gift draft",
+      ["https://shop.example/collections/mens-watches?private=query"],
+      [{ ...products[0], name: "Neutral Watch", description: "x".repeat(500) }],
+    );
+    expect(result).toEqual(conditions);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://api.example.com/v1/chat/completions");
+    expect(init.headers.Authorization).toBe("Bearer secret-key");
+    const body = JSON.parse(String(init.body));
+    expect(body.model).toBe("chosen-model");
+    expect(body.messages[0].content).toContain("ONE Products source with Match ALL");
+    expect(body.messages[0].content).toContain("Men matches inside Women");
+    expect(body.messages[0].content).toContain("untrusted data");
+    expect(JSON.parse(body.messages[1].content)).toEqual({
+      draft: "Men's watch gift draft",
+      collectionPaths: ["/collections/mens-watches"],
+      samples: [{ name: "Neutral Watch", type: products[0].productType, description: "x".repeat(300) }],
+    });
+    expect(init.body).not.toContain("secret-key");
+    expect(init.body).not.toContain("https://shop.example");
+    expect(init.body).not.toContain("private=query");
+  });
+
+  it.each([
+    { content: "not json", error: "valid JSON" },
+    { content: JSON.stringify({ categories: ["Watches"], titleIncludes: [], titleExcludes: [], notes: [], vendor: "Rolex" }), error: "invalid smart-collection conditions" },
+    { content: "null", error: "invalid smart-collection conditions" },
+  ])("rejects invalid smart suggestions: $content", async ({ content, error }) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content } }],
+    }), { status: 200 })));
+    await expect(suggestSmartCollection(
+      "https://api.example.com/v1", "key", "chosen-model", "Draft", [], [],
+    )).rejects.toThrow(error);
+  });
+
+  it("redacts the key from smart suggestion provider errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { message: "Invalid secret-key" },
+    }), { status: 401 })));
+    await expect(suggestSmartCollection(
+      "https://api.example.com/v1", "secret-key", "model", "Draft", [], [],
+    )).rejects.toThrow("Provider error (401): Invalid [redacted]");
   });
 });
