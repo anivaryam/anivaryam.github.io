@@ -9,6 +9,7 @@ import {
   suggestSmartCollection,
 } from "./api";
 import type { ProductCandidate } from "./types";
+import { DEFAULT_SMART_COLLECTION_OPTIONS, parseSmartCollectionOptions } from "./smart-collection";
 
 const products: ProductCandidate[] = [
   { name: "Cash Acceptor", productType: "Bill acceptor", description: "Accepts bills.", price: "", url: "https://shop.example/products/cash-acceptor", foundVia: ["https://shop.example/collections/acceptors"] },
@@ -164,6 +165,7 @@ describe("related product API", () => {
     expect(body.messages[0].content).toContain("untrusted data");
     expect(JSON.parse(body.messages[1].content)).toEqual({
       draft: "Men's watch gift draft",
+      clientOptions: DEFAULT_SMART_COLLECTION_OPTIONS,
       collectionPaths: ["/collections/mens-watches"],
       samples: [{ name: "Neutral Watch", type: products[0].productType, description: "x".repeat(300) }],
     });
@@ -192,5 +194,28 @@ describe("related product API", () => {
     await expect(suggestSmartCollection(
       "https://api.example.com/v1", "secret-key", "model", "Draft", [], [],
     )).rejects.toThrow("Provider error (401): Invalid [redacted]");
+  });
+
+  it("sends selected client options and rejects categories outside the client's list", async () => {
+    const options = parseSmartCollectionOptions({
+      ...DEFAULT_SMART_COLLECTION_OPTIONS, match: "any", includeSubcategories: false,
+      status: "Draft", inventory: null, availableCategories: "Lawn Seeds\nSprinklers",
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({
+        categories: ["Earrings"], titleIncludes: [], titleExcludes: [], notes: [],
+      }) } }],
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(suggestSmartCollection(
+      "https://api.example.com/v1", "key", "chosen-model", "A lawn-care draft", [], [], undefined, options,
+    )).rejects.toThrow("outside your available categories");
+    const request = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(JSON.parse(request.messages[1].content).clientOptions).toEqual(options);
+    expect(request.messages[0].content).toContain("Match ANY conditions");
+    expect(request.messages[0].content).toContain("combined with OR");
+    expect(request.messages[0].content).toContain("total at most 59");
+    expect(request.messages[0].content).toContain("ONLY from that exact list");
+    expect(request.messages[0].content).not.toContain("application adds Status is Active");
   });
 });

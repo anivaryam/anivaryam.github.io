@@ -1,15 +1,27 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getSmartCollectionRows, SMART_COLLECTION_NOTICE, type SmartCollectionSuggestion } from "@/lib/related-product/smart-collection";
+import {
+  DEFAULT_SMART_COLLECTION_OPTIONS,
+  getSmartCollectionLabels,
+  getSmartCollectionRows,
+  SMART_COLLECTION_ANY_NOTICE,
+  SMART_COLLECTION_NOTICE,
+  type SmartCollectionOptions,
+  type SmartCollectionSuggestion,
+} from "@/lib/related-product/smart-collection";
 
-export function SmartCollectionConditions({ suggestion }: { suggestion: SmartCollectionSuggestion | null }) {
+export function SmartCollectionConditions({
+  suggestion, options = DEFAULT_SMART_COLLECTION_OPTIONS,
+}: { suggestion: SmartCollectionSuggestion | null; options?: SmartCollectionOptions }) {
+  const labels = getSmartCollectionLabels(options);
   return (
     <section aria-labelledby="smart-conditions-title" className="min-w-0 space-y-4 rounded-xl border border-border bg-card/50 p-4">
       <h2 id="smart-conditions-title" className="font-semibold">Smart Collection Suggestions</h2>
       <p className="text-xs leading-relaxed text-muted-foreground">{SMART_COLLECTION_NOTICE}</p>
       {suggestion ? (
         <>
-          <p className="text-sm font-medium">Products → Match ALL conditions</p>
-          <p className="text-xs text-muted-foreground">Include subcategories: ON. Add each title exclusion as its own condition.</p>
+          <p className="text-sm font-medium">{labels.source}</p>
+          <p className="text-xs text-muted-foreground">{labels.subcategories}. Add each title exclusion as its own condition.</p>
+          {options.match === "any" && <p className="text-xs leading-relaxed text-muted-foreground">{SMART_COLLECTION_ANY_NOTICE}</p>}
           <Table aria-label="Suggested Shopify conditions">
             <TableHeader>
               <TableRow>
@@ -19,7 +31,7 @@ export function SmartCollectionConditions({ suggestion }: { suggestion: SmartCol
               </TableRow>
             </TableHeader>
             <TableBody>
-              {getSmartCollectionRows(suggestion).map((row, index) => (
+              {getSmartCollectionRows(suggestion, options).map((row, index) => (
                 <TableRow key={index}>
                   <TableCell className="px-2 align-top">{row.field}</TableCell>
                   <TableCell className="px-2 align-top">{row.operator}</TableCell>

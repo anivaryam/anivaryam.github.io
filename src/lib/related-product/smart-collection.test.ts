@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   formatSmartCollectionSuggestion,
+  DEFAULT_SMART_COLLECTION_OPTIONS,
+  getSmartCollectionLabels,
+  getSmartCollectionRuleBudget,
   getSmartCollectionRows,
+  parseSmartCollectionOptions,
   parseSmartCollectionSuggestion,
   previewSmartCollectionTitles,
   SMART_COLLECTION_NOTICE,
+  SMART_COLLECTION_ANY_NOTICE,
 } from "./smart-collection";
 import type { ProductCandidate } from "./types";
 
@@ -104,5 +109,98 @@ describe("smart collection conditions", () => {
     expect(() => parseSmartCollectionSuggestion(payload)).not.toThrow();
     payload.titleExcludes.push("One too many");
     expect(() => parseSmartCollectionSuggestion(payload)).toThrow("invalid smart-collection conditions");
+    const noExtraConditions = { ...DEFAULT_SMART_COLLECTION_OPTIONS, status: null, inventory: null };
+    expect(() => parseSmartCollectionSuggestion(payload, noExtraConditions)).not.toThrow();
+    expect(getSmartCollectionRuleBudget(noExtraConditions)).toBe(60);
+    expect(getSmartCollectionRuleBudget(DEFAULT_SMART_COLLECTION_OPTIONS)).toBe(58);
+  });
+
+  it("normalizes per-client categories and inventory inputs without mutating the defaults", () => {
+    const options = parseSmartCollectionOptions({
+      ...DEFAULT_SMART_COLLECTION_OPTIONS,
+      match: "any",
+      includeSubcategories: false,
+      status: "Draft",
+      inventory: { operator: "is less than", value: " 5 " },
+      availableCategories: "  Power Tools\r\nLawn Seeds\npower tools\n\n",
+    });
+    expect(options).toEqual({
+      match: "any", includeSubcategories: false, status: "Draft",
+      inventory: { operator: "is less than", value: 5 },
+      availableCategories: ["power tools", "Lawn Seeds"],
+    });
+    expect(DEFAULT_SMART_COLLECTION_OPTIONS.inventory.value).toBe(0);
+    expect(DEFAULT_SMART_COLLECTION_OPTIONS.availableCategories).toEqual([]);
+  });
+
+  it.each([
+    { match: "none" },
+    { includeSubcategories: "yes" },
+    { status: "Unknown status" },
+    { inventory: { operator: "at least", value: 5 } },
+    { inventory: { operator: "is greater than", value: "" } },
+    { inventory: { operator: "is greater than", value: "2.5" } },
+    { inventory: { operator: "is greater than", value: Infinity } },
+    { inventory: { operator: "is greater than", value: Number.MAX_SAFE_INTEGER + 1 } },
+    { availableCategories: [""] },
+    { availableCategories: "x".repeat(121) },
+    { availableCategories: Array.from({ length: 201 }, (_, index) => `Category ${index}`) },
+  ])("rejects invalid client settings: %j", (changes) => {
+    expect(() => parseSmartCollectionOptions({ ...DEFAULT_SMART_COLLECTION_OPTIONS, ...changes }))
+      .toThrow("Check smart collection settings");
+  });
+
+  it("restricts model categories to the client list and preserves the supplied labels", () => {
+    const options = parseSmartCollectionOptions({
+      ...DEFAULT_SMART_COLLECTION_OPTIONS, availableCategories: "Lawn Seeds\nSprinklers",
+    });
+    const payload = { categories: ["lawn seeds"], titleIncludes: [], titleExcludes: [], notes: [] };
+    expect(parseSmartCollectionSuggestion(payload, options).categories).toEqual(["Lawn Seeds"]);
+    expect(() => parseSmartCollectionSuggestion({ ...payload, categories: ["Earrings"] }, options))
+      .toThrow("outside your available categories");
+    expect(parseSmartCollectionSuggestion({ ...payload, categories: ["Sprinklers"] }, options).categories)
+      .toEqual(["Sprinklers"]);
+  });
+
+  it("uses selected matching, subcategory, status and stock values in display and copy", () => {
+    const options = parseSmartCollectionOptions({
+      ...DEFAULT_SMART_COLLECTION_OPTIONS, match: "any", includeSubcategories: false,
+      status: "Archived", inventory: { operator: "is equal to", value: -1 },
+    });
+    const parsed = parseSmartCollectionSuggestion(suggestion, options);
+    const rows = getSmartCollectionRows(parsed, options);
+    expect(rows.slice(-2)).toEqual([
+      { field: "Status", operator: "is", values: ["Archived"] },
+      { field: "Inventory stock", operator: "is equal to", values: ["-1"] },
+    ]);
+    const output = formatSmartCollectionSuggestion(parsed, options);
+    const labels = getSmartCollectionLabels(options);
+    expect(output).toContain(labels.source);
+    expect(output).toContain("Products → Match ANY conditions");
+    expect(output).toContain(labels.subcategories);
+    expect(output).toContain("Include subcategories: OFF");
+    expect(output).toContain(SMART_COLLECTION_ANY_NOTICE);
+    for (const row of rows) {
+      expect(output).toContain(`${row.field} → ${row.operator} → ${row.values.map((value) => JSON.stringify(value)).join(", ")}`);
+    }
+    const omitted = formatSmartCollectionSuggestion(parsed, { ...options, status: null, inventory: null });
+    expect(omitted).not.toContain("Status →");
+    expect(omitted).not.toContain("Inventory stock →");
+  });
+
+  it("honors source-level ANY for title conditions, including separate negative rows", () => {
+    const parsed = parseSmartCollectionSuggestion({
+      categories: ["Watches"], titleIncludes: [], titleExcludes: ["Women", "Ladies"], notes: [],
+    });
+    const products = candidates(["Women's Watch", "Ladies Watch", "Women's Ladies Watch", "Neutral Watch"]);
+    expect(previewSmartCollectionTitles(products, parsed).passed).toEqual([products[3]]);
+    expect(previewSmartCollectionTitles(products, parsed, { ...DEFAULT_SMART_COLLECTION_OPTIONS, match: "any" }).passed)
+      .toEqual([products[0], products[1], products[3]]);
+
+    parsed.titleIncludes = [{ match: "any", values: ["Neutral"] }, { match: "all", values: ["Ladies", "Watch"] }];
+    parsed.titleExcludes = [];
+    expect(previewSmartCollectionTitles(products, parsed).passed).toEqual([]);
+    expect(previewSmartCollectionTitles(products, parsed, { ...DEFAULT_SMART_COLLECTION_OPTIONS, match: "any" }).passed)
+      .toEqual([products[1], products[2], products[3]]);
   });
 });

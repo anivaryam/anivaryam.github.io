@@ -3,7 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RelatedProductFinderTool } from "./RelatedProductFinderTool";
 import { DEFAULT_API_BASE } from "@/lib/related-product/api";
 import * as providerStorage from "@/lib/related-product/storage";
-import { formatSmartCollectionSuggestion, parseSmartCollectionSuggestion } from "@/lib/related-product/smart-collection";
+import {
+  DEFAULT_SMART_COLLECTION_OPTIONS,
+  formatSmartCollectionSuggestion,
+  parseSmartCollectionOptions,
+  parseSmartCollectionSuggestion,
+  SMART_COLLECTION_ANY_NOTICE,
+} from "@/lib/related-product/smart-collection";
 
 afterEach(() => {
   cleanup();
@@ -364,7 +370,7 @@ describe("RelatedProductFinderTool smart collection suggestions", () => {
     expect(table.getByRole("cell", { name: "Active" })).toBeTruthy();
     expect(table.getByRole("cell", { name: "Inventory stock" })).toBeTruthy();
     const passed = within(screen.getByRole("region", { name: "Samples passing title rules" }));
-    const excluded = within(screen.getByRole("region", { name: "Samples filtered out by title rules" }));
+    const excluded = within(screen.getByRole("region", { name: "Samples not matching title rules" }));
     expect(passed.getByText("Polishing Cloth")).toBeTruthy();
     expect(passed.queryByText("Paint Polish")).toBeNull();
     expect(excluded.getByText("Paint Polish")).toBeTruthy();
@@ -473,5 +479,94 @@ describe("RelatedProductFinderTool smart collection suggestions", () => {
     expect(screen.getByRole("button", { name: "Copy conditions" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByLabelText("Output mode").hasAttribute("disabled")).toBe(false);
     expect(screen.getByRole("button", { name: "Manage" })).toBeTruthy();
+  });
+
+  it("uses per-client settings in generation, preview and copy, and resets them for the next client", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText }, userAgent: navigator.userAgent, platform: navigator.platform });
+    const fetchMock = mockSmartFinderFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RelatedProductFinderTool />);
+    fireEvent.click(await connectProvider());
+    await screen.findByRole("button", { name: "Manage" });
+    fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "smart" } });
+    fireEvent.change(screen.getByLabelText("Collection links"), { target: { value: sourceUrl } });
+    fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "A polishing cloth draft." } });
+    fireEvent.change(screen.getByLabelText("Available categories (optional)"), { target: { value: "Cleaning Supplies\nShop Supplies" } });
+    fireEvent.change(screen.getByLabelText("Match conditions"), { target: { value: "any" } });
+    fireEvent.click(screen.getByLabelText("Include subcategories"));
+    fireEvent.change(screen.getByLabelText("Product status"), { target: { value: "Draft" } });
+    fireEvent.change(screen.getByLabelText("Inventory comparison"), { target: { value: "is less than" } });
+    fireEvent.change(screen.getByLabelText("Inventory value"), { target: { value: "5" } });
+    expect(screen.getByText(SMART_COLLECTION_ANY_NOTICE)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Suggest smart conditions" }));
+    const summary = within(screen.getByRole("region", { name: "Summary" }));
+    await summary.findByText("Suggestions ready — review in Shopify");
+    const table = within(screen.getByRole("table", { name: "Suggested Shopify conditions" }));
+    expect(table.getByRole("cell", { name: "Draft" })).toBeTruthy();
+    expect(table.queryByRole("cell", { name: "Active" })).toBeNull();
+    expect(table.getByRole("cell", { name: "is less than" })).toBeTruthy();
+    expect(table.getByRole("cell", { name: "5" })).toBeTruthy();
+    expect(screen.getByText("Products → Match ANY conditions")).toBeTruthy();
+    expect(screen.getByText("Include subcategories: OFF. Add each title exclusion as its own condition.")).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Samples passing title rules" })).getByText("Paint Polish")).toBeTruthy();
+    const options = parseSmartCollectionOptions({
+      ...DEFAULT_SMART_COLLECTION_OPTIONS, match: "any", includeSubcategories: false, status: "Draft",
+      inventory: { operator: "is less than", value: 5 }, availableCategories: ["Cleaning Supplies", "Shop Supplies"],
+    });
+    const completion = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/chat/completions"));
+    expect(JSON.parse(JSON.parse(String(completion[1]?.body)).messages[1].content).clientOptions).toEqual(options);
+    fireEvent.click(summary.getByRole("button", { name: "Copy conditions" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0][0]).toContain(formatSmartCollectionSuggestion(parseSmartCollectionSuggestion(smartConditions, options), options));
+
+    fireEvent.change(screen.getByLabelText("Inventory value"), { target: { value: "10" } });
+    expect(screen.queryByRole("table", { name: "Suggested Shopify conditions" })).toBeNull();
+    expect(summary.getByRole("button", { name: "Copy conditions" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "New check" }));
+    expect((screen.getByLabelText("Available categories (optional)") as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByLabelText("Match conditions") as HTMLSelectElement).value).toBe("all");
+    expect((screen.getByLabelText("Product status") as HTMLSelectElement).value).toBe("Active");
+    expect((screen.getByLabelText("Inventory value") as HTMLInputElement).value).toBe("0");
+    expect(screen.getByLabelText("Include subcategories").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("button", { name: "Manage" })).toBeTruthy();
+  });
+
+  it("omits disabled status and stock conditions instead of silently restoring the defaults", async () => {
+    vi.stubGlobal("fetch", mockSmartFinderFetch());
+    render(<RelatedProductFinderTool />);
+    fireEvent.click(await connectProvider());
+    await screen.findByRole("button", { name: "Manage" });
+    fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "smart" } });
+    fireEvent.change(screen.getByLabelText("Collection links"), { target: { value: sourceUrl } });
+    fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "Draft" } });
+    fireEvent.change(screen.getByLabelText("Product status"), { target: { value: "any" } });
+    fireEvent.click(screen.getByLabelText("Add inventory condition"));
+    expect(screen.queryByLabelText("Inventory value")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Suggest smart conditions" }));
+    const table = within(await screen.findByRole("table", { name: "Suggested Shopify conditions" }));
+    expect(table.queryByRole("cell", { name: "Status" })).toBeNull();
+    expect(table.queryByRole("cell", { name: "Inventory stock" })).toBeNull();
+  });
+
+  it("blocks invalid settings before page or model requests and rejects out-of-list categories", async () => {
+    const fetchMock = mockSmartFinderFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RelatedProductFinderTool />);
+    fireEvent.click(await connectProvider());
+    await screen.findByRole("button", { name: "Manage" });
+    fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "smart" } });
+    fireEvent.change(screen.getByLabelText("Collection links"), { target: { value: sourceUrl } });
+    fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "Draft" } });
+    fireEvent.change(screen.getByLabelText("Inventory value"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Suggest smart conditions" }));
+    expect(await screen.findByText("Check smart collection settings: use valid options, a whole-number stock value, and at most 200 category labels of 1–120 characters.")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("Inventory value"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("Available categories (optional)"), { target: { value: "Lawn Seeds\nSprinklers" } });
+    fireEvent.click(screen.getByRole("button", { name: "Suggest smart conditions" }));
+    expect(await screen.findByText("The model suggested a category outside your available categories. Review the list or try again.")).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "Suggested Shopify conditions" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy conditions" }).hasAttribute("disabled")).toBe(true);
   });
 });
