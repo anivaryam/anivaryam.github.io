@@ -129,8 +129,8 @@ const toolsMap = new Map(toolsMetadata.map(tool => [tool.path, tool]));
 // Route metadata for better SEO and bot accessibility
 const routeMetadata = {
   '/tools': {
-    title: 'Free Online Developer Tools - 24+ Tools',
-    description: 'Browse 24+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required.'
+    title: 'Free Online Developer Tools - 23+ Tools',
+    description: 'Browse 23+ free online developer tools. Word to HTML converter, JSON formatter, Base64 encoder, hash generator, web scraper, and more. No signup required.'
   },
   '/downloads': {
     title: 'Free Downloads & Scripts',
