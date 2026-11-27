@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { ProductCandidate } from "./types";
 
 export const SMART_COLLECTION_NOTICE = "Suggestions only. Confirm category labels in Shopify. The preview checks sampled titles only; category, status and inventory are not verified. Rules apply store-wide, not just within the submitted collections. Review Shopify’s matching-product preview before saving.";
+export const SHOPIFY_MATCH_COUNT_NOTICE = "Unverified — check Shopify’s preview";
+export const NO_TITLE_RULES_NOTICE = "No title conditions were suggested, so title matching was not evaluated.";
 export const SMART_COLLECTION_ANY_NOTICE = "Match ANY lets a category, title, status or stock condition independently qualify a product. Title-only nonmatches may still be included. Use ALL when every filter must apply.";
 export const SMART_COLLECTION_STATUSES = ["Active", "Draft", "Archived", "Unlisted"] as const;
 export const SMART_INVENTORY_OPERATORS = ["is greater than", "is less than", "is equal to", "is not equal to"] as const;
@@ -18,6 +20,7 @@ const categoryList = z.array(categoryLabel).max(200);
 const stockNumber = z.number().int().safe();
 const optionsSchema = z.object({
   match: z.enum(["all", "any"]),
+  useCategory: z.boolean().default(false),
   includeSubcategories: z.boolean(),
   status: z.enum(SMART_COLLECTION_STATUSES).nullable(),
   inventory: z.object({
@@ -35,6 +38,7 @@ export type SmartCollectionOptionsInput = z.input<typeof optionsSchema>;
 
 export const DEFAULT_SMART_COLLECTION_OPTIONS: SmartCollectionOptions = {
   match: "all",
+  useCategory: false,
   includeSubcategories: true,
   status: "Active",
   inventory: { operator: "is greater than", value: 0 },
@@ -67,13 +71,15 @@ export function getSmartCollectionRuleBudget(options: SmartCollectionOptions): n
 export function getSmartCollectionLabels(options: SmartCollectionOptions) {
   return {
     source: `Products → Match ${options.match.toUpperCase()} conditions`,
-    subcategories: `Include subcategories: ${options.includeSubcategories ? "ON" : "OFF"}`,
+    subcategories: options.useCategory
+      ? `Include subcategories: ${options.includeSubcategories ? "ON" : "OFF"}`
+      : "Category condition: omitted",
   };
 }
 
 const keyword = z.string().trim().min(3).max(120);
 const suggestionSchema = z.object({
-  categories: z.array(categoryLabel).min(1).max(12),
+  categories: z.array(categoryLabel).max(12),
   titleIncludes: z.array(z.object({
     match: z.enum(["any", "all"]),
     values: z.array(keyword).min(1).max(12),
@@ -92,6 +98,9 @@ export function parseSmartCollectionSuggestion(
   if (!result.success) {
     throw new Error("The selected model returned invalid smart-collection conditions. Try another model.");
   }
+  if (options.useCategory !== (result.data.categories.length > 0)) {
+    throw new Error("The model did not follow your category setting. Try again or change the category setting.");
+  }
   if (options.availableCategories.length > 0) {
     const allowed = new Map(options.availableCategories.map((value) => [value.toLowerCase(), value]));
     result.data.categories = result.data.categories.map((value) => {
@@ -103,6 +112,9 @@ export function parseSmartCollectionSuggestion(
   if (getSmartCollectionRows(result.data, options).reduce((count, row) => count + row.values.length, 0) > MAX_SMART_COLLECTION_VALUES) {
     throw new Error("The selected model returned invalid smart-collection conditions. A Products source supports at most 60 condition values.");
   }
+  if (result.data.categories.length === 0 && result.data.titleIncludes.length === 0 && result.data.titleExcludes.length === 0) {
+    throw new Error("The model returned no category or title conditions. Status and inventory alone do not target the draft.");
+  }
   return result.data;
 }
 
@@ -111,7 +123,9 @@ export function getSmartCollectionRows(
   options: SmartCollectionOptions = DEFAULT_SMART_COLLECTION_OPTIONS,
 ): ConditionRow[] {
   return [
-    { field: "Category", operator: "is → any of", values: suggestion.categories },
+    ...(options.useCategory && suggestion.categories.length > 0
+      ? [{ field: "Category", operator: "is → any of", values: suggestion.categories }]
+      : []),
     ...suggestion.titleIncludes.map((group) => ({
       field: "Title",
       operator: `contains → ${group.match} of`,
@@ -129,7 +143,10 @@ export function previewSmartCollectionTitles(
   products: ProductCandidate[],
   suggestion: SmartCollectionSuggestion,
   options: SmartCollectionOptions = DEFAULT_SMART_COLLECTION_OPTIONS,
-): { passed: ProductCandidate[]; excluded: ProductCandidate[] } {
+): { passed: ProductCandidate[]; excluded: ProductCandidate[]; evaluated: boolean } {
+  if (suggestion.titleIncludes.length === 0 && suggestion.titleExcludes.length === 0) {
+    return { passed: [], excluded: [], evaluated: false };
+  }
   const passed: ProductCandidate[] = [];
   const excluded: ProductCandidate[] = [];
   for (const product of products) {
@@ -144,7 +161,7 @@ export function previewSmartCollectionTitles(
     );
     (matches ? passed : excluded).push(product);
   }
-  return { passed, excluded };
+  return { passed, excluded, evaluated: true };
 }
 
 export function formatSmartCollectionSuggestion(

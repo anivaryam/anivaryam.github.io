@@ -14,7 +14,7 @@ import {
 import type { ProductCandidate } from "./types";
 
 const suggestion = {
-  categories: ["Earrings"],
+  categories: [],
   titleIncludes: [
     { match: "all", values: ["Stud", "Earring"] },
     { match: "any", values: ["Diamond", "Topaz"] },
@@ -45,7 +45,7 @@ describe("smart collection conditions", () => {
   it("uses literal substring matching and does not pretend to evaluate categories or stock", () => {
     const products = candidates(["Men's Watch", "Women's Watch", "Neutral Watch", "[Gold] Watch"]);
     const parsed = parseSmartCollectionSuggestion({
-      categories: ["Watches"], titleIncludes: [{ match: "any", values: ["Men"] }],
+      categories: [], titleIncludes: [{ match: "any", values: ["Men"] }],
       titleExcludes: [], notes: [],
     });
     expect(previewSmartCollectionTitles(products, parsed).passed).toEqual(products.slice(0, 2));
@@ -56,8 +56,8 @@ describe("smart collection conditions", () => {
     expect(previewSmartCollectionTitles(products, parsed).passed).toEqual([products[3]]);
     parsed.titleIncludes = [];
     parsed.titleExcludes = [];
-    expect(previewSmartCollectionTitles(products, parsed).passed).toEqual(products);
-    expect(previewSmartCollectionTitles([], parsed)).toEqual({ passed: [], excluded: [] });
+    expect(previewSmartCollectionTitles(products, parsed)).toEqual({ passed: [], excluded: [], evaluated: false });
+    expect(previewSmartCollectionTitles([], parsed)).toEqual({ passed: [], excluded: [], evaluated: false });
   });
 
   it("uses the same condition rows for display and copy, with fixed Active and stock rules", () => {
@@ -76,13 +76,14 @@ describe("smart collection conditions", () => {
       expect(output).toContain(`${row.field} → ${row.operator} → ${row.values.map((value) => JSON.stringify(value)).join(", ")}`);
     }
     expect(output).toContain("Products → Match ALL conditions");
-    expect(output).toContain("Include subcategories: ON");
+    expect(output).toContain("Category condition: omitted");
+    expect(rows.some((row) => row.field === "Category")).toBe(false);
     expect(output).toContain(SMART_COLLECTION_NOTICE);
     expect(output).toContain("Check complete pairs in Shopify.");
   });
 
   it.each([
-    { ...suggestion, categories: [] },
+    { ...suggestion, categories: [false] },
     { ...suggestion, categories: ["  "] },
     { ...suggestion, titleIncludes: [{ match: "none", values: ["Diamond"] }] },
     { ...suggestion, titleIncludes: [{ match: "any", values: [] }] },
@@ -106,10 +107,11 @@ describe("smart collection conditions", () => {
       titleExcludes: Array.from({ length: 6 }, (_, index) => `Excluded ${index}`),
       notes: [],
     };
-    expect(() => parseSmartCollectionSuggestion(payload)).not.toThrow();
+    const withCategory = { ...DEFAULT_SMART_COLLECTION_OPTIONS, useCategory: true };
+    expect(() => parseSmartCollectionSuggestion(payload, withCategory)).not.toThrow();
     payload.titleExcludes.push("One too many");
-    expect(() => parseSmartCollectionSuggestion(payload)).toThrow("invalid smart-collection conditions");
-    const noExtraConditions = { ...DEFAULT_SMART_COLLECTION_OPTIONS, status: null, inventory: null };
+    expect(() => parseSmartCollectionSuggestion(payload, withCategory)).toThrow("invalid smart-collection conditions");
+    const noExtraConditions = { ...withCategory, status: null, inventory: null };
     expect(() => parseSmartCollectionSuggestion(payload, noExtraConditions)).not.toThrow();
     expect(getSmartCollectionRuleBudget(noExtraConditions)).toBe(60);
     expect(getSmartCollectionRuleBudget(DEFAULT_SMART_COLLECTION_OPTIONS)).toBe(58);
@@ -125,7 +127,7 @@ describe("smart collection conditions", () => {
       availableCategories: "  Power Tools\r\nLawn Seeds\npower tools\n\n",
     });
     expect(options).toEqual({
-      match: "any", includeSubcategories: false, status: "Draft",
+      match: "any", useCategory: false, includeSubcategories: false, status: "Draft",
       inventory: { operator: "is less than", value: 5 },
       availableCategories: ["power tools", "Lawn Seeds"],
     });
@@ -135,6 +137,7 @@ describe("smart collection conditions", () => {
 
   it.each([
     { match: "none" },
+    { useCategory: "yes" },
     { includeSubcategories: "yes" },
     { status: "Unknown status" },
     { inventory: { operator: "at least", value: 5 } },
@@ -152,7 +155,7 @@ describe("smart collection conditions", () => {
 
   it("restricts model categories to the client list and preserves the supplied labels", () => {
     const options = parseSmartCollectionOptions({
-      ...DEFAULT_SMART_COLLECTION_OPTIONS, availableCategories: "Lawn Seeds\nSprinklers",
+      ...DEFAULT_SMART_COLLECTION_OPTIONS, useCategory: true, availableCategories: "Lawn Seeds\nSprinklers",
     });
     const payload = { categories: ["lawn seeds"], titleIncludes: [], titleExcludes: [], notes: [] };
     expect(parseSmartCollectionSuggestion(payload, options).categories).toEqual(["Lawn Seeds"]);
@@ -164,10 +167,10 @@ describe("smart collection conditions", () => {
 
   it("uses selected matching, subcategory, status and stock values in display and copy", () => {
     const options = parseSmartCollectionOptions({
-      ...DEFAULT_SMART_COLLECTION_OPTIONS, match: "any", includeSubcategories: false,
+      ...DEFAULT_SMART_COLLECTION_OPTIONS, useCategory: true, match: "any", includeSubcategories: false,
       status: "Archived", inventory: { operator: "is equal to", value: -1 },
     });
-    const parsed = parseSmartCollectionSuggestion(suggestion, options);
+    const parsed = parseSmartCollectionSuggestion({ ...suggestion, categories: ["Earrings"] }, options);
     const rows = getSmartCollectionRows(parsed, options);
     expect(rows.slice(-2)).toEqual([
       { field: "Status", operator: "is", values: ["Archived"] },
@@ -190,7 +193,7 @@ describe("smart collection conditions", () => {
 
   it("honors source-level ANY for title conditions, including separate negative rows", () => {
     const parsed = parseSmartCollectionSuggestion({
-      categories: ["Watches"], titleIncludes: [], titleExcludes: ["Women", "Ladies"], notes: [],
+      categories: [], titleIncludes: [], titleExcludes: ["Women", "Ladies"], notes: [],
     });
     const products = candidates(["Women's Watch", "Ladies Watch", "Women's Ladies Watch", "Neutral Watch"]);
     expect(previewSmartCollectionTitles(products, parsed).passed).toEqual([products[3]]);
@@ -202,5 +205,26 @@ describe("smart collection conditions", () => {
     expect(previewSmartCollectionTitles(products, parsed).passed).toEqual([]);
     expect(previewSmartCollectionTitles(products, parsed, { ...DEFAULT_SMART_COLLECTION_OPTIONS, match: "any" }).passed)
       .toEqual([products[1], products[2], products[3]]);
+  });
+
+  it("makes category opt-in and rejects status/stock-only or overridden category settings", () => {
+    expect(DEFAULT_SMART_COLLECTION_OPTIONS.useCategory).toBe(false);
+    expect(parseSmartCollectionSuggestion(suggestion).categories).toEqual([]);
+    expect(() => parseSmartCollectionSuggestion({ ...suggestion, categories: ["Earrings"] }))
+      .toThrow("did not follow your category setting");
+    expect(() => parseSmartCollectionSuggestion(suggestion, { ...DEFAULT_SMART_COLLECTION_OPTIONS, useCategory: true }))
+      .toThrow("did not follow your category setting");
+    expect(() => parseSmartCollectionSuggestion({ ...suggestion, titleIncludes: [], titleExcludes: [] }))
+      .toThrow("no category or title conditions");
+    const options = { ...DEFAULT_SMART_COLLECTION_OPTIONS, useCategory: true };
+    const categoryOnly = parseSmartCollectionSuggestion({
+      categories: ["Earrings"], titleIncludes: [], titleExcludes: [], notes: [],
+    }, options);
+    expect(getSmartCollectionRows(categoryOnly, options)[0]).toEqual({
+      field: "Category", operator: "is → any of", values: ["Earrings"],
+    });
+    expect(formatSmartCollectionSuggestion(categoryOnly, options)).toContain("Include subcategories: ON");
+    expect(previewSmartCollectionTitles(candidates(["Diamond Earrings"]), categoryOnly, options))
+      .toEqual({ passed: [], excluded: [], evaluated: false });
   });
 });

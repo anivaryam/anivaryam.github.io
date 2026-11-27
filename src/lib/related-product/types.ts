@@ -36,3 +36,23 @@ export interface CollectionResult {
   products: ProductCandidate[];
   warnings: string[];
 }
+
+export interface ProductReviewInput {
+  mode: "manual" | "smart";
+  draft: string;
+  sourceModel: string;
+  products: Array<{ product: ProductCandidate; selected: boolean | null }>;
+  conditions?: string;
+}
+
+export interface ProductReviewAssessment {
+  id: string;
+  related: boolean | null;
+  reason: string;
+}
+
+export interface ProductReviewResult {
+  model: string;
+  assessments: ProductReviewAssessment[];
+  warnings: string[];
+}

@@ -20,10 +20,13 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { SmartCollectionConditions } from "./SmartCollectionConditions";
 import { SmartCollectionSettings } from "./SmartCollectionSettings";
+import { ProductResultVerifier } from "./ProductResultVerifier";
 import { API_PRESETS, DEFAULT_API_BASE, buildMinorityResult, classifyProducts, fetchAvailableModels, formatMinorityResult, groupProductsBySource, normalizeApiBase, suggestSmartCollection } from "@/lib/related-product/api";
 import { collectProductsFromUrls, MAX_SAMPLE_PRODUCTS_PER_URL, normalizeCollectionUrl } from "@/lib/related-product/collector";
 import {
   DEFAULT_SMART_COLLECTION_OPTIONS,
+  NO_TITLE_RULES_NOTICE,
+  SHOPIFY_MATCH_COUNT_NOTICE,
   formatSmartCollectionSuggestion,
   parseSmartCollectionOptions,
   previewSmartCollectionTitles,
@@ -32,7 +35,7 @@ import {
   type SmartCollectionSuggestion,
 } from "@/lib/related-product/smart-collection";
 import { forgetProviderSettings, hasSavedProviderSettings, saveProviderSettings, unlockProviderSettings } from "@/lib/related-product/storage";
-import type { MinorityResult, ProductCandidate, ProductModel, ProductResultGroup, SavedProviderSettings } from "@/lib/related-product/types";
+import type { MinorityResult, ProductCandidate, ProductModel, ProductResultGroup, ProductReviewInput, SavedProviderSettings } from "@/lib/related-product/types";
 import {
   AlertTriangle,
   Check,
@@ -56,6 +59,7 @@ interface SmartResult {
   options: SmartCollectionOptions;
   samples: ProductCandidate[];
   warnings: string[];
+  reviewInput: ProductReviewInput;
 }
 
 interface FinderResult {
@@ -65,24 +69,26 @@ interface FinderResult {
   relatedCount: number;
   unrelatedCount: number;
   note: string;
+  reviewInput: ProductReviewInput;
 }
 
 function ProductResultsPanel({
-  id, title, groups, count, hasResult, running, sampleOnly = false,
+  id, title, groups, count, hasResult, running, sampleOnly = false, emptyMessage,
 }: {
   id: string;
   title: string;
   groups: ProductResultGroup[];
-  count: number;
+  count: number | null;
   hasResult: boolean;
   running: boolean;
   sampleOnly?: boolean;
+  emptyMessage?: string;
 }) {
   return (
     <section aria-labelledby={id} aria-busy={running} className="flex min-h-80 min-w-0 flex-col rounded-xl border border-border bg-card/50 p-4">
       <header className="mb-4 flex items-center justify-between gap-3">
         <h2 id={id} className="font-semibold">{title}</h2>
-        {hasResult && <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">{count}</span>}
+        {hasResult && <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">{count ?? "Not evaluated"}</span>}
       </header>
       <div className="min-h-0 max-h-[32rem] flex-1 space-y-3 overflow-y-auto rounded-lg border border-border bg-background/40 p-3" data-lenisignore>
         {groups.length > 0 ? groups.map((group, groupIndex) => (
@@ -118,7 +124,7 @@ function ProductResultsPanel({
         )) : (
           <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-3 text-center text-sm text-muted-foreground">
             <PackageSearch className="h-7 w-7 opacity-60" aria-hidden="true" />
-            <p>{running ? "Results will appear when the check finishes." : hasResult ? `No ${title.toLowerCase()} found in this check.` : "Add your collection links and draft, then run a check."}</p>
+            <p>{running ? "Results will appear when the check finishes." : emptyMessage || (hasResult ? `No ${title.toLowerCase()} found in this check.` : "Add your collection links and draft, then run a check.")}</p>
             {sampleOnly && <p>First-page sample only. Passing title rules does not confirm relevance, category, status or stock.</p>}
           </div>
         )}
@@ -181,10 +187,25 @@ export function RelatedProductFinderTool() {
   const connectionNeedsAttention = vaultState !== "unlocked"
     || !selectedModelIsAvailable || Boolean(settingsError || modelError);
   const connectionOpen = connectionExpanded || connectionNeedsAttention;
-  const output = smartResult
-    ? `${formatSmartCollectionSuggestion(smartResult.suggestion, smartResult.options)}\n\nSampling notes:\n${smartResult.warnings.map((warning) => `- ${warning}`).join("\n")}`
-    : resultView ? formatMinorityResult(resultView.minority) : "";
   const titlePreview = smartResult ? previewSmartCollectionTitles(smartResult.samples, smartResult.suggestion, smartResult.options) : null;
+  const smartSummary = smartResult && titlePreview ? [
+    { label: "Products sampled", value: smartResult.samples.length },
+    { label: "Sampled titles matching rules", value: titlePreview.evaluated ? titlePreview.passed.length : "Not evaluated" },
+    { label: "Sampled titles not matching rules", value: titlePreview.evaluated ? titlePreview.excluded.length : "Not evaluated" },
+    { label: "Actual Shopify matches", value: SHOPIFY_MATCH_COUNT_NOTICE },
+  ] : [];
+  const output = smartResult
+    ? `${formatSmartCollectionSuggestion(smartResult.suggestion, smartResult.options)}\n\n${smartSummary.map((row) => `${row.label}: ${row.value}`).join("\n")}\n\nSampling notes:\n${smartResult.warnings.map((warning) => `- ${warning}`).join("\n")}`
+    : resultView ? formatMinorityResult(resultView.minority) : "";
+  const reviewInput = smartResult?.reviewInput ?? resultView?.reviewInput;
+  const invalidateResults = () => {
+    setResultView(null);
+    setSmartResult(null);
+    setRunError("");
+    setProgress(0);
+    setProgressMessage("");
+    setCopied(false);
+  };
 
   const collapseConnectionSettings = () => {
     // Advance from settings without stealing focus from inputs edited during the save.
@@ -438,7 +459,18 @@ export function RelatedProductFinderTool() {
           throw error;
         });
         if (controller.signal.aborted) throw new Error("Run cancelled.");
-        setSmartResult({ suggestion, options: clientOptions, samples: collected.products, warnings: collected.warnings });
+        const preview = previewSmartCollectionTitles(collected.products, suggestion, clientOptions);
+        const passingUrls = new Set(preview.passed.map((product) => product.url));
+        setSmartResult({
+          suggestion, options: clientOptions, samples: collected.products, warnings: collected.warnings,
+          reviewInput: {
+            mode: "smart", draft: draft.trim(), sourceModel: selectedModel,
+            conditions: formatSmartCollectionSuggestion(suggestion, clientOptions),
+            products: collected.products.map((product) => ({
+              product, selected: preview.evaluated ? passingUrls.has(product.url) : null,
+            })),
+          },
+        });
       } else {
         setProgressMessage(`Classifying ${collected.products.length} unique products…`);
         const decisions = await classifyProducts(
@@ -467,6 +499,10 @@ export function RelatedProductFinderTool() {
           unrelatedGroups: groupProductsBySource(unrelated),
           relatedCount: related.length,
           unrelatedCount: unrelated.length,
+          reviewInput: {
+            mode: "manual", draft: draft.trim(), sourceModel: selectedModel,
+            products: collected.products.map((product, index) => ({ product, selected: decisions[index].related })),
+          },
           note: `${collected.products.length} unique product${collected.products.length === 1 ? "" : "s"} checked across ${urls.length} URL${urls.length === 1 ? "" : "s"}.`
             + (collected.warnings.length ? ` ${collected.warnings.join(" ")}` : ""),
         });
@@ -498,12 +534,7 @@ export function RelatedProductFinderTool() {
     setUrlsInput("");
     setDraft("");
     setSmartSettings(DEFAULT_SMART_COLLECTION_OPTIONS);
-    setResultView(null);
-    setSmartResult(null);
-    setRunError("");
-    setProgress(0);
-    setProgressMessage("");
-    setCopied(false);
+    invalidateResults();
     urlsInputRef.current?.focus();
   };
 
@@ -820,7 +851,7 @@ export function RelatedProductFinderTool() {
             <p className="mt-1 text-sm text-muted-foreground">
               {mode === "smart"
                 ? "Use the AM’s collection URLs and draft to suggest a compact set of conditions. Suggestions are for manual entry in Shopify, not automatic collection creation."
-                : "Add collection URLs (one per line) and the content draft. Only products on those sites are considered."}
+                : "AI assesses products against your draft for manual selection. Only products from the submitted URLs are considered; review the shortlist before using it."}
             </p>
           </div>
         </div>
@@ -834,18 +865,18 @@ export function RelatedProductFinderTool() {
               disabled={running}
               onChange={(event) => {
                 setMode(event.target.value as FinderMode);
-                setResultView(null);
-                setSmartResult(null);
-                setRunError("");
-                setProgress(0);
-                setProgressMessage("");
-                setCopied(false);
+                invalidateResults();
               }}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="manual">Manual product matching</option>
               <option value="smart">Smart collection suggestions</option>
             </select>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {mode === "manual"
+                ? "Manual matching is the default for editorial relevance. AI decisions still need human review."
+                : "Smart mode suggests literal Shopify rules, not a verified product shortlist. Sample totals are not matching-product counts."}
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="related-collection-urls">Collection links</Label>
@@ -853,7 +884,10 @@ export function RelatedProductFinderTool() {
               id="related-collection-urls"
               ref={urlsInputRef}
               value={urlsInput}
-              onChange={(event) => setUrlsInput(event.target.value)}
+              onChange={(event) => {
+                setUrlsInput(event.target.value);
+                invalidateResults();
+              }}
               placeholder={"https://store.example/collections/bill-acceptors\nhttps://store.example/collections/stackers"}
               className="min-h-24 font-mono text-sm"
               disabled={running}
@@ -872,11 +906,7 @@ export function RelatedProductFinderTool() {
               disabled={running}
               onChange={(settings) => {
                 setSmartSettings(settings);
-                setSmartResult(null);
-                setRunError("");
-                setProgress(0);
-                setProgressMessage("");
-                setCopied(false);
+                invalidateResults();
               }}
             />
           )}
@@ -886,7 +916,10 @@ export function RelatedProductFinderTool() {
             <Textarea
               id="related-draft"
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                invalidateResults();
+              }}
               placeholder="Paste the complete draft you want to match products against…"
               className="min-h-80 flex-1 text-sm"
               disabled={running}
@@ -934,7 +967,7 @@ export function RelatedProductFinderTool() {
         </div>
       </section>
 
-      <div className={`grid min-w-0 gap-4 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:h-full ${mode === "manual" ? "grid-rows-2" : "content-start"}`}>
+      <div className="grid min-w-0 content-start gap-4 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:h-full">
         {mode === "smart" && <SmartCollectionConditions suggestion={smartResult?.suggestion || null} options={smartResult?.options} />}
         {mode === "smart" && smartResult && smartResult.samples.length === 0 && (
           <Alert role="status">
@@ -947,20 +980,32 @@ export function RelatedProductFinderTool() {
           id="related-products-title"
           title={mode === "smart" ? "Samples passing title rules" : "Related Products"}
           groups={titlePreview ? groupProductsBySource(titlePreview.passed) : resultView?.relatedGroups || []}
-          count={titlePreview?.passed.length ?? resultView?.relatedCount ?? 0}
+          count={titlePreview ? titlePreview.evaluated ? titlePreview.passed.length : null : resultView?.relatedCount ?? 0}
           hasResult={Boolean(resultView || smartResult)}
           running={running}
           sampleOnly={mode === "smart"}
+          emptyMessage={titlePreview && !titlePreview.evaluated ? NO_TITLE_RULES_NOTICE : undefined}
         />
         <ProductResultsPanel
           id="unrelated-products-title"
           title={mode === "smart" ? "Samples not matching title rules" : "Unrelated Products"}
           groups={titlePreview ? groupProductsBySource(titlePreview.excluded) : resultView?.unrelatedGroups || []}
-          count={titlePreview?.excluded.length ?? resultView?.unrelatedCount ?? 0}
+          count={titlePreview ? titlePreview.evaluated ? titlePreview.excluded.length : null : resultView?.unrelatedCount ?? 0}
           hasResult={Boolean(resultView || smartResult)}
           running={running}
           sampleOnly={mode === "smart"}
+          emptyMessage={titlePreview && !titlePreview.evaluated ? NO_TITLE_RULES_NOTICE : undefined}
         />
+        {reviewInput && (
+          <ProductResultVerifier
+            input={reviewInput}
+            apiBase={apiBase}
+            apiKey={apiKey}
+            selectedModel={selectedModel}
+            models={models}
+            enabled={vaultState === "unlocked" && selectedModelIsAvailable && !loadingModels && !savingSelection}
+          />
+        )}
       </div>
 
       <section aria-labelledby="related-summary-title" className="flex min-h-80 min-w-0 flex-col rounded-xl border border-primary/30 bg-card/50 p-4 xl:col-start-1 xl:row-start-2">
@@ -974,10 +1019,15 @@ export function RelatedProductFinderTool() {
         ) : smartResult ? (
           <div className="space-y-4">
             <p role="status" className="rounded-lg border border-border bg-background/60 p-3 font-semibold">Suggestions ready — review in Shopify</p>
-            <dl className="rounded-lg border border-border bg-background/40 p-3">
-              <dt className="text-xs text-muted-foreground">Unique sample products</dt>
-              <dd className="mt-1 text-2xl font-semibold">{smartResult.samples.length}</dd>
+            <dl className="space-y-3">
+              {smartSummary.map((row) => (
+                <div key={row.label} className="rounded-lg border border-border bg-background/40 p-3">
+                  <dt className="text-xs text-muted-foreground">{row.label}</dt>
+                  <dd className="mt-1 text-lg font-semibold">{row.value}</dd>
+                </div>
+              ))}
             </dl>
+            <p className="text-xs leading-relaxed text-muted-foreground">Sampled products are candidates, not confirmed recommendations. Title matches do not establish editorial relevance or Shopify membership.</p>
             <ul className="space-y-3 break-words text-xs leading-relaxed text-muted-foreground">
               {smartResult.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
             </ul>

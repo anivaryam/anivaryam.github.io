@@ -7,8 +7,9 @@ import {
   groupProductsBySource,
   normalizeApiBase,
   suggestSmartCollection,
+  verifyProductResults,
 } from "./api";
-import type { ProductCandidate } from "./types";
+import type { ProductCandidate, ProductReviewInput } from "./types";
 import { DEFAULT_SMART_COLLECTION_OPTIONS, parseSmartCollectionOptions } from "./smart-collection";
 
 const products: ProductCandidate[] = [
@@ -141,7 +142,7 @@ describe("related product API", () => {
 
   it("suggests one source using the chosen model, draft and bounded sample data without sending URLs", async () => {
     const conditions = {
-      categories: ["Watches"], titleIncludes: [], titleExcludes: ["Women", "Ladies", "Lady"],
+      categories: [], titleIncludes: [], titleExcludes: ["Women", "Ladies", "Lady"],
       notes: ["Check gender-neutral titles and vintage age in the listing."],
     };
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
@@ -163,6 +164,7 @@ describe("related product API", () => {
     expect(body.messages[0].content).toContain("ONE Products source with Match ALL");
     expect(body.messages[0].content).toContain("Men matches inside Women");
     expect(body.messages[0].content).toContain("untrusted data");
+    expect(body.messages[0].content).toContain("Category is disabled");
     expect(JSON.parse(body.messages[1].content)).toEqual({
       draft: "Men's watch gift draft",
       clientOptions: DEFAULT_SMART_COLLECTION_OPTIONS,
@@ -198,7 +200,7 @@ describe("related product API", () => {
 
   it("sends selected client options and rejects categories outside the client's list", async () => {
     const options = parseSmartCollectionOptions({
-      ...DEFAULT_SMART_COLLECTION_OPTIONS, match: "any", includeSubcategories: false,
+      ...DEFAULT_SMART_COLLECTION_OPTIONS, useCategory: true, match: "any", includeSubcategories: false,
       status: "Draft", inventory: null, availableCategories: "Lawn Seeds\nSprinklers",
     });
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
@@ -217,5 +219,136 @@ describe("related product API", () => {
     expect(request.messages[0].content).toContain("total at most 59");
     expect(request.messages[0].content).toContain("ONLY from that exact list");
     expect(request.messages[0].content).not.toContain("application adds Status is Active");
+  });
+});
+
+const reviewInput: ProductReviewInput = {
+  mode: "manual", draft: "A draft about vending machine payments.", sourceModel: "first-model",
+  products: products.map((product, index) => ({ product, selected: index === 0 })),
+};
+
+function reviewResponse(assessments: unknown, warnings: unknown = []) {
+  return new Response(JSON.stringify({
+    choices: [{ message: { content: JSON.stringify({ assessments, warnings }) } }],
+  }), { status: 200 });
+}
+
+describe("AI result verification API", () => {
+  it("reviews both selections in a separate chosen-model request and orders evidence by exact IDs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(reviewResponse([
+      { id: "product-2", related: null, reason: "Compatibility details are missing." },
+      { id: "product-1", related: false, reason: "The supplied product is not suitable for this draft." },
+    ], ["Review fit manually."]));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await verifyProductResults("https://api.example.com/v1", "secret-key", "review-model", reviewInput);
+    expect(result.model).toBe("review-model");
+    expect(result.assessments.map((assessment) => assessment.id)).toEqual(["product-1", "product-2"]);
+    expect(result.assessments[1].related).toBeNull();
+    expect(result.warnings).toEqual(["Review fit manually."]);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://api.example.com/v1/chat/completions");
+    expect(init.headers.Authorization).toBe("Bearer secret-key");
+    const body = JSON.parse(init.body);
+    expect(body.model).toBe("review-model");
+    expect(body.messages[0].content).toContain("untrusted data");
+    expect(body.messages[0].content).toContain("Category assignments, status, inventory and actual store-wide counts are unknown");
+    expect(JSON.parse(body.messages[1].content).products.map((product: { selected: boolean }) => product.selected))
+      .toEqual([true, false]);
+    expect(init.body).not.toContain("https://shop.example");
+    expect(init.body).not.toContain("secret-key");
+    expect(init.body).not.toContain("first-model");
+  });
+
+  it("batches all products with globally unique IDs, includes smart rules, and deduplicates warnings", async () => {
+    const progress = vi.fn();
+    const fetchMock = vi.fn(async (_url, init) => {
+      const data = JSON.parse(JSON.parse(init.body).messages[1].content);
+      expect(data.conditions).toBe("Products → Match ALL conditions");
+      return reviewResponse(data.products.reverse().map((product: { id: string }) => ({
+        id: product.id, related: true, reason: "The supplied details support relevance.",
+      })), ["Review category assignments."]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await verifyProductResults("https://api.example.com/v1", "key", "review-model", {
+      ...reviewInput, mode: "smart", conditions: "Products → Match ALL conditions",
+      products: Array.from({ length: 31 }, () => ({ product: products[0], selected: null })),
+    }, { onProgress: progress });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.assessments).toHaveLength(31);
+    expect(result.assessments[30].id).toBe("product-31");
+    expect(result.warnings).toEqual(["Review category assignments."]);
+    expect(progress.mock.calls).toEqual([[30, 31], [31, 31]]);
+  });
+
+  it.each([
+    { assessments: [{ id: "product-1", related: true, reason: "Valid." }], error: "did not review every product" },
+    { assessments: [
+      { id: "product-1", related: true, reason: "Valid." },
+      { id: "product-1", related: false, reason: "Duplicate." },
+    ], error: "mismatched product IDs" },
+    { assessments: [
+      { id: "invented", related: true, reason: "Unknown." },
+      { id: "product-2", related: false, reason: "Valid." },
+    ], error: "mismatched product IDs" },
+    { assessments: [{ id: "product-1", related: "yes", reason: "Invalid." }], error: "invalid review" },
+    { assessments: [{ id: "product-1", related: true }], error: "invalid review" },
+    { assessments: [{ id: "product-1", related: true, reason: "" }], error: "invalid review" },
+    { assessments: [{ id: "product-1", related: true, reason: "x".repeat(601) }], error: "invalid review" },
+    { assessments: [{ id: "product-1", related: true, reason: "Valid.", url: "https://invented.example" }], error: "invalid review" },
+  ])("rejects incomplete or invalid reviews: $error", async ({ assessments, error }) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reviewResponse(assessments)));
+    await expect(verifyProductResults("https://api.example.com/v1", "key", "model", reviewInput)).rejects.toThrow(error);
+  });
+
+  it("does not report partial success if a later batch fails", async () => {
+    const fetchMock = vi.fn(async (_url, init) => {
+      const data = JSON.parse(JSON.parse(init.body).messages[1].content);
+      if (data.products[0].id === "product-31") return new Response("unavailable", { status: 503 });
+      return reviewResponse(data.products.map((product: { id: string }) => ({
+        id: product.id, related: true, reason: "Evidence.",
+      })));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(verifyProductResults("https://api.example.com/v1", "key", "model", {
+      ...reviewInput, products: Array.from({ length: 31 }, () => reviewInput.products[0]),
+    })).rejects.toThrow("503");
+  });
+
+  it("rejects empty input and respects cancellation before requests and after response decoding", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(verifyProductResults("https://api.example.com/v1", "key", "model", {
+      ...reviewInput, products: [],
+    })).rejects.toThrow("No collected products");
+    const controller = new AbortController();
+    controller.abort();
+    await expect(verifyProductResults("https://api.example.com/v1", "key", "model", reviewInput, {
+      signal: controller.signal,
+    })).rejects.toThrow("cancelled");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const lateController = new AbortController();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => {
+        lateController.abort();
+        return {};
+      },
+    });
+    await expect(verifyProductResults("https://api.example.com/v1", "key", "model", reviewInput, {
+      signal: lateController.signal,
+    })).rejects.toThrow("cancelled");
+  });
+
+  it("redacts provider errors and rejects invalid JSON instead of claiming verification", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      error: { message: "Invalid secret-key" },
+    }), { status: 401 })).mockResolvedValueOnce(new Response(JSON.stringify({
+      choices: [{ message: { content: "not JSON" } }],
+    }), { status: 200 })));
+    await expect(verifyProductResults("https://api.example.com/v1", "secret-key", "model", reviewInput))
+      .rejects.toThrow("Invalid [redacted]");
+    await expect(verifyProductResults("https://api.example.com/v1", "key", "model", reviewInput))
+      .rejects.toThrow("valid JSON");
   });
 });

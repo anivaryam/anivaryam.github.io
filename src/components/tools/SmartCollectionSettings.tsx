@@ -23,6 +23,15 @@ export function SmartCollectionSettings({
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-4 rounded-lg border border-border p-3">
       <legend className="px-1 text-sm font-medium">Smart collection settings</legend>
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="related-use-category"
+          checked={settings.useCategory}
+          onCheckedChange={(checked) => onChange({ ...settings, useCategory: checked === true })}
+          disabled={disabled}
+        />
+        <Label htmlFor="related-use-category">Add category condition</Label>
+      </div>
       <div className="space-y-2">
         <Label htmlFor="related-available-categories">Available categories (optional)</Label>
         <Textarea
@@ -31,12 +40,12 @@ export function SmartCollectionSettings({
           onChange={(event) => onChange({ ...settings, availableCategories: event.target.value })}
           placeholder={"Paste this client’s category labels\nOne category per line"}
           className="min-h-24 text-sm"
-          disabled={disabled}
+          disabled={disabled || !settings.useCategory}
           aria-describedby="related-category-help"
           data-lenisignore
         />
         <p id="related-category-help" className="text-xs leading-relaxed text-muted-foreground">
-          If provided, suggestions must use only these labels (up to 200, each at most 120 characters). Leave blank for unverified category suggestions. New check clears this list and restores default settings.
+          Category is off by default because product assignments are unverified. If enabled, supplied labels constrain suggestions (up to 200, each at most 120 characters); a blank list allows unverified labels. Confirm product assignments in Shopify. New check clears this list and restores defaults.
         </p>
       </div>
       <div className="space-y-2">
@@ -58,7 +67,7 @@ export function SmartCollectionSettings({
           id="related-include-subcategories"
           checked={settings.includeSubcategories}
           onCheckedChange={(checked) => onChange({ ...settings, includeSubcategories: checked === true })}
-          disabled={disabled}
+          disabled={disabled || !settings.useCategory}
         />
         <Label htmlFor="related-include-subcategories">Include subcategories</Label>
       </div>
