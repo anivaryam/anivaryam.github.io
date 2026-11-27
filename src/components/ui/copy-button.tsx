@@ -6,11 +6,14 @@ import { cn } from "@/lib/utils";
 interface CopyButtonProps extends Omit<ButtonProps, "onClick"> {
   text: string;
   successMessage?: string;
+  iconOnly?: boolean;
 }
 
 export function CopyButton({
   text,
   successMessage,
+  iconOnly = false,
+  disabled,
   className,
   children,
   ...props
@@ -20,10 +23,11 @@ export function CopyButton({
   return (
     <Button
       onClick={() => copy(text)}
-      disabled={!text || copying}
+      type="button"
+      disabled={disabled || !text || copying}
       className={cn(
         "transition-all duration-200",
-        copied && "bg-primary/20 text-primary border-primary/50",
+        copied && "bg-primary/20 text-foreground border-primary/50 hover:bg-primary/20 hover:text-foreground",
         className
       )}
       {...props}
@@ -36,13 +40,13 @@ export function CopyButton({
       >
         {copied ? (
           <>
-            <Check className="h-4 w-4 animate-in zoom-in-50 duration-200" />
-            <span className="animate-in fade-in-0 duration-200">Copied!</span>
+            <Check aria-hidden="true" className="h-4 w-4 animate-in zoom-in-50 duration-200" />
+            {!iconOnly && <span className="animate-in fade-in-0 duration-200">Copied!</span>}
           </>
         ) : (
           <>
-            <Copy className="h-4 w-4" />
-            {children || <span>Copy</span>}
+            <Copy aria-hidden="true" className="h-4 w-4" />
+            {!iconOnly && (children || <span>Copy</span>)}
           </>
         )}
       </span>

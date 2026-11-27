@@ -12,7 +12,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { CopyButton } from "@/components/ui/copy-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -22,7 +22,7 @@ import { SmartCollectionConditions } from "./SmartCollectionConditions";
 import { SmartCollectionSettings } from "./SmartCollectionSettings";
 import { ProductResultVerifier } from "./ProductResultVerifier";
 import { API_PRESETS, DEFAULT_API_BASE, buildMinorityResult, classifyProducts, fetchAvailableModels, formatMinorityResult, groupProductsBySource, normalizeApiBase, suggestSmartCollection } from "@/lib/related-product/api";
-import { collectProductsFromUrls, MAX_SAMPLE_PRODUCTS_PER_URL, normalizeCollectionUrl } from "@/lib/related-product/collector";
+import { collectProductsFromUrls, deduplicateProducts, MAX_SAMPLE_PRODUCTS_PER_URL, normalizeCollectionUrl } from "@/lib/related-product/collector";
 import {
   DEFAULT_SMART_COLLECTION_OPTIONS,
   NO_TITLE_RULES_NOTICE,
@@ -40,7 +40,6 @@ import type { MinorityResult, ProductCandidate, ProductDecision, ProductModel, P
 import {
   AlertTriangle,
   Check,
-  ChevronDown,
   Copy,
   KeyRound,
   Loader2,
@@ -53,7 +52,6 @@ import {
 } from "lucide-react";
 
 type VaultState = "checking" | "setup" | "locked" | "unlocked";
-type FinderMode = "manual" | "smart";
 
 interface SmartResult {
   suggestion: SmartCollectionSuggestion;
@@ -74,62 +72,54 @@ interface FinderResult {
 }
 
 function ProductResultsPanel({
-  id, title, groups, count, hasResult, running, sampleOnly = false, emptyMessage,
+  id, title, groups, count, hasResult, running, warning,
 }: {
   id: string;
   title: string;
   groups: ProductResultGroup[];
-  count: number | null;
+  count: number;
   hasResult: boolean;
   running: boolean;
-  sampleOnly?: boolean;
-  emptyMessage?: string;
+  warning?: string;
 }) {
+  const products = deduplicateProducts(groups.flatMap((group) => group.products));
   return (
-    <section aria-labelledby={id} aria-busy={running} className="flex min-h-80 min-w-0 flex-col rounded-xl border border-border bg-card/50 p-4">
-      <header className="mb-4 flex items-center justify-between gap-3">
-        <h2 id={id} className="font-semibold">{title}</h2>
-        {hasResult && <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">{count ?? "Not evaluated"}</span>}
+    <section aria-labelledby={id} aria-busy={running} className="flex min-h-80 min-w-0 flex-col rounded-xl border border-border bg-card/50">
+      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <h2 id={id} className="text-sm font-semibold">{title}</h2>
+        {hasResult && <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium">{count}</span>}
+        <CopyButton text={products.map((product) => product.name).join("\n")} iconOnly variant="ghost" size="icon"
+          className="ml-auto h-8 w-8 shrink-0" aria-label={`Copy all ${title.toLowerCase().replace("products", "product")} names`} title={`Copy all ${title.toLowerCase()}`}
+          disabled={running || !hasResult || products.length === 0} />
       </header>
-      <div className="min-h-0 max-h-[32rem] flex-1 space-y-3 overflow-y-auto rounded-lg border border-border bg-background/40 p-3" data-lenisignore>
-        {groups.length > 0 ? groups.map((group, groupIndex) => (
-          <section
-            key={`${group.sourceUrl || "unknown-source"}-${groupIndex}`}
-            aria-labelledby={`${id}-source-${groupIndex}`}
-            className="overflow-hidden rounded-lg border border-border bg-background"
-          >
-            <header className="space-y-2 border-b border-border bg-muted/50 px-3 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 id={`${id}-source-${groupIndex}`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Submitted URL {groupIndex + 1}
-                </h3>
-                <span className="text-xs text-muted-foreground">{group.products.length} product{group.products.length === 1 ? "" : "s"}</span>
-              </div>
-              {group.sourceUrl ? (
-                <a href={group.sourceUrl} target="_blank" rel="noopener noreferrer" className="block break-all text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  {group.sourceUrl}
-                </a>
-              ) : <p className="text-xs text-muted-foreground">Source URL unavailable</p>}
-            </header>
-            <ul className="divide-y divide-border">
-              {group.products.map((product, productIndex) => (
-                <li key={`${product.url}-${productIndex}`} className="px-3 py-3">
-                  <a href={product.url} target="_blank" rel="noopener noreferrer" className="block rounded-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <span className="block break-words text-sm font-medium text-foreground">{product.name}</span>
-                    <span className="mt-1 block break-all text-xs text-muted-foreground">{product.url}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )) : (
-          <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-3 text-center text-sm text-muted-foreground">
+      {warning && <p className="px-4 pt-3 text-xs font-medium text-amber-800 dark:text-amber-300">{warning}</p>}
+      <div className="min-h-0 max-h-[32rem] flex-1 overflow-y-auto" data-lenisignore>
+        {products.length > 0 ? (
+          <ul className="divide-y divide-border">
+            {products.map((product) => (
+              <li key={product.url} className="flex items-center gap-1 px-4 py-3">
+                <a href={product.url} target="_blank" rel="noopener noreferrer" className="min-w-0 break-words rounded-sm text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{product.name}</a>
+                <CopyButton text={product.name} iconOnly variant="ghost" size="icon" className="h-7 w-7 shrink-0"
+                  aria-label={`Copy product name: ${product.name}`} title={`Copy ${product.name}`} disabled={running} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="flex min-h-48 flex-col items-center justify-center gap-3 px-4 text-center text-sm text-muted-foreground">
             <PackageSearch className="h-7 w-7 opacity-60" aria-hidden="true" />
-            <p>{running ? "Results will appear when the check finishes." : emptyMessage || (hasResult ? `No ${title.toLowerCase()} found in this check.` : "Add your collection links and draft, then run a check.")}</p>
-            {sampleOnly && <p>First-page sample only. Passing title rules does not confirm relevance, category, status or stock.</p>}
+            <p>{running ? "Results will appear when the check finishes." : hasResult ? `No ${title.toLowerCase()} found in this check.` : "Add your collection links and draft, then run a check."}</p>
           </div>
         )}
       </div>
+      {groups.length > 0 && <details className="border-t border-border p-4 text-xs">
+        <summary className="cursor-pointer text-muted-foreground">Submitted sources</summary>
+        <ul className="mt-3 space-y-3">
+          {groups.map((group, index) => <li key={`${group.sourceUrl}-${index}`} className="space-y-1">
+            <p className="text-muted-foreground">{group.products.length} products</p>
+            {group.sourceUrl ? <a href={group.sourceUrl} target="_blank" rel="noopener noreferrer" className="block break-all underline underline-offset-4">{group.sourceUrl}</a> : <span>Source URL unavailable</span>}
+          </li>)}
+        </ul>
+      </details>}
     </section>
   );
 }
@@ -150,7 +140,6 @@ export function RelatedProductFinderTool() {
   const [settingsError, setSettingsError] = useState("");
   const [urlsInput, setUrlsInput] = useState("");
   const [draft, setDraft] = useState("");
-  const [mode, setMode] = useState<FinderMode>("manual");
   const [smartSettings, setSmartSettings] = useState<SmartCollectionOptionsInput>(DEFAULT_SMART_COLLECTION_OPTIONS);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -160,11 +149,12 @@ export function RelatedProductFinderTool() {
   const [smartResult, setSmartResult] = useState<SmartResult | null>(null);
   const [verifierModel, setVerifierModel] = useState("");
   const [verification, setVerification] = useState<AutomaticVerificationReport | null>(null);
+  const [smartVerification, setSmartVerification] = useState<AutomaticVerificationReport | null>(null);
+  const [matchingError, setMatchingError] = useState("");
+  const [smartError, setSmartError] = useState("");
   const [copied, setCopied] = useState(false);
   const [forgetDialogOpen, setForgetDialogOpen] = useState(false);
-  const [connectionExpanded, setConnectionExpanded] = useState(true);
 
-  const connectionContentRef = useRef<HTMLDivElement>(null);
   const urlsInputRef = useRef<HTMLTextAreaElement>(null);
   const passphraseRef = useRef("");
   const settingsRef = useRef<SavedProviderSettings | null>(null);
@@ -192,9 +182,6 @@ export function RelatedProductFinderTool() {
   const verifierModelIsAvailable = models.some((model) => model.id === effectiveVerifierModel);
   const providerName = providerPreset?.name
     || (vaultState === "unlocked" ? new URL(apiBase).host : "");
-  const connectionNeedsAttention = vaultState !== "unlocked"
-    || !selectedModelIsAvailable || Boolean(settingsError || modelError);
-  const connectionOpen = connectionExpanded || connectionNeedsAttention;
   const titlePreview = smartResult ? previewSmartCollectionTitles(smartResult.samples, smartResult.suggestion, smartResult.options) : null;
   const smartSummary = smartResult && titlePreview ? [
     { label: "Products sampled", value: smartResult.samples.length },
@@ -202,34 +189,40 @@ export function RelatedProductFinderTool() {
     { label: "Sampled titles not matching rules", value: titlePreview.evaluated ? titlePreview.excluded.length : "Not evaluated" },
     { label: "Actual Shopify matches", value: SHOPIFY_MATCH_COUNT_NOTICE },
   ] : [];
-  const resultOutput = smartResult
-    ? `${formatSmartCollectionSuggestion(smartResult.suggestion, smartResult.options)}\n\n${smartSummary.map((row) => `${row.label}: ${row.value}`).join("\n")}\n\nSampling notes:\n${smartResult.warnings.map((warning) => `- ${warning}`).join("\n")}`
-    : resultView ? formatMinorityResult(resultView.minority) : "";
-  const verificationWarning = verification && verification.status !== "complete" ? getVerificationLabel(verification.status) : "";
+  const resultOutput = resultView ? formatMinorityResult(resultView.minority) : "";
+  const verificationWarning = verification && verification.status !== "complete"
+    ? `${getVerificationLabel(verification.status)}${verification.message ? `\n${verification.message}` : ""}` : "";
+  const smartVerificationWarning = smartVerification && smartVerification.status !== "complete"
+    ? `${getVerificationLabel(smartVerification.status)}${smartVerification.message ? `\n${smartVerification.message}` : ""}` : "";
   const output = resultOutput && verificationWarning
-    ? `${resultOutput}\n\n${verificationWarning}${verification?.message ? `\n${verification.message}` : ""}`
+    ? `${resultOutput}\n\n${verificationWarning}`
     : resultOutput;
-  const reviewInput = smartResult?.reviewInput ?? resultView?.reviewInput;
+  const smartOutput = smartResult
+    ? `${formatSmartCollectionSuggestion(smartResult.suggestion, smartResult.options)}${smartVerificationWarning ? `\n\n${smartVerificationWarning}` : ""}`
+    : "";
+  const relatedNames = resultView ? deduplicateProducts(resultView.relatedGroups.flatMap((group) => group.products)).map((product) => product.name).join("\n") : "";
+  const unrelatedNames = resultView ? deduplicateProducts(resultView.unrelatedGroups.flatMap((group) => group.products)).map((product) => product.name).join("\n") : "";
+  const combinedOutput = resultView || smartResult ? [
+    smartOutput || `Smart collection unavailable: ${smartError || "No suggestion was produced."}`,
+    resultView
+      ? `Related Products\n${relatedNames || "None"}\n\nUnrelated Products\n${unrelatedNames || "None"}${verificationWarning ? `\n\n${verificationWarning}` : ""}`
+      : `Product matching unavailable: ${matchingError || "No complete product matching result was produced."}`,
+  ].join("\n\n") : "";
+  const reviewInput = resultView?.reviewInput;
   const invalidateResults = () => {
     setResultView(null);
     setSmartResult(null);
     setVerification(null);
+    setSmartVerification(null);
+    setMatchingError("");
+    setSmartError("");
     setRunError("");
     setProgress(0);
     setProgressMessage("");
     setCopied(false);
   };
 
-  const collapseConnectionSettings = () => {
-    // Advance from settings without stealing focus from inputs edited during the save.
-    if (connectionContentRef.current?.contains(document.activeElement)) {
-      urlsInputRef.current?.focus();
-    }
-    setConnectionExpanded(false);
-  };
-
   const refreshModelList = async (settings: SavedProviderSettings) => {
-    setConnectionExpanded(true);
     setLoadingModels(true);
     setModelError("");
     try {
@@ -310,10 +303,7 @@ export function RelatedProductFinderTool() {
       setSelectedModel(saved.selectedModel);
       setUnlockPassphrase("");
       setVaultState("unlocked");
-      const available = await refreshModelList(settings);
-      if (available?.some((model) => model.id === settings.selectedModel)) {
-        collapseConnectionSettings();
-      }
+      await refreshModelList(settings);
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : "Could not unlock saved settings.");
     }
@@ -327,7 +317,6 @@ export function RelatedProductFinderTool() {
     setApiKey("");
     setModels([]);
     setModelError("");
-    setConnectionExpanded(true);
     setVaultState("locked");
   };
 
@@ -348,7 +337,6 @@ export function RelatedProductFinderTool() {
       setSetupPassphrase("");
       setSetupPassphraseConfirmation("");
       setVaultState("setup");
-      setConnectionExpanded(true);
       setForgetDialogOpen(false);
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : "Could not forget saved settings.");
@@ -376,11 +364,7 @@ export function RelatedProductFinderTool() {
     saveQueueRef.current = write;
 
     void write
-      .then(() => {
-        if (saveVersionRef.current === saveVersion) collapseConnectionSettings();
-      })
       .catch((error) => {
-        setConnectionExpanded(true);
         setSettingsError(error instanceof Error ? error.message : "Could not save the selected model.");
       })
       .finally(() => {
@@ -390,11 +374,7 @@ export function RelatedProductFinderTool() {
 
   const handleRun = async () => {
     if (runControllerRef.current) return;
-    setRunError("");
-    setResultView(null);
-    setSmartResult(null);
-    setVerification(null);
-    setCopied(false);
+    invalidateResults();
 
     if (!urlsInput.trim()) {
       setRunError("Add one or more collection or product URLs.");
@@ -429,18 +409,17 @@ export function RelatedProductFinderTool() {
       setRunError("Add one or more collection or product URLs.");
       return;
     }
-    if (mode === "smart" && new Set(urls.map((url) => new URL(url).origin)).size > 1) {
-      setRunError("Use URLs from one Shopify store for smart-collection suggestions.");
-      return;
-    }
+    const smartEligible = new Set(urls.map((url) => new URL(url).origin)).size === 1;
     let clientOptions = DEFAULT_SMART_COLLECTION_OPTIONS;
-    if (mode === "smart") {
+    if (smartEligible) {
       try {
         clientOptions = parseSmartCollectionOptions(smartSettings);
       } catch (error) {
         setRunError(error instanceof Error ? error.message : "Check smart collection settings.");
         return;
       }
+    } else {
+      setSmartError("Smart collection suggestions require URLs from one Shopify store. Product matching still runs across your submitted stores.");
     }
 
     const settings = settingsRef.current;
@@ -453,102 +432,116 @@ export function RelatedProductFinderTool() {
     runControllerRef.current = controller;
     setRunning(true);
     setProgress(0);
-    setProgressMessage(mode === "smart" ? "Sampling collection listings…" : "Starting collection…");
-    const automaticOptions = {
+    setProgressMessage("Collecting products…");
+    const automaticOptions = (subject: string, start: number) => ({
       signal: controller.signal,
       onProgress: (phase: "verifying" | "correcting" | "rechecking", completed: number, total: number) => {
         if (runControllerRef.current !== controller || controller.signal.aborted) return;
-        setProgressMessage(phase === "correcting" ? "Correcting suggested conditions (one attempt)…"
-          : `${phase === "rechecking" ? "Rechecking corrections" : "Automatically verifying results"} (${completed}/${total})…`);
-        setProgress(phase === "correcting" ? 80 : (phase === "rechecking" ? 85 : 65) + Math.round((completed / Math.max(total, 1)) * 10));
+        setProgressMessage(`${subject}: ${phase === "correcting" ? "correcting conditions" : phase === "rechecking" ? "rechecking corrections" : "reviewing results"} (${completed}/${total})…`);
+        setProgress(start + (phase === "rechecking" ? 8 : phase === "correcting" ? 6 : 0) + Math.round((completed / Math.max(total, 1)) * 5));
       },
-    };
+    });
     const reviewer = { apiBase: settings.apiBase, apiKey: settings.apiKey, model: effectiveVerifierModel };
 
     try {
-      const collected = await collectProductsFromUrls(
-        urls,
-        controller.signal,
-        (message, completed, total) => {
-          if (runControllerRef.current !== controller || controller.signal.aborted) return;
-          setProgressMessage(message);
-          setProgress(total > 0 ? Math.round((completed / total) * 45) : 0);
-        },
-        { sampleOnly: mode === "smart" },
-      );
-      if (controller.signal.aborted) throw new Error("Run cancelled.");
-      setProgress(50);
-
-      if (mode === "smart") {
-        setProgressMessage(`Suggesting conditions using the draft and ${collected.products.length} sample products…`);
-        const suggestion = await suggestSmartCollection(
-          settings.apiBase, settings.apiKey, selectedModel, draft.trim(), urls,
-          collected.products, controller.signal, clientOptions,
-        ).catch((error) => {
-          if (!controller.signal.aborted) setConnectionExpanded(true);
-          throw error;
-        });
-        if (controller.signal.aborted) throw new Error("Run cancelled.");
-        const initial: SmartResult = {
-          suggestion, options: clientOptions, samples: collected.products, warnings: collected.warnings,
-          reviewInput: createSmartReviewInput(draft.trim(), selectedModel, collected.products, suggestion, clientOptions),
-        };
-        setSmartResult(initial);
-        const verified = await automaticallyVerifyResults(reviewer, initial.reviewInput, {
-          ...automaticOptions, smart: { suggestion, options: clientOptions, urls },
-        });
-        if (runControllerRef.current !== controller) return;
-        setVerification(controller.signal.aborted ? markVerificationIncomplete(verified, "Request cancelled.") : verified);
-        if (!controller.signal.aborted) setSmartResult({ ...initial, suggestion: verified.suggestion ?? suggestion });
-      } else {
-        setProgressMessage(`Classifying ${collected.products.length} unique products…`);
-        const decisions = await classifyProducts(
-          settings.apiBase,
-          settings.apiKey,
-          selectedModel,
-          draft.trim(),
-          collected.products,
-          {
-            signal: controller.signal,
-            onProgress: (completed, total) => {
-              if (runControllerRef.current !== controller || controller.signal.aborted) return;
-              setProgressMessage(`Classifying products (${completed}/${total})…`);
-              setProgress(50 + Math.round((completed / total) * 10));
-            },
-          },
-        ).catch((error) => {
-          if (!controller.signal.aborted) setConnectionExpanded(true);
-          throw error;
-        });
-        if (controller.signal.aborted) throw new Error("Run cancelled.");
-        const input: ProductReviewInput = {
-          mode: "manual", draft: draft.trim(), sourceModel: selectedModel,
-          products: collected.products.map((product, index) => ({ product, selected: decisions[index].related })),
-        };
-        const present = (finalDecisions: ProductDecision[]): FinderResult => {
-          const related = collected.products.filter((_, index) => finalDecisions[index].related);
-          const unrelated = collected.products.filter((_, index) => !finalDecisions[index].related);
-          return {
-            minority: buildMinorityResult(collected.products, finalDecisions),
-            relatedGroups: groupProductsBySource(related), unrelatedGroups: groupProductsBySource(unrelated),
-            relatedCount: related.length, unrelatedCount: unrelated.length, reviewInput: input,
-            note: `${collected.products.length} unique product${collected.products.length === 1 ? "" : "s"} checked across ${urls.length} URL${urls.length === 1 ? "" : "s"}.`
-              + (collected.warnings.length ? ` ${collected.warnings.join(" ")}` : ""),
-          };
-        };
-        setResultView(present(decisions));
-        const verified = await automaticallyVerifyResults(reviewer, input, automaticOptions);
-        if (runControllerRef.current !== controller) return;
-        setVerification(controller.signal.aborted ? markVerificationIncomplete(verified, "Request cancelled.") : verified);
-        if (!controller.signal.aborted) setResultView(present(decisions.map((decision, index) => ({
-          ...decision, related: verified.final.products[index].selected ?? decision.related,
-        }))));
+      let collected: Awaited<ReturnType<typeof collectProductsFromUrls>> | null = null;
+      let samples: Awaited<ReturnType<typeof collectProductsFromUrls>> | null = null;
+      let produced = false;
+      const collectProgress = (message: string, completed: number, total: number) => {
+        if (runControllerRef.current !== controller || controller.signal.aborted) return;
+        setProgressMessage(message);
+        setProgress(total > 0 ? Math.round((completed / total) * 30) : 0);
+      };
+      try {
+        collected = await collectProductsFromUrls(urls, controller.signal, collectProgress);
+      } catch (error) {
+        if (controller.signal.aborted) throw error;
+        setMatchingError(error instanceof Error ? error.message : "Could not collect a complete product list.");
       }
-      setProgress(100);
-      setProgressMessage("Done.");
+      if (controller.signal.aborted) throw new Error("Run cancelled.");
+      if (collected) {
+        // Bound each source before deduplicating products shared by collections.
+        samples = {
+          products: deduplicateProducts(groupProductsBySource(collected.products).flatMap((group) => group.products.slice(0, MAX_SAMPLE_PRODUCTS_PER_URL))),
+          warnings: [...collected.warnings, `Sample only: at most ${MAX_SAMPLE_PRODUCTS_PER_URL} collected products per submitted URL. Smart suggestions do not verify store-wide coverage or Shopify membership.`],
+        };
+        try {
+          setProgressMessage(`Classifying ${collected.products.length} unique products…`);
+          const decisions = await classifyProducts(
+            settings.apiBase, settings.apiKey, selectedModel, draft.trim(), collected.products, {
+              signal: controller.signal,
+              onProgress: (completed, total) => {
+                if (runControllerRef.current !== controller || controller.signal.aborted) return;
+                setProgressMessage(`Classifying products (${completed}/${total})…`);
+                setProgress(30 + Math.round((completed / Math.max(total, 1)) * 10));
+              },
+            },
+          );
+          if (controller.signal.aborted) throw new Error("Run cancelled.");
+          const input: ProductReviewInput = {
+            mode: "manual", draft: draft.trim(), sourceModel: selectedModel,
+            products: collected.products.map((product, index) => ({ product, selected: decisions[index].related })),
+          };
+          const present = (finalDecisions: ProductDecision[]): FinderResult => {
+            const related = collected.products.filter((_, index) => finalDecisions[index].related);
+            const unrelated = collected.products.filter((_, index) => !finalDecisions[index].related);
+            return {
+              minority: buildMinorityResult(collected.products, finalDecisions),
+              relatedGroups: groupProductsBySource(related), unrelatedGroups: groupProductsBySource(unrelated),
+              relatedCount: related.length, unrelatedCount: unrelated.length, reviewInput: input,
+              note: `${collected.products.length} unique product${collected.products.length === 1 ? "" : "s"} checked across ${urls.length} URL${urls.length === 1 ? "" : "s"}.`
+                + (collected.warnings.length ? ` ${collected.warnings.join(" ")}` : ""),
+            };
+          };
+          setResultView(present(decisions));
+          produced = true;
+          const verified = await automaticallyVerifyResults(reviewer, input, automaticOptions("Product matching", 42));
+          if (runControllerRef.current !== controller) return;
+          setVerification(controller.signal.aborted ? markVerificationIncomplete(verified, "Request cancelled.") : verified);
+          if (!controller.signal.aborted) setResultView(present(decisions.map((decision, index) => ({
+            ...decision, related: verified.final.products[index].selected ?? decision.related,
+          }))));
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+          setMatchingError(error instanceof Error ? error.message : "Product matching failed.");
+        }
+      }
+      if (controller.signal.aborted) throw new Error("Request cancelled.");
+      if (smartEligible) {
+        try {
+          samples ??= await collectProductsFromUrls(urls, controller.signal, collectProgress, { sampleOnly: true });
+          if (controller.signal.aborted) throw new Error("Request cancelled.");
+          setProgress(65);
+          setProgressMessage(`Suggesting smart conditions from ${samples.products.length} sampled products…`);
+          const suggestion = await suggestSmartCollection(
+            settings.apiBase, settings.apiKey, selectedModel, draft.trim(), urls,
+            samples.products, controller.signal, clientOptions,
+          );
+          if (controller.signal.aborted) throw new Error("Request cancelled.");
+          const initial: SmartResult = {
+            suggestion, options: clientOptions, samples: samples.products, warnings: samples.warnings,
+            reviewInput: createSmartReviewInput(draft.trim(), selectedModel, samples.products, suggestion, clientOptions),
+          };
+          setSmartResult(initial);
+          produced = true;
+          const verified = await automaticallyVerifyResults(reviewer, initial.reviewInput, {
+            ...automaticOptions("Smart collection", 78), smart: { suggestion, options: clientOptions, urls },
+          });
+          if (runControllerRef.current !== controller) return;
+          setSmartVerification(controller.signal.aborted ? markVerificationIncomplete(verified, "Request cancelled.") : verified);
+          if (!controller.signal.aborted) setSmartResult({ ...initial, suggestion: verified.suggestion ?? suggestion });
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+          setSmartError(error instanceof Error ? error.message : "Smart suggestions failed.");
+        }
+      }
+      if (controller.signal.aborted) throw new Error("Request cancelled.");
+      setProgress(produced ? 100 : 0);
+      setProgressMessage(produced ? "Done." : "No outputs completed.");
     } catch (error) {
       if (runControllerRef.current !== controller) return;
       setRunError(error instanceof Error ? error.message : "Could not complete the product check.");
+      if (controller.signal.aborted) setSmartError((previous) => previous || "Smart collection generation was cancelled or not completed.");
       setProgressMessage("");
       setProgress(0);
     } finally {
@@ -580,9 +573,9 @@ export function RelatedProductFinderTool() {
   };
 
   return (
-    <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(16rem,0.85fr)_minmax(0,1.9fr)_minmax(18rem,1fr)] xl:grid-rows-[max-content_1fr_auto]">
-      <Collapsible open={connectionOpen} onOpenChange={setConnectionExpanded} asChild>
-        <section aria-labelledby="api-settings-title" className="min-w-0 rounded-xl border border-border bg-card/50 p-4 sm:p-5 xl:col-start-1 xl:row-start-1">
+    <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
+      <aside aria-label="Connection settings and summary" className="grid min-w-0 items-start gap-4 sm:grid-cols-2 lg:grid-cols-1">
+        <section aria-labelledby="api-settings-title" className="min-w-0 rounded-xl border border-border bg-card/50 p-4">
           <div className="flex flex-wrap items-start gap-3">
             <div className="rounded-lg bg-primary/10 p-2 text-primary">
               {vaultState === "unlocked" ? <ShieldCheck className="h-5 w-5" /> : <LockKeyhole className="h-5 w-5" />}
@@ -607,12 +600,6 @@ export function RelatedProductFinderTool() {
             </div>
             {vaultState === "unlocked" && (
               <div className="ml-auto flex flex-wrap gap-2">
-                <CollapsibleTrigger asChild>
-                  <Button type="button" variant="outline" size="sm" disabled={connectionNeedsAttention || loadingModels || savingSelection}>
-                    <ChevronDown className={`mr-2 h-4 w-4 ${connectionOpen ? "rotate-180" : ""}`} aria-hidden="true" />
-                    {connectionOpen ? "Hide settings" : "Manage"}
-                  </Button>
-                </CollapsibleTrigger>
                 <Button type="button" variant="outline" size="sm" onClick={handleLock} disabled={loadingModels}>
                   <LockKeyhole className="mr-2 h-4 w-4" />
                   Lock
@@ -621,7 +608,7 @@ export function RelatedProductFinderTool() {
             )}
           </div>
 
-          <CollapsibleContent ref={connectionContentRef} className="mt-4">
+          <div className="mt-4">
             {vaultState === "checking" && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -687,7 +674,7 @@ export function RelatedProductFinderTool() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                <div className="grid gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="related-vault-passphrase">Vault passphrase</Label>
                     <Input
@@ -869,6 +856,19 @@ export function RelatedProductFinderTool() {
               </div>
             )}
 
+            <fieldset disabled={running || vaultState !== "unlocked" || loadingModels} className="mt-4 min-w-0 space-y-2 border-t border-border pt-4">
+              <Label htmlFor="related-verifier-model">Verifier model</Label>
+              <select id="related-verifier-model" value={verifierModel}
+                onChange={(event) => { setVerifierModel(event.target.value); invalidateResults(); }}
+                className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">Use selected matching model</option>
+                {verifierModel && !models.some((model) => model.id === verifierModel) && <option value={verifierModel}>Saved reviewer unavailable: {verifierModel}</option>}
+                {models.map((model) => <option key={model.id} value={model.id}>{model.id}</option>)}
+              </select>
+              <p className="text-xs text-muted-foreground">{effectiveVerifierModel === selectedModel
+                ? "The same model can repeat its own mistakes. You can choose another model from this provider."
+                : "A different model can still share the same mistakes."}</p>
+            </fieldset>
             {settingsError && (
               <p role="alert" className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {settingsError}
@@ -879,265 +879,211 @@ export function RelatedProductFinderTool() {
                 {modelError}
               </p>
             )}
-          </CollapsibleContent>
+          </div>
         </section>
-      </Collapsible>
+        <section aria-labelledby="related-summary-title" className="min-w-0 space-y-4 rounded-xl border border-primary/30 bg-card/50 p-4">
+          <h2 id="related-summary-title" className="font-semibold">Summary</h2>
+          {running ? <div className="space-y-3" aria-live="polite">
+            <p className="text-xs text-muted-foreground">{progressMessage}</p>
+            <Progress value={progress} className="h-2" />
+            <p className="text-xs text-muted-foreground">{progress}% complete</p>
+          </div> : (resultView || smartResult) ? <p role="status" className="text-sm font-medium">
+            {verificationWarning || smartVerificationWarning || (matchingError || smartError ? "Some outputs are unavailable — review the warnings." : resultView?.minority.kind === "summary" ? resultView.minority.text : "Check complete")}
+          </p> : <p className="text-xs text-muted-foreground">Connect your provider, choose a model, and run a check to produce all outputs.</p>}
+          <dl className="grid grid-cols-2 gap-3">
+            {[
+              ["Unique products", resultView ? resultView.relatedCount + resultView.unrelatedCount : "—"],
+              ["Smart samples", smartResult?.samples.length ?? "—"],
+              ["Related", resultView?.relatedCount ?? "—"],
+              ["Unrelated", resultView?.unrelatedCount ?? "—"],
+            ].map(([label, value]) => <div key={label} className="rounded-lg border border-border bg-background/40 p-3">
+              <dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 text-xl font-semibold">{value}</dd>
+            </div>)}
+          </dl>
+          {((verification && verification.status !== "complete") || (smartVerification && smartVerification.status !== "complete")) &&
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-300">AI review needs attention. Inspect the review details before using the output.</p>}
+          <p className="text-xs text-muted-foreground">Product relevance and smart title-rule matches are separate. Actual Shopify matches remain unverified.</p>
+          <Button type="button" variant="outline" size="sm" className="w-full hover:bg-muted hover:text-foreground" onClick={() => void handleCopy()} disabled={!output || running}>
+            {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}{copied ? "Copied" : "Copy result"}
+          </Button>
+          <p className="text-xs text-muted-foreground">Copy result preserves the smaller-group rule and includes source links.</p>
+        </section>
+      </aside>
 
-      <section aria-labelledby="product-check-title" className="flex min-w-0 flex-col rounded-xl border border-border bg-card/50 p-4 sm:p-5 xl:col-start-3 xl:row-span-2 xl:row-start-1 xl:h-full">
-        <div className="mb-5 flex items-start gap-3">
-          <div className="rounded-lg bg-primary/10 p-2 text-primary">
-            <PackageSearch className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 id="product-check-title" className="font-semibold">{mode === "smart" ? "Suggest Shopify collection conditions" : "Check products against a draft"}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {mode === "smart"
-                ? "Use the AM’s collection URLs and draft to suggest a compact set of conditions. Suggestions are for manual entry in Shopify, not automatic collection creation."
-                : "AI assesses products against your draft for manual selection. Only products from the submitted URLs are considered; review the shortlist before using it."}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-1 flex-col gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="related-output-mode">Output mode</Label>
-            <select
-              id="related-output-mode"
-              value={mode}
-              disabled={running}
-              onChange={(event) => {
-                setMode(event.target.value as FinderMode);
-                invalidateResults();
-              }}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="manual">Manual product matching</option>
-              <option value="smart">Smart collection suggestions</option>
-            </select>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {mode === "manual"
-                ? "Manual matching is the default for editorial relevance. AI decisions still need human review."
-                : "Smart mode suggests literal Shopify rules, not a verified product shortlist. Sample totals are not matching-product counts."}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="related-collection-urls">Collection links</Label>
-            <Textarea
-              id="related-collection-urls"
-              ref={urlsInputRef}
-              value={urlsInput}
-              onChange={(event) => {
-                setUrlsInput(event.target.value);
-                invalidateResults();
-              }}
-              placeholder={"https://store.example/collections/bill-acceptors\nhttps://store.example/collections/stackers"}
-              className="min-h-24 font-mono text-sm"
-              disabled={running}
-              data-lenisignore
-            />
-            <p className="text-xs text-muted-foreground">
-              {mode === "smart"
-                ? `Up to 10 URLs from one store. Reads at most ${MAX_SAMPLE_PRODUCTS_PER_URL} products from the first page of each URL, not the full collection. Blocked pages are reported; suggestions can still use the draft and URL paths.`
-                : "Separate multiple URLs with a new line or comma. Collections and individual product pages are supported (up to 10 URLs and 1,000 unique products per run)."}
-            </p>
+      <div className="min-w-0 space-y-4">
+        <section aria-labelledby="product-check-title" className="min-w-0 rounded-xl border border-border bg-card/50 p-4 sm:p-5">
+          <div className="mb-5 flex items-start gap-3">
+            <div className="rounded-lg bg-primary/10 p-2 text-primary">
+              <PackageSearch className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 id="product-check-title" className="font-semibold">Check products against a draft</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Match products and suggest smart collection conditions in one run. Both outputs receive automatic AI review, which adds provider requests.
+              </p>
+            </div>
           </div>
 
-          {mode === "smart" && (
-            <SmartCollectionSettings
-              settings={smartSettings}
-              disabled={running}
-              onChange={(settings) => {
-                setSmartSettings(settings);
-                invalidateResults();
-              }}
-            />
-          )}
-
-          <fieldset disabled={running} className="min-w-0 space-y-3 rounded-lg border border-border p-3">
-            <legend className="px-1 text-sm font-medium">Automatic AI verification</legend>
-            <p className="text-xs leading-relaxed text-muted-foreground">{AUTOMATIC_VERIFICATION_NOTICE}</p>
-            <Label htmlFor="related-verifier-model">Verifier model</Label>
-            <select
-              id="related-verifier-model"
-              value={verifierModel}
-              onChange={(event) => {
-                setVerifierModel(event.target.value);
-                invalidateResults();
-              }}
-              disabled={running || vaultState !== "unlocked" || loadingModels}
-              className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">Use selected matching model</option>
-              {verifierModel && !models.some((model) => model.id === verifierModel) && <option value={verifierModel}>Saved reviewer unavailable: {verifierModel}</option>}
-              {models.map((model) => <option key={model.id} value={model.id}>{model.id}</option>)}
-            </select>
-            <p className="text-xs text-muted-foreground">{effectiveVerifierModel === selectedModel
-              ? "The same model can repeat its own mistakes. You can choose another model from this provider."
-              : "A different model can still share the same mistakes."}</p>
-          </fieldset>
-
-          <div className="flex flex-1 flex-col gap-2">
-            <Label htmlFor="related-draft">Draft content</Label>
-            <Textarea
-              id="related-draft"
-              value={draft}
-              onChange={(event) => {
-                setDraft(event.target.value);
-                invalidateResults();
-              }}
-              placeholder="Paste the complete draft you want to match products against…"
-              className="min-h-80 flex-1 text-sm"
-              disabled={running}
-              data-lenisignore
-            />
-          </div>
-
-          {runError && (
-            <Alert variant="destructive" role="alert">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>{runError}</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              onClick={() => void handleRun()}
-              disabled={running || loadingModels || vaultState !== "unlocked" || !selectedModel || !selectedModelIsAvailable || !verifierModelIsAvailable || savingSelection}
-              className="flex-1 text-black"
-            >
-              {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageSearch className="mr-2 h-4 w-4" />}
-              {mode === "smart"
-                ? running ? "Generating suggestions…" : "Suggest smart conditions"
-                : running ? "Checking products…" : "Find related products"}
-            </Button>
-            {running && (
+          <div className="space-y-4">
+            <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.8fr)]">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="related-collection-urls">Collection links</Label>
+                <Textarea
+                  id="related-collection-urls"
+                  ref={urlsInputRef}
+                  value={urlsInput}
+                  onChange={(event) => {
+                    setUrlsInput(event.target.value);
+                    invalidateResults();
+                  }}
+                  placeholder={"https://store.example/collections/bill-acceptors\nhttps://store.example/collections/stackers"}
+                  className="min-h-48 font-mono text-sm"
+                  disabled={running}
+                  data-lenisignore
+                />
+                <p className="text-xs text-muted-foreground">
+                  Separate URLs with a new line or comma. Up to 10 URLs and 1,000 unique products. Smart suggestions require one store and use up to {MAX_SAMPLE_PRODUCTS_PER_URL} collected products per URL.
+                </p>
+              </div>
+              <div className="flex flex-1 flex-col gap-2">
+                <Label htmlFor="related-draft">Draft content</Label>
+                <Textarea
+                  id="related-draft"
+                  value={draft}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    invalidateResults();
+                  }}
+                  placeholder="Paste the complete draft you want to match products against…"
+                  className="min-h-48 flex-1 text-sm"
+                  disabled={running}
+                  data-lenisignore
+                />
+              </div>
+            </div>
+            <details className="rounded-lg border border-border p-3">
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Smart collection settings</summary>
+              <div className="mt-3">
+                <SmartCollectionSettings
+                  settings={smartSettings}
+                  disabled={running}
+                  onChange={(settings) => { setSmartSettings(settings); invalidateResults(); }}
+                />
+              </div>
+            </details>
+            {runError && (
+              <Alert variant="destructive" role="alert">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{runError}</AlertDescription>
+              </Alert>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => void handleRun()}
+                disabled={running || loadingModels || vaultState !== "unlocked" || !selectedModel || !selectedModelIsAvailable || !verifierModelIsAvailable || savingSelection}
+                className="flex-1 text-black"
+              >
+                {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageSearch className="mr-2 h-4 w-4" />}
+                {running ? "Checking products…" : "Run check"}
+              </Button>
+              {running && (
+                <Button type="button" variant="outline" onClick={() => runControllerRef.current?.abort()}>
+                  Cancel
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => runControllerRef.current?.abort()}
+                onClick={handleNewCheck}
+                disabled={running || (!urlsInput && !draft && !resultView && !smartResult && !runError && smartSettings === DEFAULT_SMART_COLLECTION_OPTIONS)}
               >
-                Cancel
+                New check
               </Button>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleNewCheck}
-              disabled={running || (!urlsInput && !draft && !resultView && !smartResult && !runError && smartSettings === DEFAULT_SMART_COLLECTION_OPTIONS)}
-            >
-              New check
-            </Button>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <div className="grid min-w-0 content-start gap-4 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:h-full">
-        {mode === "smart" && <SmartCollectionConditions suggestion={smartResult?.suggestion || null} options={smartResult?.options} />}
-        {mode === "smart" && smartResult && smartResult.samples.length === 0 && (
-          <Alert role="status">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>No product samples were readable. These suggestions use only the draft and URL paths; no product preview is available.</AlertDescription>
-          </Alert>
-        )}
-        {mode === "smart" && <p className="text-xs leading-relaxed text-muted-foreground">Title-only sample preview: category, status, stock and editorial relevance are not evaluated. Counts below are sample counts, not collection totals.</p>}
-        <ProductResultsPanel
-          id="related-products-title"
-          title={mode === "smart" ? "Samples passing title rules" : "Related Products"}
-          groups={titlePreview ? groupProductsBySource(titlePreview.passed) : resultView?.relatedGroups || []}
-          count={titlePreview ? titlePreview.evaluated ? titlePreview.passed.length : null : resultView?.relatedCount ?? 0}
-          hasResult={Boolean(resultView || smartResult)}
-          running={running}
-          sampleOnly={mode === "smart"}
-          emptyMessage={titlePreview && !titlePreview.evaluated ? NO_TITLE_RULES_NOTICE : undefined}
-        />
-        <ProductResultsPanel
-          id="unrelated-products-title"
-          title={mode === "smart" ? "Samples not matching title rules" : "Unrelated Products"}
-          groups={titlePreview ? groupProductsBySource(titlePreview.excluded) : resultView?.unrelatedGroups || []}
-          count={titlePreview ? titlePreview.evaluated ? titlePreview.excluded.length : null : resultView?.unrelatedCount ?? 0}
-          hasResult={Boolean(resultView || smartResult)}
-          running={running}
-          sampleOnly={mode === "smart"}
-          emptyMessage={titlePreview && !titlePreview.evaluated ? NO_TITLE_RULES_NOTICE : undefined}
-        />
-        {reviewInput && (
-          <ProductResultVerifier
-            input={reviewInput}
-            report={verification}
-          />
+        <section aria-labelledby="related-final-title" className="min-w-0 space-y-3">
+          <header className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="related-final-title" className="text-sm font-semibold">Final outputs</h2>
+            <CopyButton text={combinedOutput} variant="outline" size="sm" className="hover:bg-muted hover:text-foreground"
+              disabled={running || !combinedOutput}>Copy all final outputs</CopyButton>
+          </header>
+          {matchingError && (
+            <Alert variant="destructive" role="alert">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>Product matching: {matchingError}</AlertDescription>
+            </Alert>
+          )}
+          <div id="related-final-outputs" className="grid min-w-0 items-stretch gap-4 md:grid-cols-2 min-[1440px]:grid-cols-3">
+            <div className="min-w-0 md:col-span-2 min-[1440px]:col-span-1">
+              <SmartCollectionConditions
+                suggestion={smartVerification ? smartResult?.suggestion || null : null}
+                options={smartResult?.options}
+                running={running}
+                warning={smartVerificationWarning}
+                error={smartError || (smartResult && smartResult.samples.length === 0 ? "No product samples were readable. These suggestions use only the draft and URL paths; no product preview is available." : "")}
+              />
+            </div>
+            <ProductResultsPanel
+              id="related-products-title"
+              title="Related Products"
+              groups={verification ? resultView?.relatedGroups || [] : []}
+              count={verification ? resultView?.relatedCount ?? 0 : 0}
+              hasResult={Boolean(resultView && verification)}
+              running={running}
+              warning={verificationWarning}
+            />
+            <ProductResultsPanel
+              id="unrelated-products-title"
+              title="Unrelated Products"
+              groups={verification ? resultView?.unrelatedGroups || [] : []}
+              count={verification ? resultView?.unrelatedCount ?? 0 : 0}
+              hasResult={Boolean(resultView && verification)}
+              running={running}
+              warning={verificationWarning}
+            />
+          </div>
+        </section>
+        {(reviewInput || smartResult) && (
+          <details className="min-w-0 rounded-xl border border-border bg-card/50 p-4">
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Reasons, sources &amp; initial output</summary>
+            <div className="mt-4 grid min-w-0 gap-4">
+              <p className="text-xs text-muted-foreground">{AUTOMATIC_VERIFICATION_NOTICE}</p>
+              {resultView && <p className="text-xs text-muted-foreground">{resultView.note}</p>}
+              {reviewInput && <ProductResultVerifier input={reviewInput} report={verification} id="manual-verifier-title" title="Product matching review" />}
+              {smartResult && (
+                <>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {smartSummary.map((row) => (
+                      <div key={row.label} className="rounded-lg border border-border p-3">
+                        <dt className="text-xs text-muted-foreground">{row.label}</dt>
+                        <dd className="mt-1 text-sm font-medium">{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  {!titlePreview?.evaluated && <p className="text-xs text-muted-foreground">{NO_TITLE_RULES_NOTICE}</p>}
+                  <ul className="space-y-2 text-xs text-muted-foreground">
+                    {smartResult.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
+                  </ul>
+                  <ProductResultVerifier input={smartResult.reviewInput} report={smartVerification} id="smart-verifier-title" title="Smart collection review" />
+                </>
+              )}
+            </div>
+          </details>
         )}
       </div>
 
-      <section aria-labelledby="related-summary-title" className="flex min-h-80 min-w-0 flex-col rounded-xl border border-primary/30 bg-card/50 p-4 xl:col-start-1 xl:row-start-2">
-        <h2 id="related-summary-title" className="mb-4 font-semibold">Summary</h2>
-        {running ? (
-          <div className="space-y-3" aria-live="polite">
-            <p className="text-sm text-muted-foreground">{progressMessage}</p>
-            <Progress value={progress} className="h-2" />
-            <p className="text-xs text-muted-foreground">{progress}% complete</p>
-          </div>
-        ) : smartResult ? (
-          <div className="space-y-4">
-            <p role="status" className="rounded-lg border border-border bg-background/60 p-3 font-semibold">{verificationWarning || "Suggestions ready — review in Shopify"}</p>
-            <dl className="space-y-3">
-              {smartSummary.map((row) => (
-                <div key={row.label} className="rounded-lg border border-border bg-background/40 p-3">
-                  <dt className="text-xs text-muted-foreground">{row.label}</dt>
-                  <dd className="mt-1 text-lg font-semibold">{row.value}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="text-xs leading-relaxed text-muted-foreground">Sampled products are candidates, not confirmed recommendations. Title matches do not establish editorial relevance or Shopify membership.</p>
-            <ul className="space-y-3 break-words text-xs leading-relaxed text-muted-foreground">
-              {smartResult.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
-            </ul>
-          </div>
-        ) : resultView ? (
-          <div className="space-y-5">
-            <p role="status" className="rounded-lg border border-border bg-background/60 p-3 font-semibold">
-              {verificationWarning || (resultView.minority.kind === "summary" ? resultView.minority.text : "Check complete")}
-            </p>
-            <dl className="grid grid-cols-2 gap-3">
-              <div className="col-span-2 rounded-lg border border-border bg-background/40 p-3">
-                <dt className="text-xs text-muted-foreground">Unique products</dt>
-                <dd className="mt-1 text-2xl font-semibold">{resultView.relatedCount + resultView.unrelatedCount}</dd>
-              </div>
-              <div className="rounded-lg border border-border bg-background/40 p-3">
-                <dt className="text-xs text-muted-foreground">Related</dt>
-                <dd className="mt-1 text-xl font-semibold">{resultView.relatedCount}</dd>
-              </div>
-              <div className="rounded-lg border border-border bg-background/40 p-3">
-                <dt className="text-xs text-muted-foreground">Unrelated</dt>
-                <dd className="mt-1 text-xl font-semibold">{resultView.unrelatedCount}</dd>
-              </div>
-            </dl>
-            <p className="break-words text-xs leading-relaxed text-muted-foreground">{resultView.note}</p>
-            {resultView.minority.kind === "groups" && (
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Copy result keeps the smaller-group rule and its fewer-than-ten unrelated products exception. Both complete groups are visible alongside this summary.
-              </p>
-            )}
-          </div>
-        ) : (
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            {runError ? "The check did not finish. Review the error and try again." : mode === "smart" ? "Connect your provider, choose a model, and generate suggested conditions. First-page samples are not a complete product audit." : "Connect your provider, choose a model, and check a draft to see the product breakdown here."}
-          </p>
-        )}
-        <div className="mt-auto pt-6">
-          <Button type="button" variant="outline" size="sm" className="w-full hover:bg-muted hover:text-foreground" onClick={() => void handleCopy()} disabled={!output || running}>
-            {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
-            {copied ? "Copied" : mode === "smart" ? "Copy conditions" : "Copy result"}
-          </Button>
-        </div>
-      </section>
-
-      <Alert className="xl:col-span-3">
-        <ShieldCheck className="h-4 w-4" />
-        <AlertDescription className="text-xs leading-relaxed">
-          The API key is kept in memory while unlocked and stored only as AES-GCM-encrypted data in this browser’s localStorage. It is sent only to the API base URL you choose, never to the page-fetch service. Local development uses the Vite dev server; the deployed version uses the site’s Cloudflare Worker to fetch public pages, which the Worker can see. Use a unique strong vault passphrase; a compromised browser or same-page script can still access a key while unlocked.
-        </AlertDescription>
-      </Alert>
+      <details className="rounded-lg border border-border p-4 lg:col-span-2">
+        <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Privacy &amp; API key security</summary>
+        <Alert className="mt-3">
+          <ShieldCheck className="h-4 w-4" />
+          <AlertDescription className="text-xs leading-relaxed">
+            The API key is kept in memory while unlocked and stored only as AES-GCM-encrypted data in this browser’s localStorage. It is sent only to the API base URL you choose, never to the page-fetch service. Local development uses the Vite dev server; the deployed version uses the site’s Cloudflare Worker to fetch public pages, which the Worker can see. Use a unique strong vault passphrase; a compromised browser or same-page script can still access a key while unlocked.
+          </AlertDescription>
+        </Alert>
+      </details>
     </div>
   );
 }

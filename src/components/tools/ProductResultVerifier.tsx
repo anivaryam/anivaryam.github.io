@@ -3,10 +3,12 @@ import { getReviewSummary, getVerificationLabel, type AutomaticVerificationRepor
 import type { ProductReviewInput } from "@/lib/related-product/types";
 
 export function ProductResultVerifier({
-  input, report,
+  input, report, id = "product-verifier-title", title = "AI result verifier",
 }: {
   input: ProductReviewInput;
   report: AutomaticVerificationReport | null;
+  id?: string;
+  title?: string;
 }) {
   const review = report?.review;
   const final = report?.final ?? input;
@@ -17,8 +19,8 @@ export function ProductResultVerifier({
       : selected ? "related" : "unrelated";
 
   return (
-    <section aria-labelledby="product-verifier-title" aria-busy={!report} className="min-w-0 space-y-4 rounded-xl border border-border bg-card/50 p-4">
-      <h2 id="product-verifier-title" className="font-semibold">AI result verifier</h2>
+    <section aria-labelledby={id} aria-busy={!report} className="min-w-0 space-y-4 rounded-xl border border-border bg-card/50 p-4">
+      <h2 id={id} className="font-semibold">{title}</h2>
       <p className="text-xs leading-relaxed text-muted-foreground">
         Advisory review of all {input.products.length} {input.mode === "smart" ? "sampled" : "collected"} products against the draft, including matches and nonmatches.
         {" "}Rechecked corrections update the output automatically. AI cannot verify Shopify categories, status, inventory or store-wide counts.
