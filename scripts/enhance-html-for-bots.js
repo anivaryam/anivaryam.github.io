@@ -174,8 +174,7 @@ function getToolsMetadata() {
       'listicle-template': 'ListicleTemplate.tsx',
       'image-resizer': 'ImageResizer.tsx',
       'image-combiner': 'ImageCombiner.tsx',
-      'image-extractor': 'ImageExtractor.tsx',
-      'related-product-finder': 'RelatedProductFinder.tsx'
+      'image-extractor': 'ImageExtractor.tsx'
     };
     
     // Read Tools.tsx to get paths
@@ -608,8 +607,7 @@ function extractToolIntroParagraphs(toolId) {
       'listicle-template': 'ListicleTemplate.tsx',
       'image-resizer': 'ImageResizer.tsx',
       'image-combiner': 'ImageCombiner.tsx',
-      'image-extractor': 'ImageExtractor.tsx',
-      'related-product-finder': 'RelatedProductFinder.tsx'
+      'image-extractor': 'ImageExtractor.tsx'
     };
     
     const componentFile = toolFileMap[toolId];

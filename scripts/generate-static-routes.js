@@ -87,7 +87,6 @@ const routes = [
   '/tools/random-universe-cipher',
   '/tools/listicle-template',
   '/tools/image-extractor',
-  '/tools/related-product-finder',
   '/downloads',
   '/blogs',
   '/news',

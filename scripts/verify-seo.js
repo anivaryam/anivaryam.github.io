@@ -74,12 +74,18 @@ console.log('🔍 Verifying SEO meta tags...\n');
 
 const homepageOk = verifyRoute('/');
 const toolsOk = verifyRoute('/tools');
+const removedRoute = '/tools/related-product-finder';
+const removedToolOk =
+  !fs.existsSync(path.join(distDir, removedRoute.slice(1))) &&
+  !fs.readFileSync(path.join(distDir, 'sitemap.xml'), 'utf-8').includes(removedRoute) &&
+  !fs.readFileSync(path.join(__dirname, '..', 'src', 'App.tsx'), 'utf-8').includes(removedRoute);
 
 console.log(`\n📊 Summary:`);
 console.log(`  Homepage: ${homepageOk ? '✅ PASS' : '❌ FAIL'}`);
 console.log(`  Tools: ${toolsOk ? '✅ PASS' : '❌ FAIL'}`);
+console.log(`  Removed tool route and sitemap: ${removedToolOk ? '✅ PASS' : '❌ FAIL'}`);
 
-if (homepageOk && toolsOk) {
+if (homepageOk && toolsOk && removedToolOk) {
   console.log(`\n✅ All checks passed! Files are ready for deployment.`);
   process.exit(0);
 } else {
