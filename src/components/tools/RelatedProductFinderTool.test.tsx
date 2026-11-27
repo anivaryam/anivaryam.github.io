@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RelatedProductFinderTool } from "./RelatedProductFinderTool";
 import { DEFAULT_API_BASE } from "@/lib/related-product/api";
@@ -36,6 +37,12 @@ const sourceUrl = "https://shop.example/collections/polishing-kits";
 const productNames = ["Polishing Cloth", "Paint Polish", "Heavy Metal Polish"];
 const productHandles = ["polishing-cloth", "paint-polish", "heavy-metal-polish"];
 
+function completionResponse(payload: unknown) {
+  return new Response(JSON.stringify({
+    choices: [{ message: { content: JSON.stringify(payload) } }],
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
 function mockFinderFetch(related: boolean[]) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -59,17 +66,19 @@ function mockFinderFetch(related: boolean[]) {
     if (url.endsWith("/chat/completions")) {
       const request = JSON.parse(String(init?.body));
       const inputProducts = JSON.parse(request.messages[1].content).products;
-      return new Response(JSON.stringify({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              classifications: inputProducts.map((product: { id: string }, index: number) => ({
-                id: product.id, related: related[index],
-              })),
-            }),
-          },
-        }],
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (request.messages[0].content.startsWith("Act as an advisory verifier")) {
+        return completionResponse({
+          assessments: inputProducts.map((product: { id: string; selected: boolean | null }, index: number) => ({
+            id: product.id, related: product.selected ?? related[index], reason: "Supplied details support this decision.",
+          })),
+          warnings: [], needsCorrection: false,
+        });
+      }
+      return completionResponse({
+        classifications: inputProducts.map((product: { id: string }, index: number) => ({
+          id: product.id, related: related[index],
+        })),
+      });
     }
     throw new Error(`Unexpected request: ${url}`);
   });
@@ -87,9 +96,10 @@ function mockSmartFinderFetch(payload: unknown = smartConditions, blocked = fals
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/chat/completions")) {
-      return new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify(payload) } }],
-      }), { status: 200 });
+      if (JSON.parse(String(init?.body)).messages[0].content.startsWith("Act as an advisory verifier")) {
+        return manualFetch(input, init);
+      }
+      return completionResponse(payload);
     }
     if (blocked && url.startsWith("/__related-product/page")) return new Response("blocked", { status: 429 });
     return manualFetch(input, init);
@@ -119,7 +129,7 @@ describe("RelatedProductFinderTool model selection", () => {
     expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.getByText("Connected")).toBeTruthy();
     expect(screen.getByText("OpenAI")).toBeTruthy();
-    expect(screen.getByText("model-a")).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "LLM connection" })).getByText("model-a")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Lock" })).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByLabelText("Collection links"));
     expect((await providerStorage.unlockProviderSettings("a-long-test-passphrase")).selectedModel).toBe("model-a");
@@ -384,7 +394,7 @@ describe("RelatedProductFinderTool smart collection suggestions", () => {
     expect(summary.getByText(/Sample only:/)).toBeTruthy();
     expect(screen.getByText(/Counts below are sample counts/)).toBeTruthy();
     const completions = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/chat/completions"));
-    expect(completions).toHaveLength(1);
+    expect(completions).toHaveLength(2);
     expect(JSON.parse(JSON.parse(String(completions[0][1]?.body)).messages[1].content).samples).toHaveLength(3);
     const copyButton = summary.getByRole("button", { name: "Copy conditions" });
     expect(copyButton.className).toContain("hover:bg-muted");
@@ -419,7 +429,8 @@ describe("RelatedProductFinderTool smart collection suggestions", () => {
     const summary = within(screen.getByRole("region", { name: "Summary" }));
     expect(summary.getByText("Products sampled").nextElementSibling?.textContent).toBe("0");
     expect(summary.getByText(/No sample from/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Verify results with AI" }).hasAttribute("disabled")).toBe(true);
+    expect(await within(screen.getByRole("region", { name: "AI result verifier" })).findByText("AI verification incomplete — original output retained.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Verify results with AI" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "New check" }));
     expect(screen.queryByRole("table", { name: "Suggested Shopify conditions" })).toBeNull();
     expect((screen.getByLabelText("Output mode") as HTMLSelectElement).value).toBe("smart");
@@ -606,89 +617,210 @@ describe("RelatedProductFinderTool smart collection suggestions", () => {
 function mockVerifiedFinderFetch(mode: "manual" | "smart") {
   const base = mode === "manual" ? mockFinderFetch([true, false, false]) : mockSmartFinderFetch();
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/models")) {
+      return new Response(JSON.stringify({ data: [{ id: "model-a" }, { id: "model-b" }] }), { status: 200 });
+    }
     if (String(input).endsWith("/chat/completions")) {
       const body = JSON.parse(String(init?.body));
       if (body.messages[0].content.startsWith("Act as an advisory verifier")) {
-        return new Response(JSON.stringify({
-          choices: [{ message: { content: JSON.stringify({
-            assessments: [
-              { id: "product-3", related: null, reason: "Not enough information about intended use." },
-              { id: "product-2", related: true, reason: "This polish is a relevant supporting supply." },
-              { id: "product-1", related: false, reason: "This cloth does not fit the draft's specified use." },
-            ],
-            warnings: ["Review broad title terms against the draft."],
-          }) } }],
-        }), { status: 200 });
+        return completionResponse({
+          assessments: [
+            { id: "product-3", related: null, reason: "Not enough information about intended use." },
+            { id: "product-2", related: true, reason: "This polish is a relevant supporting supply." },
+            { id: "product-1", related: false, reason: "This cloth does not fit the draft's specified use." },
+          ],
+          warnings: [], needsCorrection: false,
+        });
+      }
+      if (JSON.parse(body.messages[1].content).feedback) {
+        return completionResponse(correctedSmartConditions);
       }
     }
     return base(input, init);
   });
 }
 
+const correctedSmartConditions = {
+  ...smartConditions, titleIncludes: [{ match: "any", values: ["Paint Polish"] }],
+};
+
+async function prepareAutomaticRun(mode: "manual" | "smart") {
+  fireEvent.click(await connectProvider());
+  await screen.findByRole("button", { name: "Manage" });
+  if (mode === "smart") fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "smart" } });
+  fireEvent.change(screen.getByLabelText("Collection links"), { target: { value: sourceUrl } });
+  fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "A draft about polishing supplies." } });
+  return {
+    run: screen.getByRole("button", { name: mode === "smart" ? "Suggest smart conditions" : "Find related products" }),
+    summary: within(screen.getByRole("region", { name: "Summary" })),
+  };
+}
+
 describe("RelatedProductFinderTool AI verification", () => {
-  it.each(["manual", "smart"] as const)("reviews %s results only on request without changing their panels or copy", async (mode) => {
+  it.each(["manual", "smart"] as const)("automatically corrects %s output and copy after one recheck, even in Strict Mode", async (mode) => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText }, userAgent: navigator.userAgent, platform: navigator.platform });
     const fetchMock = mockVerifiedFinderFetch(mode);
     vi.stubGlobal("fetch", fetchMock);
-    render(<RelatedProductFinderTool />);
-    fireEvent.click(await connectProvider());
-    await screen.findByRole("button", { name: "Manage" });
-    if (mode === "smart") fireEvent.change(screen.getByLabelText("Output mode"), { target: { value: "smart" } });
-    fireEvent.change(screen.getByLabelText("Collection links"), { target: { value: sourceUrl } });
-    fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "A draft about polishing supplies." } });
-    fireEvent.click(screen.getByRole("button", { name: mode === "smart" ? "Suggest smart conditions" : "Find related products" }));
-    const summary = within(screen.getByRole("region", { name: "Summary" }));
+    render(<StrictMode><RelatedProductFinderTool /></StrictMode>);
+    const { run, summary } = await prepareAutomaticRun(mode);
+    expect(screen.getByText(/One correction and one recheck may add provider requests/)).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/chat/completions"))).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("Verifier model"), { target: { value: "model-b" } });
+    expect(screen.getByText(/different model can still share/)).toBeTruthy();
+    fireEvent.click(run);
+    fireEvent.click(run);
+    const reviewPanel = within(await screen.findByRole("region", { name: "AI result verifier" }));
+    await reviewPanel.findByText("AI review needs attention — review flagged items.");
     await summary.findByRole("status");
-    const reviewPanel = within(screen.getByRole("region", { name: "AI result verifier" }));
-    expect(reviewPanel.getByText(/same model that generated/)).toBeTruthy();
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/chat/completions"))).toHaveLength(1);
-    fireEvent.click(summary.getByRole("button", { name: mode === "smart" ? "Copy conditions" : "Copy result" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    const originalCopy = writeText.mock.calls[0][0];
-    fireEvent.click(reviewPanel.getByRole("button", { name: "Verify results with AI" }));
-    expect(await reviewPanel.findByText("AI review complete — human review still required.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Verify results with AI" })).toBeNull();
+    expect(reviewPanel.getByText(`Applied changes (${mode === "smart" ? 1 : 2})`)).toBeTruthy();
     expect(reviewPanel.getByText("Products reviewed").nextElementSibling?.textContent).toBe("3");
-    expect(reviewPanel.getByText("Potential mismatches").nextElementSibling?.textContent).toBe("2");
-    expect(reviewPanel.getByText("Uncertain", { selector: "dt" }).nextElementSibling?.textContent).toBe("1");
-    expect(reviewPanel.getByText("Potential false positive")).toBeTruthy();
-    expect(reviewPanel.getByText("Potential missed product")).toBeTruthy();
+    expect(reviewPanel.getByText("Remaining mismatches").nextElementSibling?.textContent).toBe("0");
+    expect(reviewPanel.getByText("Uncertain / conflicting", { selector: "dt" }).nextElementSibling?.textContent).toBe("1");
     expect(reviewPanel.getByText("This polish is a relevant supporting supply.")).toBeTruthy();
     const panel = within(screen.getByRole("region", { name: mode === "smart" ? "Samples passing title rules" : "Related Products" }));
-    expect(panel.getByText("Polishing Cloth")).toBeTruthy();
-    expect(panel.queryByText("Paint Polish")).toBeNull();
+    expect(panel.getByText("Paint Polish")).toBeTruthy();
+    expect(panel.queryByText("Polishing Cloth")).toBeNull();
     if (mode === "smart") {
       expect(summary.getByText("Actual Shopify matches").nextElementSibling?.textContent).toContain("Unverified");
+      const table = within(screen.getByRole("table", { name: "Suggested Shopify conditions" }));
+      expect(table.getByRole("cell", { name: "Paint Polish" })).toBeTruthy();
+      expect(table.queryByRole("cell", { name: "Polishing" })).toBeNull();
     }
-    fireEvent.click(summary.getByRole("button", { name: "Copied" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
-    expect(writeText.mock.calls[1][0]).toBe(originalCopy);
+    fireEvent.click(summary.getByRole("button", { name: mode === "smart" ? "Copy conditions" : "Copy result" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toContain("AI review needs attention — review flagged items.");
+    if (mode === "smart") {
+      expect(writeText.mock.calls[0][0]).toContain(formatSmartCollectionSuggestion(parseSmartCollectionSuggestion(correctedSmartConditions)));
+    } else {
+      expect(writeText.mock.calls[0][0]).toContain(`Unrelated Product\n\nSubmitted URL: ${sourceUrl}\n- Polishing Cloth\n- Heavy Metal Polish`);
+    }
     const completions = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/chat/completions"));
+    expect(completions).toHaveLength(mode === "smart" ? 4 : 3);
+    expect(completions.map((call) => JSON.parse(String(call[1]?.body)).model))
+      .toEqual(mode === "smart" ? ["model-a", "model-b", "model-a", "model-b"] : ["model-a", "model-b", "model-b"]);
     const reviewData = JSON.parse(JSON.parse(String(completions[1][1]?.body)).messages[1].content);
     expect(reviewData.products.map((product: { selected: boolean }) => product.selected)).toEqual([true, false, false]);
+    const recheckData = JSON.parse(JSON.parse(String(completions.at(-1)![1]?.body)).messages[1].content);
+    expect(recheckData.products.map((product: { selected: boolean }) => product.selected)).toEqual([false, true, false]);
     fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "Changed draft" } });
     expect(screen.queryByRole("region", { name: "AI result verifier" })).toBeNull();
     expect(summary.queryByRole("status")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "New check" }));
+    expect((screen.getByLabelText("Verifier model") as HTMLSelectElement).value).toBe("");
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/chat/completions"))).toHaveLength(completions.length);
   });
 
-  it("keeps original results usable when the reviewer fails and lets the user retry", async () => {
+  it.each(["manual", "smart"] as const)("rolls back %s corrections if the recheck fails, with no automatic retry", async (mode) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText }, userAgent: navigator.userAgent, platform: navigator.platform });
+    const normalFetch = mockVerifiedFinderFetch(mode);
+    let reviews = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/chat/completions")
+        && JSON.parse(String(init?.body)).messages[0].content.startsWith("Act as an advisory verifier")
+        && ++reviews === 2) {
+        return Promise.resolve(completionResponse({ assessments: [], warnings: [] }));
+      }
+      return normalFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RelatedProductFinderTool />);
+    const { run, summary } = await prepareAutomaticRun(mode);
+    fireEvent.click(run);
+    await within(await screen.findByRole("region", { name: "AI result verifier" })).findByText("AI verification incomplete — original output retained.");
+    await summary.findByRole("status");
+    const panel = within(screen.getByRole("region", { name: mode === "smart" ? "Samples passing title rules" : "Related Products" }));
+    expect(panel.getByText("Polishing Cloth")).toBeTruthy();
+    expect(panel.queryByText("Paint Polish")).toBeNull();
+    expect(screen.getByText("No automatic changes were applied.")).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "AI product assessments" })).toBeNull();
+    expect(within(screen.getByRole("region", { name: "AI result verifier" })).getByRole("alert").textContent).toContain("invalid review");
+    expect(reviews).toBe(2);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/chat/completions"))).toHaveLength(mode === "smart" ? 4 : 3);
+    fireEvent.click(summary.getByRole("button", { name: mode === "smart" ? "Copy conditions" : "Copy result" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toContain("AI verification incomplete — original output retained.");
+    if (mode === "smart") expect(writeText.mock.calls[0][0]).toContain(formatSmartCollectionSuggestion(parseSmartCollectionSuggestion(smartConditions)));
+    else expect(writeText.mock.calls[0][0]).toContain(`Unrelated Product\n\nSubmitted URL: ${sourceUrl}\n- Paint Polish\n- Heavy Metal Polish`);
+    fireEvent.click(run);
+    await within(await screen.findByRole("region", { name: "AI result verifier" })).findByText("AI review needs attention — review flagged items.");
+    expect(panel.getByText("Paint Polish")).toBeTruthy();
+    expect(screen.queryByText("AI verification incomplete — original output retained.")).toBeNull();
+  });
+
+  it.each([
+    { mode: "manual", action: "cancel" }, { mode: "smart", action: "cancel" },
+    { mode: "manual", action: "lock" }, { mode: "smart", action: "lock" },
+    { mode: "manual", action: "unmount" }, { mode: "smart", action: "unmount" },
+  ] as const)("aborts $mode review on $action and ignores late results", async ({ mode, action }) => {
+    const normalFetch = mockVerifiedFinderFetch(mode);
+    let finish!: (response: Response) => void;
+    let signal: AbortSignal | undefined;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/chat/completions")
+        && JSON.parse(String(init?.body)).messages[0].content.startsWith("Act as an advisory verifier")) {
+        signal = init?.signal as AbortSignal;
+        return new Promise<Response>((resolve) => { finish = resolve; });
+      }
+      return normalFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const view = render(<RelatedProductFinderTool />);
+    const { run, summary } = await prepareAutomaticRun(mode);
+    fireEvent.click(run);
+    await waitFor(() => expect(signal).toBeDefined());
+    for (const label of ["Collection links", "Draft content", "Output mode", "Verifier model"]) {
+      expect(screen.getByLabelText(label).hasAttribute("disabled")).toBe(true);
+    }
+    expect(summary.getByRole("button", { name: mode === "smart" ? "Copy conditions" : "Copy result" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "New check" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Manage" }));
+    expect(screen.getByRole("button", { name: "Refresh models" }).hasAttribute("disabled")).toBe(true);
+    for (const radio of screen.getAllByRole("radio")) expect(radio.hasAttribute("disabled")).toBe(true);
+    if (action === "cancel") fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    if (action === "lock") fireEvent.click(screen.getByRole("button", { name: "Lock" }));
+    if (action === "unmount") view.unmount();
+    expect(signal?.aborted).toBe(true);
+    // Deliberately ignore abort at the transport boundary; no late report may apply.
+    await act(async () => {
+      finish(completionResponse({
+        assessments: productNames.map((_, index) => ({ id: `product-${index + 1}`, related: true, reason: "Late result." })),
+        warnings: [], needsCorrection: false,
+      }));
+    });
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/chat/completions"))).toHaveLength(2);
+    if (action === "unmount") {
+      render(<RelatedProductFinderTool />);
+      await screen.findByLabelText("Unlock your saved settings");
+      expect(screen.queryByRole("region", { name: "AI result verifier" })).toBeNull();
+    } else {
+      expect(await within(screen.getByRole("region", { name: "AI result verifier" })).findByText("AI verification incomplete — original output retained.")).toBeTruthy();
+      expect(within(screen.getByRole("region", { name: "AI result verifier" })).getByRole("alert").textContent).toContain("Request cancelled.");
+      expect(screen.getByText("No automatic changes were applied.")).toBeTruthy();
+      const panel = within(screen.getByRole("region", { name: mode === "smart" ? "Samples passing title rules" : "Related Products" }));
+      expect(panel.getByText("Polishing Cloth")).toBeTruthy();
+      expect(panel.queryByText("Paint Polish")).toBeNull();
+      expect(summary.getByRole("button", { name: mode === "smart" ? "Copy conditions" : "Copy result" }).hasAttribute("disabled")).toBe(false);
+      if (action === "lock") expect(screen.getByLabelText("Unlock your saved settings")).toBeTruthy();
+    }
+  });
+
+  it("blocks an unavailable preselected reviewer until the user chooses an available model", async () => {
     const fetchMock = mockVerifiedFinderFetch("manual");
     vi.stubGlobal("fetch", fetchMock);
     render(<RelatedProductFinderTool />);
-    fireEvent.click(await connectProvider());
-    await screen.findByRole("button", { name: "Manage" });
-    fireEvent.change(screen.getByLabelText("Collection links"), { target: { value: sourceUrl } });
-    fireEvent.change(screen.getByLabelText("Draft content"), { target: { value: "Draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "Find related products" }));
-    const verifyButton = await screen.findByRole("button", { name: "Verify results with AI" });
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
-      choices: [{ message: { content: '{"assessments":[],"warnings":[]}' } }],
-    }), { status: 200 }));
-    fireEvent.click(verifyButton);
-    expect(await screen.findByText(/verifier returned an invalid review/)).toBeTruthy();
-    expect(within(screen.getByRole("region", { name: "Related Products" })).getByText("Polishing Cloth")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Copy result" }).hasAttribute("disabled")).toBe(false);
-    fireEvent.click(verifyButton);
-    expect(await screen.findByText("AI review complete — human review still required.")).toBeTruthy();
+    const { run } = await prepareAutomaticRun("manual");
+    fireEvent.change(screen.getByLabelText("Verifier model"), { target: { value: "model-b" } });
+    fireEvent.click(screen.getByRole("button", { name: "Manage" }));
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ data: [{ id: "model-a" }] }), { status: 200 }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh models" }));
+    await screen.findByRole("option", { name: "Saved reviewer unavailable: model-b" });
+    expect(run.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(run);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/chat/completions"))).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("Verifier model"), { target: { value: "" } });
+    expect(run.hasAttribute("disabled")).toBe(false);
   });
 });

@@ -55,4 +55,5 @@ export interface ProductReviewResult {
   model: string;
   assessments: ProductReviewAssessment[];
   warnings: string[];
+  needsCorrection: boolean;
 }

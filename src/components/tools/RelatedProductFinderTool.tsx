@@ -35,7 +35,8 @@ import {
   type SmartCollectionSuggestion,
 } from "@/lib/related-product/smart-collection";
 import { forgetProviderSettings, hasSavedProviderSettings, saveProviderSettings, unlockProviderSettings } from "@/lib/related-product/storage";
-import type { MinorityResult, ProductCandidate, ProductModel, ProductResultGroup, ProductReviewInput, SavedProviderSettings } from "@/lib/related-product/types";
+import { AUTOMATIC_VERIFICATION_NOTICE, automaticallyVerifyResults, createSmartReviewInput, getVerificationLabel, markVerificationIncomplete, type AutomaticVerificationReport } from "@/lib/related-product/verification";
+import type { MinorityResult, ProductCandidate, ProductDecision, ProductModel, ProductResultGroup, ProductReviewInput, SavedProviderSettings } from "@/lib/related-product/types";
 import {
   AlertTriangle,
   Check,
@@ -157,6 +158,8 @@ export function RelatedProductFinderTool() {
   const [runError, setRunError] = useState("");
   const [resultView, setResultView] = useState<FinderResult | null>(null);
   const [smartResult, setSmartResult] = useState<SmartResult | null>(null);
+  const [verifierModel, setVerifierModel] = useState("");
+  const [verification, setVerification] = useState<AutomaticVerificationReport | null>(null);
   const [copied, setCopied] = useState(false);
   const [forgetDialogOpen, setForgetDialogOpen] = useState(false);
   const [connectionExpanded, setConnectionExpanded] = useState(true);
@@ -176,12 +179,17 @@ export function RelatedProductFinderTool() {
       setSettingsError(error instanceof Error ? error.message : "Could not read browser storage.");
       setVaultState("setup");
     }
-    return () => runControllerRef.current?.abort();
+    return () => {
+      runControllerRef.current?.abort();
+      runControllerRef.current = null;
+    };
   }, []);
 
   const providerPreset = API_PRESETS.find((preset) => preset.url === apiBase);
   const presetValue = providerPreset?.url || "custom";
   const selectedModelIsAvailable = models.some((model) => model.id === selectedModel);
+  const effectiveVerifierModel = verifierModel || selectedModel;
+  const verifierModelIsAvailable = models.some((model) => model.id === effectiveVerifierModel);
   const providerName = providerPreset?.name
     || (vaultState === "unlocked" ? new URL(apiBase).host : "");
   const connectionNeedsAttention = vaultState !== "unlocked"
@@ -194,13 +202,18 @@ export function RelatedProductFinderTool() {
     { label: "Sampled titles not matching rules", value: titlePreview.evaluated ? titlePreview.excluded.length : "Not evaluated" },
     { label: "Actual Shopify matches", value: SHOPIFY_MATCH_COUNT_NOTICE },
   ] : [];
-  const output = smartResult
+  const resultOutput = smartResult
     ? `${formatSmartCollectionSuggestion(smartResult.suggestion, smartResult.options)}\n\n${smartSummary.map((row) => `${row.label}: ${row.value}`).join("\n")}\n\nSampling notes:\n${smartResult.warnings.map((warning) => `- ${warning}`).join("\n")}`
     : resultView ? formatMinorityResult(resultView.minority) : "";
+  const verificationWarning = verification && verification.status !== "complete" ? getVerificationLabel(verification.status) : "";
+  const output = resultOutput && verificationWarning
+    ? `${resultOutput}\n\n${verificationWarning}${verification?.message ? `\n${verification.message}` : ""}`
+    : resultOutput;
   const reviewInput = smartResult?.reviewInput ?? resultView?.reviewInput;
   const invalidateResults = () => {
     setResultView(null);
     setSmartResult(null);
+    setVerification(null);
     setRunError("");
     setProgress(0);
     setProgressMessage("");
@@ -343,7 +356,7 @@ export function RelatedProductFinderTool() {
   };
 
   const handleModelChange = (modelId: string) => {
-    if (!modelId || modelId === selectedModel) return;
+    if (running || !modelId || modelId === selectedModel) return;
     const current = settingsRef.current;
     const passphrase = passphraseRef.current;
     if (!current || !passphrase) {
@@ -376,9 +389,11 @@ export function RelatedProductFinderTool() {
   };
 
   const handleRun = async () => {
+    if (runControllerRef.current) return;
     setRunError("");
     setResultView(null);
     setSmartResult(null);
+    setVerification(null);
     setCopied(false);
 
     if (!urlsInput.trim()) {
@@ -391,6 +406,10 @@ export function RelatedProductFinderTool() {
     }
     if (!selectedModel || !selectedModelIsAvailable) {
       setRunError("Choose an available model using its radio button before running.");
+      return;
+    }
+    if (!verifierModelIsAvailable) {
+      setRunError("Choose an available verifier model before running.");
       return;
     }
 
@@ -435,12 +454,23 @@ export function RelatedProductFinderTool() {
     setRunning(true);
     setProgress(0);
     setProgressMessage(mode === "smart" ? "Sampling collection listings…" : "Starting collection…");
+    const automaticOptions = {
+      signal: controller.signal,
+      onProgress: (phase: "verifying" | "correcting" | "rechecking", completed: number, total: number) => {
+        if (runControllerRef.current !== controller || controller.signal.aborted) return;
+        setProgressMessage(phase === "correcting" ? "Correcting suggested conditions (one attempt)…"
+          : `${phase === "rechecking" ? "Rechecking corrections" : "Automatically verifying results"} (${completed}/${total})…`);
+        setProgress(phase === "correcting" ? 80 : (phase === "rechecking" ? 85 : 65) + Math.round((completed / Math.max(total, 1)) * 10));
+      },
+    };
+    const reviewer = { apiBase: settings.apiBase, apiKey: settings.apiKey, model: effectiveVerifierModel };
 
     try {
       const collected = await collectProductsFromUrls(
         urls,
         controller.signal,
         (message, completed, total) => {
+          if (runControllerRef.current !== controller || controller.signal.aborted) return;
           setProgressMessage(message);
           setProgress(total > 0 ? Math.round((completed / total) * 45) : 0);
         },
@@ -459,18 +489,17 @@ export function RelatedProductFinderTool() {
           throw error;
         });
         if (controller.signal.aborted) throw new Error("Run cancelled.");
-        const preview = previewSmartCollectionTitles(collected.products, suggestion, clientOptions);
-        const passingUrls = new Set(preview.passed.map((product) => product.url));
-        setSmartResult({
+        const initial: SmartResult = {
           suggestion, options: clientOptions, samples: collected.products, warnings: collected.warnings,
-          reviewInput: {
-            mode: "smart", draft: draft.trim(), sourceModel: selectedModel,
-            conditions: formatSmartCollectionSuggestion(suggestion, clientOptions),
-            products: collected.products.map((product) => ({
-              product, selected: preview.evaluated ? passingUrls.has(product.url) : null,
-            })),
-          },
+          reviewInput: createSmartReviewInput(draft.trim(), selectedModel, collected.products, suggestion, clientOptions),
+        };
+        setSmartResult(initial);
+        const verified = await automaticallyVerifyResults(reviewer, initial.reviewInput, {
+          ...automaticOptions, smart: { suggestion, options: clientOptions, urls },
         });
+        if (runControllerRef.current !== controller) return;
+        setVerification(controller.signal.aborted ? markVerificationIncomplete(verified, "Request cancelled.") : verified);
+        if (!controller.signal.aborted) setSmartResult({ ...initial, suggestion: verified.suggestion ?? suggestion });
       } else {
         setProgressMessage(`Classifying ${collected.products.length} unique products…`);
         const decisions = await classifyProducts(
@@ -482,8 +511,9 @@ export function RelatedProductFinderTool() {
           {
             signal: controller.signal,
             onProgress: (completed, total) => {
+              if (runControllerRef.current !== controller || controller.signal.aborted) return;
               setProgressMessage(`Classifying products (${completed}/${total})…`);
-              setProgress(50 + Math.round((completed / total) * 50));
+              setProgress(50 + Math.round((completed / total) * 10));
             },
           },
         ).catch((error) => {
@@ -491,36 +521,46 @@ export function RelatedProductFinderTool() {
           throw error;
         });
         if (controller.signal.aborted) throw new Error("Run cancelled.");
-        const related = collected.products.filter((_, index) => decisions[index].related);
-        const unrelated = collected.products.filter((_, index) => !decisions[index].related);
-        setResultView({
-          minority: buildMinorityResult(collected.products, decisions),
-          relatedGroups: groupProductsBySource(related),
-          unrelatedGroups: groupProductsBySource(unrelated),
-          relatedCount: related.length,
-          unrelatedCount: unrelated.length,
-          reviewInput: {
-            mode: "manual", draft: draft.trim(), sourceModel: selectedModel,
-            products: collected.products.map((product, index) => ({ product, selected: decisions[index].related })),
-          },
-          note: `${collected.products.length} unique product${collected.products.length === 1 ? "" : "s"} checked across ${urls.length} URL${urls.length === 1 ? "" : "s"}.`
-            + (collected.warnings.length ? ` ${collected.warnings.join(" ")}` : ""),
-        });
+        const input: ProductReviewInput = {
+          mode: "manual", draft: draft.trim(), sourceModel: selectedModel,
+          products: collected.products.map((product, index) => ({ product, selected: decisions[index].related })),
+        };
+        const present = (finalDecisions: ProductDecision[]): FinderResult => {
+          const related = collected.products.filter((_, index) => finalDecisions[index].related);
+          const unrelated = collected.products.filter((_, index) => !finalDecisions[index].related);
+          return {
+            minority: buildMinorityResult(collected.products, finalDecisions),
+            relatedGroups: groupProductsBySource(related), unrelatedGroups: groupProductsBySource(unrelated),
+            relatedCount: related.length, unrelatedCount: unrelated.length, reviewInput: input,
+            note: `${collected.products.length} unique product${collected.products.length === 1 ? "" : "s"} checked across ${urls.length} URL${urls.length === 1 ? "" : "s"}.`
+              + (collected.warnings.length ? ` ${collected.warnings.join(" ")}` : ""),
+          };
+        };
+        setResultView(present(decisions));
+        const verified = await automaticallyVerifyResults(reviewer, input, automaticOptions);
+        if (runControllerRef.current !== controller) return;
+        setVerification(controller.signal.aborted ? markVerificationIncomplete(verified, "Request cancelled.") : verified);
+        if (!controller.signal.aborted) setResultView(present(decisions.map((decision, index) => ({
+          ...decision, related: verified.final.products[index].selected ?? decision.related,
+        }))));
       }
       setProgress(100);
       setProgressMessage("Done.");
     } catch (error) {
+      if (runControllerRef.current !== controller) return;
       setRunError(error instanceof Error ? error.message : "Could not complete the product check.");
       setProgressMessage("");
       setProgress(0);
     } finally {
-      runControllerRef.current = null;
-      setRunning(false);
+      if (runControllerRef.current === controller) {
+        runControllerRef.current = null;
+        setRunning(false);
+      }
     }
   };
 
   const handleCopy = async () => {
-    if (!output) return;
+    if (!output || running) return;
     try {
       await navigator.clipboard.writeText(output);
       setCopied(true);
@@ -534,6 +574,7 @@ export function RelatedProductFinderTool() {
     setUrlsInput("");
     setDraft("");
     setSmartSettings(DEFAULT_SMART_COLLECTION_OPTIONS);
+    setVerifierModel("");
     invalidateResults();
     urlsInputRef.current?.focus();
   };
@@ -765,7 +806,7 @@ export function RelatedProductFinderTool() {
                     variant="outline"
                     size="sm"
                     onClick={() => settingsRef.current && void refreshModelList(settingsRef.current)}
-                    disabled={loadingModels}
+                    disabled={running || loadingModels}
                   >
                     {loadingModels ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                     Refresh models
@@ -793,6 +834,7 @@ export function RelatedProductFinderTool() {
                 <RadioGroup
                   value={selectedModelIsAvailable ? selectedModel : ""}
                   onValueChange={handleModelChange}
+                  disabled={running || loadingModels}
                   aria-label="Choose an available LLM model"
                   className="max-h-72 gap-2 overflow-y-auto rounded-lg border border-border bg-background/40 p-2"
                   data-lenisignore
@@ -911,6 +953,29 @@ export function RelatedProductFinderTool() {
             />
           )}
 
+          <fieldset disabled={running} className="min-w-0 space-y-3 rounded-lg border border-border p-3">
+            <legend className="px-1 text-sm font-medium">Automatic AI verification</legend>
+            <p className="text-xs leading-relaxed text-muted-foreground">{AUTOMATIC_VERIFICATION_NOTICE}</p>
+            <Label htmlFor="related-verifier-model">Verifier model</Label>
+            <select
+              id="related-verifier-model"
+              value={verifierModel}
+              onChange={(event) => {
+                setVerifierModel(event.target.value);
+                invalidateResults();
+              }}
+              disabled={running || vaultState !== "unlocked" || loadingModels}
+              className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">Use selected matching model</option>
+              {verifierModel && !models.some((model) => model.id === verifierModel) && <option value={verifierModel}>Saved reviewer unavailable: {verifierModel}</option>}
+              {models.map((model) => <option key={model.id} value={model.id}>{model.id}</option>)}
+            </select>
+            <p className="text-xs text-muted-foreground">{effectiveVerifierModel === selectedModel
+              ? "The same model can repeat its own mistakes. You can choose another model from this provider."
+              : "A different model can still share the same mistakes."}</p>
+          </fieldset>
+
           <div className="flex flex-1 flex-col gap-2">
             <Label htmlFor="related-draft">Draft content</Label>
             <Textarea
@@ -938,7 +1003,7 @@ export function RelatedProductFinderTool() {
             <Button
               type="button"
               onClick={() => void handleRun()}
-              disabled={running || vaultState !== "unlocked" || !selectedModel || !selectedModelIsAvailable || savingSelection}
+              disabled={running || loadingModels || vaultState !== "unlocked" || !selectedModel || !selectedModelIsAvailable || !verifierModelIsAvailable || savingSelection}
               className="flex-1 text-black"
             >
               {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageSearch className="mr-2 h-4 w-4" />}
@@ -999,11 +1064,7 @@ export function RelatedProductFinderTool() {
         {reviewInput && (
           <ProductResultVerifier
             input={reviewInput}
-            apiBase={apiBase}
-            apiKey={apiKey}
-            selectedModel={selectedModel}
-            models={models}
-            enabled={vaultState === "unlocked" && selectedModelIsAvailable && !loadingModels && !savingSelection}
+            report={verification}
           />
         )}
       </div>
@@ -1018,7 +1079,7 @@ export function RelatedProductFinderTool() {
           </div>
         ) : smartResult ? (
           <div className="space-y-4">
-            <p role="status" className="rounded-lg border border-border bg-background/60 p-3 font-semibold">Suggestions ready — review in Shopify</p>
+            <p role="status" className="rounded-lg border border-border bg-background/60 p-3 font-semibold">{verificationWarning || "Suggestions ready — review in Shopify"}</p>
             <dl className="space-y-3">
               {smartSummary.map((row) => (
                 <div key={row.label} className="rounded-lg border border-border bg-background/40 p-3">
@@ -1035,7 +1096,7 @@ export function RelatedProductFinderTool() {
         ) : resultView ? (
           <div className="space-y-5">
             <p role="status" className="rounded-lg border border-border bg-background/60 p-3 font-semibold">
-              {resultView.minority.kind === "summary" ? resultView.minority.text : "Check complete"}
+              {verificationWarning || (resultView.minority.kind === "summary" ? resultView.minority.text : "Check complete")}
             </p>
             <dl className="grid grid-cols-2 gap-3">
               <div className="col-span-2 rounded-lg border border-border bg-background/40 p-3">
@@ -1064,7 +1125,7 @@ export function RelatedProductFinderTool() {
           </p>
         )}
         <div className="mt-auto pt-6">
-          <Button type="button" variant="outline" size="sm" className="w-full hover:bg-muted hover:text-foreground" onClick={() => void handleCopy()} disabled={!output}>
+          <Button type="button" variant="outline" size="sm" className="w-full hover:bg-muted hover:text-foreground" onClick={() => void handleCopy()} disabled={!output || running}>
             {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
             {copied ? "Copied" : mode === "smart" ? "Copy conditions" : "Copy result"}
           </Button>

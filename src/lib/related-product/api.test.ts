@@ -227,9 +227,9 @@ const reviewInput: ProductReviewInput = {
   products: products.map((product, index) => ({ product, selected: index === 0 })),
 };
 
-function reviewResponse(assessments: unknown, warnings: unknown = []) {
+function reviewResponse(assessments: unknown, warnings: unknown = [], needsCorrection?: unknown) {
   return new Response(JSON.stringify({
-    choices: [{ message: { content: JSON.stringify({ assessments, warnings }) } }],
+    choices: [{ message: { content: JSON.stringify({ assessments, warnings, needsCorrection }) } }],
   }), { status: 200 });
 }
 
@@ -245,6 +245,7 @@ describe("AI result verification API", () => {
     expect(result.assessments.map((assessment) => assessment.id)).toEqual(["product-1", "product-2"]);
     expect(result.assessments[1].related).toBeNull();
     expect(result.warnings).toEqual(["Review fit manually."]);
+    expect(result.needsCorrection).toBe(false);
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://api.example.com/v1/chat/completions");
     expect(init.headers.Authorization).toBe("Bearer secret-key");
@@ -266,7 +267,7 @@ describe("AI result verification API", () => {
       expect(data.conditions).toBe("Products → Match ALL conditions");
       return reviewResponse(data.products.reverse().map((product: { id: string }) => ({
         id: product.id, related: true, reason: "The supplied details support relevance.",
-      })), ["Review category assignments."]);
+      })), ["Review category assignments."], data.products[0].id === "product-31");
     });
     vi.stubGlobal("fetch", fetchMock);
     const result = await verifyProductResults("https://api.example.com/v1", "key", "review-model", {
@@ -277,6 +278,7 @@ describe("AI result verification API", () => {
     expect(result.assessments).toHaveLength(31);
     expect(result.assessments[30].id).toBe("product-31");
     expect(result.warnings).toEqual(["Review category assignments."]);
+    expect(result.needsCorrection).toBe(true);
     expect(progress.mock.calls).toEqual([[30, 31], [31, 31]]);
   });
 
@@ -312,6 +314,15 @@ describe("AI result verification API", () => {
     await expect(verifyProductResults("https://api.example.com/v1", "key", "model", {
       ...reviewInput, products: Array.from({ length: 31 }, () => reviewInput.products[0]),
     })).rejects.toThrow("503");
+  });
+
+  it("rejects a non-boolean actionable-correction flag", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reviewResponse([
+      { id: "product-1", related: true, reason: "Evidence." },
+      { id: "product-2", related: false, reason: "Evidence." },
+    ], [], "yes")));
+    await expect(verifyProductResults("https://api.example.com/v1", "key", "model", reviewInput))
+      .rejects.toThrow("invalid review");
   });
 
   it("rejects empty input and respects cancellation before requests and after response decoding", async () => {

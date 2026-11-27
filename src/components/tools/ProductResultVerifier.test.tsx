@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProductResultVerifier } from "./ProductResultVerifier";
 import type { ProductReviewInput } from "@/lib/related-product/types";
+import type { AutomaticVerificationReport } from "@/lib/related-product/verification";
 
 afterEach(() => {
   cleanup();
@@ -10,95 +11,103 @@ afterEach(() => {
 
 const input: ProductReviewInput = {
   mode: "smart", draft: "A draft about compatible supplies.", sourceModel: "model-a",
-  products: [{
-    product: { name: "Supply", productType: "", description: "", price: "", url: "https://shop.example/products/supply" },
-    selected: true,
-  }],
+  products: ["Supply", "Spare", "Unknown"].map((name, index) => ({
+    product: { name, productType: "", description: "", price: "", url: `https://shop.example/products/${index}` },
+    selected: index === 0,
+  })),
 };
-const props = {
-  input, apiBase: "https://api.example.com/v1", apiKey: "test-key", selectedModel: "model-a",
-  models: [{ id: "model-a" }, { id: "model-b" }], enabled: true,
+const report: AutomaticVerificationReport = {
+  status: "complete", original: input, final: input,
+  review: {
+    model: "model-a", needsCorrection: false, warnings: [],
+    assessments: input.products.map((entry, index) => ({
+      id: `product-${index + 1}`, related: entry.selected, reason: "Supported by the supplied description.",
+    })),
+  },
+  changes: [], uncertainIndices: [], correctionAttempted: false,
 };
-const response = () => new Response(JSON.stringify({
-  choices: [{ message: { content: JSON.stringify({
-    assessments: [{ id: "product-1", related: true, reason: "Supported by the supplied description." }],
-    warnings: [],
-  }) } }],
-}), { status: 200 });
 
-describe("ProductResultVerifier lifecycle", () => {
-  it("uses a selectable reviewer model only after the explicit action", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(response());
-    vi.stubGlobal("fetch", fetchMock);
-    render(<ProductResultVerifier {...props} />);
-    expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("Verifier model"), { target: { value: "model-b" } });
-    expect(screen.getByText(/different model can still share/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Verify results with AI" }));
-    expect(await screen.findByText("AI review complete — human review still required.")).toBeTruthy();
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("model-b");
-    expect(screen.getByText("Reviewed by: model-b")).toBeTruthy();
-  });
-
-  it.each(["cancel", "lock", "unmount"] as const)("aborts a pending review on %s", async (action) => {
-    let signal: AbortSignal | undefined;
-    vi.stubGlobal("fetch", vi.fn((_url, init: RequestInit) => {
-      signal = init.signal as AbortSignal;
-      return new Promise<Response>((_resolve, reject) => {
-        signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
-      });
-    }));
-    const view = render(<ProductResultVerifier {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "Verify results with AI" }));
-    expect(screen.getByRole("button", { name: "Verifying results…" }).hasAttribute("disabled")).toBe(true);
-    if (action === "cancel") fireEvent.click(screen.getByRole("button", { name: "Cancel verification" }));
-    if (action === "lock") view.rerender(<ProductResultVerifier {...props} enabled={false} />);
-    if (action === "unmount") view.unmount();
-    await waitFor(() => expect(signal?.aborted).toBe(true));
-    if (action !== "unmount") {
-      expect(await screen.findByText(/Request cancelled/)).toBeTruthy();
-      expect(screen.queryByText(/AI review complete/)).toBeNull();
-    }
-  });
-
-  it("discards a late response when the completed input changes, even if fetch ignores abort", async () => {
-    let finish!: (response: Response) => void;
-    let oldSignal: AbortSignal | undefined;
-    const fetchMock = vi.fn((_url, init: RequestInit) => {
-      oldSignal = init.signal as AbortSignal;
-      return new Promise<Response>((resolve) => { finish = resolve; });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const view = render(<ProductResultVerifier {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "Verify results with AI" }));
-    view.rerender(<ProductResultVerifier {...props} input={{ ...input, draft: "A changed draft" }} />);
-    expect(oldSignal?.aborted).toBe(true);
-    finish(response());
-    await waitFor(() => expect(screen.getByRole("button", { name: "Verify results with AI" }).hasAttribute("disabled")).toBe(false));
-    expect(screen.queryByText(/AI review complete/)).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  it("does not manufacture title disagreements when there is no title-match baseline", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response()));
-    render(<ProductResultVerifier {...props} input={{
-      ...input, products: [{ ...input.products[0], selected: null }],
-    }} />);
-    fireEvent.click(screen.getByRole("button", { name: "Verify results with AI" }));
-    await screen.findByText("AI review complete — human review still required.");
-    expect(screen.getByText("Potential mismatches").nextElementSibling?.textContent).toBe("0");
-    expect(screen.getByText(/No title-match baseline/)).toBeTruthy();
-    expect(screen.getByText("Original title result: not evaluated")).toBeTruthy();
-  });
-
-  it("blocks empty samples and unavailable reviewer models without requests", () => {
+describe("ProductResultVerifier report", () => {
+  it("renders pending and complete reports without owning requests or actions", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const view = render(<ProductResultVerifier {...props} input={{ ...input, products: [] }} />);
-    expect(screen.getByRole("button", { name: "Verify results with AI" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText(/No product samples are available/)).toBeTruthy();
-    view.rerender(<ProductResultVerifier {...props} models={[]} />);
-    expect(screen.getByRole("button", { name: "Verify results with AI" }).hasAttribute("disabled")).toBe(true);
+    const view = render(<ProductResultVerifier input={input} report={null} />);
+    expect(screen.getByRole("status").textContent).toBe("Automatic AI verification is running…");
+    expect(screen.getByRole("region", { name: "AI result verifier" }).getAttribute("aria-busy")).toBe("true");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByLabelText("Verifier model")).toBeNull();
+    view.rerender(<ProductResultVerifier input={input} report={report} />);
+    expect(screen.getByRole("status").textContent).toBe("AI review complete — human review still required.");
+    expect(screen.getByRole("region", { name: "AI result verifier" }).getAttribute("aria-busy")).toBe("false");
+    expect(screen.getByText("Products reviewed").nextElementSibling?.textContent).toBe("3");
+    expect(screen.getByText("Remaining mismatches").nextElementSibling?.textContent).toBe("0");
+    expect(screen.getByText(/same model generated and reviewed/)).toBeTruthy();
+    expect(screen.getByText("No automatic changes were applied.")).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shows applied before/after changes and final decisions separately from uncertainty", () => {
+    const changed: AutomaticVerificationReport = {
+      ...report, status: "needs-review", correctionAttempted: true, uncertainIndices: [2],
+      final: { ...input, products: input.products.map((entry, index) => ({ ...entry, selected: index === 1 })) },
+      changes: [{ label: "Supply", before: "Matched", after: "Did not match" }],
+      review: {
+        ...report.review!, model: "model-b", warnings: ["Check compatibility manually."],
+        assessments: report.review!.assessments.map((entry, index) => ({ ...entry, related: index === 2 ? null : index === 1 })),
+      },
+    };
+    render(<ProductResultVerifier input={input} report={changed} />);
+    expect(screen.getByRole("status").textContent).toBe("AI review needs attention — review flagged items.");
+    expect(screen.getByText("Applied changes (1)")).toBeTruthy();
+    expect(screen.getByText("Before: Matched")).toBeTruthy();
+    expect(screen.getByText("After: Did not match")).toBeTruthy();
+    expect(screen.getByText("Original title result: matched")).toBeTruthy();
+    expect(screen.getByText("Final title result: matched")).toBeTruthy();
+    expect(screen.getByText("Uncertain / conflicting").nextElementSibling?.textContent).toBe("1");
+    expect(screen.getByText("Uncertain / conflicting reviews")).toBeTruthy();
+    expect(screen.getByText("Check compatibility manually.")).toBeTruthy();
+    expect(screen.getByText("Reviewed by: model-b")).toBeTruthy();
+    expect(screen.queryByText(/same model generated and reviewed/)).toBeNull();
+    const link = screen.getByRole("link", { name: "Supply" });
+    expect(link.getAttribute("href")).toBe(input.products[0].product.url);
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("highlights remaining false positives and missed products", () => {
+    render(<ProductResultVerifier input={input} report={{
+      ...report, status: "needs-review",
+      review: {
+        ...report.review!, assessments: report.review!.assessments.map((entry, index) => ({ ...entry, related: index === 1 })),
+      },
+    }} />);
+    expect(screen.getByText("Remaining mismatches").nextElementSibling?.textContent).toBe("2");
+    expect(screen.getByText("Potential false positive")).toBeTruthy();
+    expect(screen.getByText("Potential missed product")).toBeTruthy();
+  });
+
+  it("shows incomplete work without presenting partial evidence as a completed review", () => {
+    render(<ProductResultVerifier input={input} report={{
+      ...report, status: "incomplete", review: null, message: "Request cancelled.",
+    }} />);
+    expect(screen.getByRole("status").textContent).toBe("AI verification incomplete — original output retained.");
+    expect(screen.getByRole("alert").textContent).toBe("Request cancelled.");
+    expect(screen.getByText("No automatic changes were applied.")).toBeTruthy();
+    expect(screen.queryByText("Products reviewed")).toBeNull();
+    expect(screen.queryByRole("list", { name: "AI product assessments" })).toBeNull();
+  });
+
+  it("does not manufacture title disagreements when there is no title-match baseline", () => {
+    const noTitles: ProductReviewInput = { ...input, products: input.products.map((entry) => ({ ...entry, selected: null })) };
+    render(<ProductResultVerifier input={noTitles} report={{ ...report, original: noTitles, final: noTitles }} />);
+    expect(screen.getByText("Remaining mismatches").nextElementSibling?.textContent).toBe("0");
+    expect(screen.getByText(/No title-match baseline/)).toBeTruthy();
+    expect(screen.getAllByText("Original title result: not evaluated")).toHaveLength(3);
+  });
+
+  it("explains missing samples without displaying a fabricated review count", () => {
+    const empty: ProductReviewInput = { ...input, products: [] };
+    render(<ProductResultVerifier input={empty} report={{ ...report, original: empty, final: empty, status: "incomplete", review: null }} />);
+    expect(screen.getByText(/No product samples are available/)).toBeTruthy();
+    expect(screen.queryByText("Products reviewed")).toBeNull();
   });
 });
