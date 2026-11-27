@@ -17,7 +17,10 @@ const products: ProductCandidate[] = [
   { name: "Card Reader", productType: "Card reader", description: "Accepts cards.", price: "", url: "https://shop.example/products/card-reader", foundVia: ["https://shop.example/collections/readers"] },
 ];
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("related product API", () => {
   it("groups products by every submitted URL without duplicating repeated sources", () => {
@@ -227,10 +230,14 @@ const reviewInput: ProductReviewInput = {
   products: products.map((product, index) => ({ product, selected: index === 0 })),
 };
 
-function reviewResponse(assessments: unknown, warnings: unknown = [], needsCorrection?: unknown) {
+function completionResponse(payload: unknown) {
   return new Response(JSON.stringify({
-    choices: [{ message: { content: JSON.stringify({ assessments, warnings, needsCorrection }) } }],
+    choices: [{ message: { content: JSON.stringify(payload) } }],
   }), { status: 200 });
+}
+
+function reviewResponse(assessments: unknown, warnings: unknown = [], needsCorrection?: unknown) {
+  return completionResponse({ assessments, warnings, needsCorrection });
 }
 
 describe("AI result verification API", () => {
@@ -361,5 +368,143 @@ describe("AI result verification API", () => {
       .rejects.toThrow("Invalid [redacted]");
     await expect(verifyProductResults("https://api.example.com/v1", "key", "model", reviewInput))
       .rejects.toThrow("valid JSON");
+  });
+});
+
+const deadlineConditions = {
+  categories: [], titleIncludes: [{ match: "any" as const, values: ["Acceptor"] }], titleExcludes: [], notes: [],
+};
+const deadlineAssessments = products.map((_, index) => ({
+  id: `product-${index + 1}`, related: index === 0, reason: "Supplied evidence.",
+}));
+const completionRequests = [
+  {
+    operation: "Product matching",
+    run: (signal?: AbortSignal) => classifyProducts("https://api.example.com/v1", "key", "model", "Draft", products, { signal }),
+    response: () => completionResponse({ classifications: deadlineAssessments.map(({ id, related }) => ({ id, related })) }),
+  },
+  {
+    operation: "Condition generation",
+    run: (signal?: AbortSignal) => suggestSmartCollection("https://api.example.com/v1", "key", "model", "Draft", [], products, signal),
+    response: () => completionResponse(deadlineConditions),
+  },
+  {
+    operation: "Condition correction",
+    run: (signal?: AbortSignal) => suggestSmartCollection("https://api.example.com/v1", "key", "model", "Draft", [], products, signal, DEFAULT_SMART_COLLECTION_OPTIONS, {
+      suggestion: deadlineConditions,
+      review: { model: "reviewer", assessments: deadlineAssessments, warnings: [], needsCorrection: true },
+    }),
+    response: () => completionResponse(deadlineConditions),
+  },
+  {
+    operation: "AI verification",
+    run: (signal?: AbortSignal) => verifyProductResults("https://api.example.com/v1", "key", "model", reviewInput, { signal }),
+    response: () => reviewResponse(deadlineAssessments),
+  },
+];
+
+function delayedProviderResponse(response: Response, headersAfterMs: number, bodyAfterMs = 0) {
+  return vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+    const signal = init?.signal;
+    const delay = <T,>(value: () => T | PromiseLike<T>, milliseconds: number) => new Promise<T>((resolve, reject) => {
+      const abort = () => {
+        globalThis.clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      const timer = globalThis.setTimeout(() => {
+        signal?.removeEventListener("abort", abort);
+        resolve(value());
+      }, milliseconds);
+      if (signal?.aborted) abort();
+      else signal?.addEventListener("abort", abort, { once: true });
+    });
+    return delay(() => ({
+      ok: response.ok, status: response.status,
+      json: () => bodyAfterMs > 0 ? delay(() => response.json(), bodyAfterMs) : response.json(),
+    } as Response), headersAfterMs);
+  });
+}
+
+describe("provider request deadlines", () => {
+  it.each(completionRequests)("allows a valid $operation response after the old 30/60-second limits", async ({ run, response }) => {
+    vi.useFakeTimers();
+    const fetchMock = delayedProviderResponse(response(), 90_000);
+    vi.stubGlobal("fetch", fetchMock);
+    const settled = vi.fn();
+    void run().then((value) => settled({ value }), (error) => settled({ error }));
+    await vi.advanceTimersByTimeAsync(89_999);
+    expect(settled).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toHaveBeenCalledWith({ value: expect.anything() });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(completionRequests)("bounds $operation at 180 seconds with a specific error and no retry", async ({ operation, run, response }) => {
+    vi.useFakeTimers();
+    const fetchMock = delayedProviderResponse(response(), 181_000);
+    vi.stubGlobal("fetch", fetchMock);
+    const settled = vi.fn();
+    void run().then((value) => settled({ value }), (error) => settled({ error }));
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(settled).toHaveBeenCalledWith({ error: new Error(`${operation} timed out after 180 seconds. No automatic retry was made.`) });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([200, 429])("keeps the deadline active through a stalled %s JSON body", async (status) => {
+    vi.useFakeTimers();
+    const fetchMock = delayedProviderResponse(new Response(JSON.stringify({
+      error: { message: "Private key detail must not escape a timed-out body." },
+    }), { status }), 0, 181_000);
+    vi.stubGlobal("fetch", fetchMock);
+    const settled = vi.fn();
+    void completionRequests[0].run().then((value) => settled({ value }), (error) => settled({ error }));
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(settled).toHaveBeenCalledWith({ error: new Error("Product matching timed out after 180 seconds. No automatic retry was made.") });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("cancels promptly after headers arrive, without waiting for JSON or retrying", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchMock = delayedProviderResponse(completionRequests[0].response(), 0, 90_000);
+    vi.stubGlobal("fetch", fetchMock);
+    const settled = vi.fn();
+    void completionRequests[0].run(controller.signal).then((value) => settled({ value }), (error) => settled({ error }));
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toHaveBeenCalledWith({ error: new Error("Request cancelled.") });
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps model discovery bounded at 30 seconds", async () => {
+    vi.useFakeTimers();
+    const fetchMock = delayedProviderResponse(new Response('{"data":[]}'), 31_000);
+    vi.stubGlobal("fetch", fetchMock);
+    const settled = vi.fn();
+    void fetchAvailableModels("https://api.example.com/v1", "key").then((value) => settled({ value }), (error) => settled({ error }));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(settled).toHaveBeenCalledWith({ error: new Error("Model list request timed out after 30 seconds. No automatic retry was made.") });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("uses one deadline for headers and JSON combined instead of restarting the budget", async () => {
+    vi.useFakeTimers();
+    const fetchMock = delayedProviderResponse(completionRequests[0].response(), 90_000, 91_000);
+    vi.stubGlobal("fetch", fetchMock);
+    const settled = vi.fn();
+    void completionRequests[0].run().then((value) => settled({ value }), (error) => settled({ error }));
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(settled).toHaveBeenCalledWith({ error: new Error("Product matching timed out after 180 seconds. No automatic retry was made.") });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

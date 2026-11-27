@@ -3,7 +3,10 @@ import { automaticallyVerifyResults, createSmartReviewInput, getReviewSummary, m
 import { DEFAULT_SMART_COLLECTION_OPTIONS, previewSmartCollectionTitles } from "./smart-collection";
 import type { ProductReviewInput } from "./types";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 const provider = { apiBase: "https://api.example.com/v1", apiKey: "test-key", model: "review-model" };
 const products = ["Chenille Wash Mitt", "Chenille Wash Pad", "Seat Cleaner"].map((name, index) => ({
@@ -187,6 +190,27 @@ describe("automatic verification and correction", () => {
     expect(result.changes).toEqual([]);
     expect(result.message).toContain("invalid smart-collection conditions");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["manual", "smart"] as const)("rolls back %s corrections after a real transport deadline without retrying", async (mode) => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValueOnce(review([true, false, true]));
+    if (mode === "smart") fetchMock.mockResolvedValueOnce(completion(revised));
+    fetchMock.mockImplementationOnce((_url, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const input = mode === "smart" ? smartInput : manual;
+    const pending = automaticallyVerifyResults(provider, input, mode === "smart" ? { smart } : {});
+    await vi.advanceTimersByTimeAsync(180_000);
+    const result = await pending;
+    expect(result.status).toBe("incomplete");
+    expect(result.final).toBe(input);
+    expect(result.review).toBeNull();
+    expect(result.changes).toEqual([]);
+    expect(result.message).toBe("AI verification timed out after 180 seconds. No automatic retry was made.");
+    expect(fetchMock).toHaveBeenCalledTimes(mode === "smart" ? 3 : 2);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("marks empty or cancelled work incomplete without requests, and stops cancellation before the recheck", async () => {

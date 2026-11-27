@@ -12,6 +12,8 @@ import {
 
 export const DEFAULT_API_BASE = "https://api.openai.com/v1";
 const PRODUCT_BATCH_SIZE = 30;
+const MODEL_LIST_TIMEOUT_MS = 30_000;
+const COMPLETION_TIMEOUT_MS = 180_000;
 const PRODUCT_RELEVANCE_CRITERIA = "A product is related if it is the draft's main product type, is named in the draft, belongs to a category the draft asks readers to buy or compare, or is a compatible part/accessory/supply for the main product.";
 
 export const API_PRESETS = [
@@ -74,25 +76,32 @@ async function safeErrorMessage(response: Response, apiKey: string): Promise<str
 async function request(
   url: string,
   init: RequestInit,
-  signal?: AbortSignal,
-  timeoutMs = 30_000,
-): Promise<Response> {
+  apiKey: string,
+  { signal, timeoutMs, operation }: { signal?: AbortSignal; timeoutMs: number; operation: string },
+): Promise<unknown> {
+  if (signal?.aborted) throw new Error("Request cancelled.");
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
   const abortFromParent = () => controller.abort();
 
-  if (signal?.aborted) controller.abort();
-  else signal?.addEventListener("abort", abortFromParent, { once: true });
+  signal?.addEventListener("abort", abortFromParent, { once: true });
 
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...init,
       cache: "no-store",
       signal: controller.signal,
     });
+    if (!response.ok) throw new Error(await safeErrorMessage(response, apiKey));
+    // Fetch resolves at headers; keep the deadline and Cancel active until JSON is read.
+    const payload: unknown = await response.json();
+    if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+    return payload;
   } catch (error) {
     if (signal?.aborted) throw new Error("Request cancelled.");
-    if (controller.signal.aborted) throw new Error("Provider request timed out.");
+    if (controller.signal.aborted) {
+      throw new Error(`${operation} timed out after ${timeoutMs / 1_000} seconds. No automatic retry was made.`);
+    }
     if (error instanceof TypeError) {
       throw new Error("Could not reach this provider. Check the API URL and its browser CORS support.");
     }
@@ -109,16 +118,13 @@ export async function fetchAvailableModels(
   signal?: AbortSignal,
 ): Promise<ProductModel[]> {
   const base = normalizeApiBase(apiBase);
-  const response = await request(`${base}/models`, {
+  const payload = await request(`${base}/models`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       Accept: "application/json",
     },
-  }, signal);
-
-  if (!response.ok) throw new Error(await safeErrorMessage(response, apiKey));
-  const payload = await response.json() as {
+  }, apiKey, { signal, timeoutMs: MODEL_LIST_TIMEOUT_MS, operation: "Model list request" }) as {
     data?: Array<{ id?: unknown; owned_by?: unknown }>;
     models?: Array<{ id?: unknown; owned_by?: unknown }>;
   };
@@ -240,7 +246,7 @@ export async function classifyProducts(
       products: batch.map((product, index) => productModelData(product, ids[index])),
     };
 
-    const response = await request(`${base}/chat/completions`, {
+    const payload = await request(`${base}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -263,10 +269,7 @@ export async function classifyProducts(
           { role: "user", content: JSON.stringify(userData) },
         ],
       }),
-    }, options.signal);
-
-    if (!response.ok) throw new Error(await safeErrorMessage(response, apiKey));
-    const payload: unknown = await response.json();
+    }, apiKey, { signal: options.signal, timeoutMs: COMPLETION_TIMEOUT_MS, operation: "Product matching" });
     const content = extractCompletionText(payload);
     decisions.push(...parseDecisions(content, ids));
     options.onProgress?.(Math.min(start + batch.length, products.length), products.length);
@@ -288,7 +291,7 @@ export async function suggestSmartCollection(
 ): Promise<SmartCollectionSuggestion> {
   const clientOptions = parseSmartCollectionOptions(options);
   const base = normalizeApiBase(apiBase);
-  const response = await request(`${base}/chat/completions`, {
+  const payload = await request(`${base}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -351,9 +354,10 @@ export async function suggestSmartCollection(
         },
       ],
     }),
-  }, signal, 60_000);
-  if (!response.ok) throw new Error(await safeErrorMessage(response, apiKey));
-  const payload: unknown = await response.json();
+  }, apiKey, {
+    signal, timeoutMs: COMPLETION_TIMEOUT_MS,
+    operation: feedback ? "Condition correction" : "Condition generation",
+  });
   if (signal?.aborted) throw new Error("Request cancelled.");
   return parseSmartCollectionSuggestion(parseCompletionJson(extractCompletionText(payload)), clientOptions);
 }
@@ -387,7 +391,7 @@ export async function verifyProductResults(
     if (options.signal?.aborted) throw new Error("Request cancelled.");
     const batch = input.products.slice(start, start + PRODUCT_BATCH_SIZE);
     const ids = batch.map((_, index) => `product-${start + index + 1}`);
-    const response = await request(`${base}/chat/completions`, {
+    const payload = await request(`${base}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -425,9 +429,7 @@ export async function verifyProductResults(
           },
         ],
       }),
-    }, options.signal, 60_000);
-    if (!response.ok) throw new Error(await safeErrorMessage(response, apiKey));
-    const payload: unknown = await response.json();
+    }, apiKey, { signal: options.signal, timeoutMs: COMPLETION_TIMEOUT_MS, operation: "AI verification" });
     if (options.signal?.aborted) throw new Error("Request cancelled.");
     const parsed = productReviewSchema.safeParse(parseCompletionJson(extractCompletionText(payload)));
     if (!parsed.success) throw new Error("The verifier returned an invalid review.");
